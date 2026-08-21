@@ -35,7 +35,16 @@ User meminta aplikasi seperti Trello untuk operasional internal ALI (legalitas).
 - **Staff** (Dedes/Devi/Dewi/Julia/Elis/Anti/Amel/Rina): claim & kerjakan pekerjaan, drag kartu, komentar, upload.
 - **Viewer**: hanya melihat (role tersedia).
 
-## Status Implementasi (21 Agu 2026 — MVP selesai & lulus testing 100%)
+## Status Implementasi
+
+### Iterasi 2 (21 Agu 2026 — Bank Data + Board Harian + Peta Skor + Validasi Syarat; lulus testing 49/49 backend, 100% UI)
+- [x] **Bank Data per divisi** (`/bank-data/:divisionId`): tabel No|Pekerjaan|List|PIC|Tenggat|Status|Aksi; semua user bisa lihat semua divisi, hanya anggota divisi bisa Klaim; Tambah Pekerjaan lintas divisi (assign divisi otomatis + opsional pilih PIC); panel beban kerja per anggota dengan rincian per list (S1:5, dll)
+- [x] **Card Modal ala Trello**: pane kiri konten (PIC jelas avatar+nama, divisi, label, tenggat, prioritas, klien, deskripsi, checklist, lampiran), pane kanan rail Komentar & Aktivitas (feed gabungan + toggle detail)
+- [x] **Board Harian** (`/global/hari`): kolom HARI 1-7 + FINISH; kartu CS yang masuk SKOR 5 otomatis `hari_stage=1`; auto-maju harian via cron platform (`/api/cron/advance-hari`, Bearer secret, idempoten); admin bisa maju manual lebih cepat; gate checklist: HARI 4 = AKTA+SK, HARI 6 = NPWP+Coretax+Suket, FINISH = NIB; LOGO hanya warning; badge "Mandek" merah ≥2 hari; permission draf/pajak/perizinan/desain + admin
+- [x] **Peta Skor Global** (`/global/skor`): read-only agregasi SKOR 1-6 lintas board (CS + Admin Draf + HARI), badge Mandek ≥3 hari; permission CS + supervisor/admin
+- [x] **Validasi syarat pindah list**: `entry_requirements` per list (default CS: S3=KTP+NPWP, S4=Pembayaran, S5=Konfirmasi Klien, S6=Penyerahan), admin/supervisor bisa ubah via menu list "Atur syarat masuk"; staff diblokir 400, supervisor boleh dengan catatan di activity log; checklist "Syarat <list>" otomatis dibuat di kartu
+
+### Iterasi 1 (21 Agu 2026 — MVP; lulus testing 27/27 backend, 100% UI)
 - [x] Auth JWT lengkap + brute force protection + seed admin idempoten
 - [x] 8 board seed (CS ×4, Admin Draf, Pajak, Perizinan, Desain) + list + labels + 18 sample cards + 9 user demo
 - [x] Kanban drag & drop antar list + reorder list + reorder kartu (posisi float)
@@ -48,13 +57,13 @@ User meminta aplikasi seperti Trello untuk operasional internal ALI (legalitas).
 - [x] Testing: backend 27/27 pytest lolos, semua flow UI lolos (iteration_1.json)
 
 ## Backlog Prioritas
-- **P0**: — (kosong, MVP stabil)
-- **P1**: Notifikasi due-date mendekat/overdue terjadwal (cron harian via .emergent/crons.yml); tampilan Table/List selain Kanban di board; filter board by label/PIC; pagination aktivitas
-- **P2**: Client sebagai entitas CRM terpisah (jika user berubah pikiran), integrasi WhatsApp/email, laporan advanced & export, template pekerjaan, lampiran versi, komentar autocomplete mention
+- **P0**: — (kosong)
+- **P1**: Notifikasi due-date mendekat/overdue terjadwal; tampilan Table/List selain Kanban di board; filter board by label/PIC; hari kerja vs hari kalender untuk auto-advance (saat ini 20 jam)
+- **P2**: Client sebagai entitas CRM terpisah, integrasi WhatsApp/email, laporan advanced & export, template pekerjaan, autocomplete mention
 
 ## Next Tasks
-1. Konfirmasi ke user: apakah P1 (reminder due date via cron, view table/list) diinginkan berikutnya.
-2. Setelah dipakai: kumpulkan feedback UX dari tim CS/Admin.
+1. Konfirmasi ke user: apakah mapping kolom Peta Skor untuk Admin Draf (SKOR 2 = PRATINJAU/PESAN NAMA/INPUTAN, SKOR 3 = FU NOTARIS/SIAP KIRIM/VIA WA) sudah sesuai proses aslinya.
+2. Pertimbangkan jadwal cron hanya hari kerja (Senin-Jumat) jika diperlukan.
 
 ## Kredensial
 Lihat `/app/memory/test_credentials.md`. Testing playbook: `/app/auth_testing.md`.

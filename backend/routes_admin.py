@@ -245,6 +245,7 @@ async def create_list(board_id: str, body: CreateListBody, user=Depends(get_curr
 class UpdateListBody(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
+    entry_requirements: Optional[List[str]] = None
 
 
 @router.patch("/lists/{list_id}")

@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutGrid, Home, Briefcase, ListChecks, Settings, LogOut, Search, ChevronDown, Trello,
+  Database, CalendarClock, BarChart3,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -110,6 +111,13 @@ export default function AppLayout() {
     queryKey: ["boards"],
     queryFn: () => api.get("/boards").then((r) => r.data),
   });
+  const { data: divisions } = useQuery({
+    queryKey: ["divisions"],
+    queryFn: () => api.get("/divisions").then((r) => r.data),
+  });
+  const myDiv = (divisions || []).find((d) => d.id === user?.division_id);
+  const canHari = isAdminRole || ["draf", "pajak", "perizinan", "desain"].includes(myDiv?.key);
+  const canSkor = isSupervisorUp || myDiv?.key === "cs";
 
   const navItem = (to, icon, label, testid) => (
     <Link
@@ -183,6 +191,31 @@ export default function AppLayout() {
                 <span className="truncate">{b.name}</span>
               </Link>
             ))}
+            <div className="pt-4 pb-1 px-3 flex items-center gap-2">
+              <Database size={12} className="text-[#8590A2]" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2]">Bank Data Divisi</span>
+            </div>
+            {(divisions || []).map((d) => (
+              <Link
+                key={d.id}
+                to={`/bank-data/${d.id}`}
+                data-testid={`sidebar-bankdata-${d.id}`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  location.pathname === `/bank-data/${d.id}` ? "bg-[#E9F2FF] text-[#0C66E4] font-medium" : "text-[#44546F] hover:bg-[#F1F2F4]"
+                }`}
+              >
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                <span className="truncate">{d.name}</span>
+              </Link>
+            ))}
+            {(canHari || canSkor) && (
+              <div className="pt-4 pb-1 px-3 flex items-center gap-2">
+                <BarChart3 size={12} className="text-[#8590A2]" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2]">Pantauan Global</span>
+              </div>
+            )}
+            {canHari && navItem("/global/hari", <CalendarClock size={16} />, "Board Harian (Hari 1-7)", "nav-global-hari")}
+            {canSkor && navItem("/global/skor", <BarChart3 size={16} />, "Peta Skor Global", "nav-global-skor")}
             {isAdminRole && (
               <>
                 <div className="pt-4 pb-1 px-3">

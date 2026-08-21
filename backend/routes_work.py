@@ -26,6 +26,64 @@ async def get_item_checked(item_id: str, user: dict) -> dict:
     return item
 
 
+STAGE_GATES = {4: ["AKTA", "SK"], 6: ["NPWP", "AKUN CORETAX", "SUKET"], 8: ["NIB"]}
+HARI_DIVISION_KEYS = {"draf", "pajak", "perizinan", "desain"}
+
+
+def done_checklist_texts(item: dict) -> list:
+    done = []
+    for cl in item.get("checklists", []):
+        for it in cl.get("items", []):
+            if it.get("done"):
+                done.append(it.get("text", "").lower())
+    return done
+
+
+def unmet_requirements(item: dict, required: list) -> list:
+    done = done_checklist_texts(item)
+    missing = []
+    for req in required or []:
+        r = req.strip().lower()
+        if r and not any(r in t for t in done):
+            missing.append(req)
+    return missing
+
+
+async def ensure_requirement_checklist(item: dict, lst: dict):
+    reqs = lst.get("entry_requirements") or []
+    if not reqs:
+        return
+    checklists = item.get("checklists", [])
+    title = f"Syarat {lst['name']}"
+    target = next((c for c in checklists if c["title"] == title), None)
+    changed = False
+    if target is None:
+        target = {"id": new_id(), "title": title, "items": []}
+        checklists.append(target)
+        changed = True
+    existing = {i["text"].strip().lower() for i in target["items"]}
+    for req in reqs:
+        if req.strip().lower() not in existing:
+            target["items"].append({"id": new_id(), "text": req, "done": False})
+            changed = True
+    if changed:
+        await db.work_items.update_one({"id": item["id"]}, {"$set": {"checklists": checklists}})
+        item["checklists"] = checklists
+
+
+async def user_division(user: dict):
+    if not user.get("division_id"):
+        return None
+    return await db.divisions.find_one({"id": user["division_id"]})
+
+
+async def can_access_hari(user: dict) -> bool:
+    if user["role"] in ADMIN_ROLES:
+        return True
+    div = await user_division(user)
+    return bool(div and div.get("key") in HARI_DIVISION_KEYS)
+
+
 class CreateItemBody(BaseModel):
     board_id: str
     list_id: str
@@ -43,8 +101,6 @@ class CreateItemBody(BaseModel):
 @router.post("/work-items")
 async def create_item(body: CreateItemBody, user=Depends(get_current_user)):
     board = await get_board(body.board_id)
-    if not can_view_board(user, board):
-        raise HTTPException(403, "Anda tidak memiliki akses ke board ini")
     lst = await db.lists.find_one({"id": body.list_id, "board_id": body.board_id})
     if not lst:
         raise HTTPException(404, "List tidak ditemukan di board ini")
@@ -77,6 +133,7 @@ async def create_item(body: CreateItemBody, user=Depends(get_current_user)):
     }
     await db.work_items.insert_one(doc)
     await log_activity(doc["id"], doc["board_id"], user, f"membuat pekerjaan \"{doc['title']}\"")
+    await ensure_requirement_checklist(doc, lst)
     await run_automation(doc["board_id"], "card_created", doc, user, doc["list_id"])
     if doc["member_ids"]:
         await notify(doc["member_ids"], "assigned", "Anda ditugaskan",
@@ -177,15 +234,41 @@ async def move_item(item_id: str, body: MoveBody, user=Depends(get_current_user)
     if not can_view_board(user, target_board):
         raise HTTPException(403, "Anda tidak memiliki akses ke board tujuan")
     old_list = await db.lists.find_one({"id": item["list_id"]})
-    updates = {"list_id": body.list_id, "board_id": target_board_id, "position": body.position, "updated_at": now_iso()}
+    warning = None
+    reqs = target_list.get("entry_requirements") or []
+    if reqs and target_list["id"] != item["list_id"]:
+        missing = unmet_requirements(item, reqs)
+        if missing:
+            if user["role"] in SUPERVISOR_ROLES:
+                await log_activity(item_id, target_board_id, user,
+                                   f"memindahkan \"{item['title']}\" ke {target_list['name']} tanpa syarat terpenuhi: {', '.join(missing)}")
+            else:
+                raise HTTPException(400, f"Syarat masuk \"{target_list['name']}\" belum terpenuhi: {', '.join(missing)}. Centang checklist syarat di kartu terlebih dahulu.")
+    updates = {"list_id": body.list_id, "board_id": target_board_id, "position": body.position,
+               "updated_at": now_iso(), "list_entered_at": now_iso()}
     await db.work_items.update_one({"id": item_id}, {"$set": updates})
     item.update(updates)
     if old_list and old_list["id"] != body.list_id:
         await log_activity(item_id, target_board_id, user,
                            f"memindahkan \"{item['title']}\" dari {old_list['name']} ke {target_list['name']}")
+        old_name = old_list["name"].upper()
+        new_name = target_list["name"].upper()
+        division = None
+        if target_board.get("division_id"):
+            division = await db.divisions.find_one({"id": target_board["division_id"]})
+        is_cs = bool(division and division.get("key") == "cs")
+        if is_cs and new_name.startswith("SKOR 5") and not item.get("hari_stage"):
+            await db.work_items.update_one({"id": item_id}, {"$set": {"hari_stage": 1, "hari_entered_at": now_iso()}})
+            item["hari_stage"] = 1
+            item["hari_entered_at"] = now_iso()
+            await log_activity(item_id, target_board_id, user, f"\"{item['title']}\" masuk proses bisnis HARI 1")
+        elif item.get("hari_stage") and old_name.startswith("SKOR 5") and not new_name.startswith("SKOR 5"):
+            await db.work_items.update_one({"id": item_id}, {"$set": {"hari_stage": None, "hari_entered_at": None}})
+            item["hari_stage"] = None
+    await ensure_requirement_checklist(item, target_list)
     await run_automation(target_board_id, "card_moved", item, user, body.list_id)
     await broadcast_item(item)
-    return {"ok": True}
+    return {"ok": True, "warning": warning}
 
 
 @router.post("/work-items/{item_id}/claim")
@@ -630,3 +713,164 @@ async def search(q: str, user=Depends(get_current_user)):
         if b and can_view_board(user, clean(b)):
             visible.append(i)
     return {"boards": boards, "items": visible[:10]}
+
+
+# ---------- HARI (PROSES BISNIS 1-7) ----------
+
+class HariBody(BaseModel):
+    target_stage: int
+
+
+@router.post("/work-items/{item_id}/hari")
+async def move_hari(item_id: str, body: HariBody, user=Depends(get_current_user)):
+    item = await get_work_item(item_id)
+    board = await get_board(item["board_id"])
+    if not (can_view_board(user, board) or await can_access_hari(user)):
+        raise HTTPException(403, "Anda tidak memiliki akses ke proses harian ini")
+    current = item.get("hari_stage")
+    if not current:
+        raise HTTPException(400, "Pekerjaan ini tidak sedang dalam proses harian (HARI 1-7)")
+    target = body.target_stage
+    if target < 1 or target > 8:
+        raise HTTPException(400, "Tahap tidak valid (1-7, atau 8 untuk Finish)")
+    warning = None
+    if target > current:
+        gates = []
+        for stage, reqs in STAGE_GATES.items():
+            if current < stage <= target:
+                gates.extend(reqs)
+        missing = unmet_requirements(item, gates)
+        if missing:
+            if user["role"] in SUPERVISOR_ROLES:
+                await log_activity(item_id, item["board_id"], user,
+                                   f"memajukan \"{item['title']}\" ke HARI {min(target, 7) if target <= 7 else 'FINISH'} tanpa syarat terpenuhi: {', '.join(missing)}")
+            else:
+                raise HTTPException(400, f"Syarat belum terpenuhi: {', '.join(missing)}. Centang checklist syarat di kartu terlebih dahulu.")
+        if not any("logo" in t for t in done_checklist_texts(item)):
+            warning = "Dokumen LOGO belum ada — pekerjaan tetap dilanjutkan, mohon segera dilengkapi."
+    if target == 8:
+        lists = await db.lists.find({"board_id": item["board_id"]}).sort("position", 1).to_list(100)
+        finish_list = next((l for l in lists if l["name"].upper().startswith("SKOR 6")), None)
+        updates = {"hari_stage": None, "hari_entered_at": None, "status": "done",
+                   "completed_at": now_iso(), "updated_at": now_iso()}
+        if finish_list and finish_list["id"] != item["list_id"]:
+            updates["list_id"] = finish_list["id"]
+            updates["list_entered_at"] = now_iso()
+        await db.work_items.update_one({"id": item_id}, {"$set": updates})
+        await log_activity(item_id, item["board_id"], user, f"menyelesaikan proses harian \"{item['title']}\" (FINISH)")
+    else:
+        await db.work_items.update_one({"id": item_id},
+            {"$set": {"hari_stage": target, "hari_entered_at": now_iso(), "updated_at": now_iso()}})
+        await log_activity(item_id, item["board_id"], user, f"memajukan \"{item['title']}\" ke HARI {target}")
+    item = await get_work_item(item_id)
+    await broadcast_item(item)
+    return {"ok": True, "warning": warning, "hari_stage": item.get("hari_stage")}
+
+
+def _days_since(iso_str):
+    if not iso_str:
+        return 0
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0, (datetime.now(timezone.utc) - dt).days)
+    except Exception:
+        return 0
+
+
+@router.get("/global/hari")
+async def global_hari(user=Depends(get_current_user)):
+    if not await can_access_hari(user):
+        raise HTTPException(403, "Halaman ini hanya untuk tim Admin Draf, Pajak, Perizinan, Desain, dan admin")
+    items = clean_many(await db.work_items.find(
+        {"hari_stage": {"$gte": 1, "$lte": 7}, "archived": {"$ne": True}, "status": {"$ne": "done"}}
+    ).to_list(1000))
+    await enrich_items(items)
+    for i in items:
+        i["days_in_stage"] = _days_since(i.get("hari_entered_at"))
+        i["is_stalled"] = i["days_in_stage"] >= 2
+    return items
+
+
+@router.get("/global/skor")
+async def global_skor(user=Depends(get_current_user)):
+    allowed = user["role"] in SUPERVISOR_ROLES
+    div = await user_division(user)
+    if div and div.get("key") == "cs":
+        allowed = True
+    if not allowed:
+        raise HTTPException(403, "Halaman ini hanya untuk tim CS, supervisor, dan admin")
+    divisions = clean_many(await db.divisions.find({}).to_list(100))
+    key_by_id = {d["id"]: d.get("key") for d in divisions}
+    boards = clean_many(await db.boards.find({"is_archived": {"$ne": True}}).to_list(500))
+    board_map = {b["id"]: b for b in boards}
+    lists = clean_many(await db.lists.find({}).to_list(1000))
+    list_map = {l["id"]: l for l in lists}
+    items = clean_many(await db.work_items.find({"archived": {"$ne": True}}).to_list(3000))
+    buckets = {str(n): [] for n in range(1, 7)}
+    for item in items:
+        lst = list_map.get(item["list_id"])
+        board = board_map.get(item["board_id"])
+        if not lst or not board:
+            continue
+        lname = lst["name"].upper()
+        dkey = key_by_id.get(board.get("division_id"))
+        bucket = None
+        if item.get("status") == "done" or lname.startswith("SKOR 6"):
+            bucket = "6"
+        elif item.get("hari_stage") or (dkey == "cs" and lname.startswith("SKOR 5")):
+            bucket = "5"
+        elif dkey == "cs" and lname.startswith("SKOR 4"):
+            bucket = "4"
+        elif dkey == "draf" and lname in ("FU NOTARIS", "SIAP KIRIM NOTARIS", "VIA WA/GC ADMIN"):
+            bucket = "3"
+        elif dkey == "cs" and lname.startswith("SKOR 3"):
+            bucket = "3"
+        elif dkey == "draf" and lname in ("PRATINJAU", "PESAN NAMA", "INPUTAN"):
+            bucket = "2"
+        elif dkey == "cs" and (lname.startswith("SKOR 1") or lname.startswith("SKOR 2")):
+            bucket = "1"
+        if bucket:
+            item["board_name"] = board["name"]
+            item["board_background"] = board.get("background")
+            item["list_name"] = lst["name"]
+            item["days_in_stage"] = _days_since(item.get("list_entered_at") or item.get("hari_entered_at"))
+            item["is_stalled"] = item["days_in_stage"] >= 3
+            buckets[bucket].append(item)
+    return buckets
+
+
+# ---------- BANK DATA ----------
+
+@router.get("/bank-data/{division_id}")
+async def bank_data(division_id: str, user=Depends(get_current_user)):
+    division = await db.divisions.find_one({"id": division_id})
+    if not division:
+        raise HTTPException(404, "Divisi tidak ditemukan")
+    boards = clean_many(await db.boards.find({"division_id": division_id, "is_archived": {"$ne": True}}).to_list(50))
+    board_ids = [b["id"] for b in boards]
+    lists = clean_many(await db.lists.find({"board_id": {"$in": board_ids}}).sort("position", 1).to_list(500))
+    list_map = {l["id"]: l for l in lists}
+    board_map = {b["id"]: b for b in boards}
+    for b in boards:
+        b["lists"] = [l for l in lists if l["board_id"] == b["id"]]
+    items = clean_many(await db.work_items.find({
+        "archived": {"$ne": True},
+        "$or": [{"division_ids": division_id}, {"board_id": {"$in": board_ids}}],
+    }).sort("updated_at", -1).to_list(500))
+    for i in items:
+        i["board_name"] = board_map.get(i["board_id"], {}).get("name")
+        i["board_background"] = board_map.get(i["board_id"], {}).get("background")
+        i["list_name"] = list_map.get(i["list_id"], {}).get("name")
+    members = [public_user(u) for u in await db.users.find({"division_id": division_id, "is_active": {"$ne": False}}).to_list(200)]
+    workload = []
+    for m in members:
+        mine = [i for i in items if m["id"] in (i.get("member_ids") or []) and i.get("status") != "done"]
+        by_list = {}
+        for i in mine:
+            lname = i.get("list_name") or "?"
+            by_list[lname] = by_list.get(lname, 0) + 1
+        workload.append({"user": m, "total": len(mine), "by_list": by_list})
+    return {"division": clean(division), "boards": boards, "items": items, "workload": workload}

@@ -10,6 +10,9 @@ import BoardView from "@/pages/BoardView";
 import MyWork from "@/pages/MyWork";
 import AllWork from "@/pages/AllWork";
 import AdminPanel from "@/pages/AdminPanel";
+import BankData from "@/pages/BankData";
+import GlobalHari from "@/pages/GlobalHari";
+import GlobalSkor from "@/pages/GlobalSkor";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -46,6 +49,10 @@ function App() {
             <Route path="/board/:boardId" element={<BoardView />} />
             <Route path="/my-work" element={<MyWork />} />
             <Route path="/work" element={<AllWork />} />
+            <Route path="/bank-data" element={<BankData />} />
+            <Route path="/bank-data/:divisionId" element={<BankData />} />
+            <Route path="/global/hari" element={<GlobalHari />} />
+            <Route path="/global/skor" element={<GlobalSkor />} />
             <Route path="/admin" element={<AdminPanel />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

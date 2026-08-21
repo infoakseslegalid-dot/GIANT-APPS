@@ -45,6 +45,8 @@ export default function BoardView() {
   const [showArchive, setShowArchive] = useState(false);
   const [addingList, setAddingList] = useState(false);
   const [newListName, setNewListName] = useState("");
+  const [reqList, setReqList] = useState(null);
+  const [reqText, setReqText] = useState("");
 
   const { data } = useQuery({
     queryKey: ["board", boardId],
@@ -169,11 +171,32 @@ export default function BoardView() {
       [listId]: p[listId].map((c) => (c.id === active.id ? { ...c, position } : c)),
     }));
     api.post(`/work-items/${active.id}/move`, { list_id: listId, position, board_id: boardId })
-      .then(() => qc.invalidateQueries({ queryKey: ["board", boardId] }))
+      .then((r) => {
+        if (r.data?.warning) toast.warning(r.data.warning);
+        qc.invalidateQueries({ queryKey: ["board", boardId] });
+      })
       .catch((err) => {
         toast.error(errMsg(err));
         qc.invalidateQueries({ queryKey: ["board", boardId] });
       });
+  };
+
+  const openRequirements = (list) => {
+    setReqList(list);
+    setReqText((list.entry_requirements || []).join("\n"));
+  };
+
+  const saveRequirements = async () => {
+    if (!reqList) return;
+    const items = reqText.split("\n").map((s) => s.trim()).filter(Boolean);
+    try {
+      await api.patch(`/lists/${reqList.id}`, { entry_requirements: items });
+      toast.success("Syarat masuk list diperbarui");
+      setReqList(null);
+      qc.invalidateQueries({ queryKey: ["board", boardId] });
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
   };
 
   const addCard = async (listId, title, clientName) => {
@@ -335,6 +358,8 @@ export default function BoardView() {
                   onAddCard={addCard}
                   onRenameList={renameList}
                   onDeleteList={deleteList}
+                  onSetRequirements={openRequirements}
+                  canManage={isSupervisorUp}
                 />
               ))}
             </SortableContext>
@@ -381,6 +406,36 @@ export default function BoardView() {
       </div>
 
       {openCardId && <CardModal itemId={openCardId} onClose={closeCard} />}
+      {reqList && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-24 fade-enter" onClick={() => setReqList(null)} data-testid="requirements-modal">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl p-6 modal-enter" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="font-heading text-lg font-bold text-[#172B4D]">Syarat Masuk List</h2>
+              <button aria-label="Tutup" data-testid="requirements-close" onClick={() => setReqList(null)} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-[#44546F] mb-3">
+              Kartu hanya bisa dipindah ke <span className="font-semibold">{reqList.name}</span> jika item checklist berikut sudah dicentang. Satu item per baris.
+            </p>
+            <textarea
+              data-testid="requirements-input"
+              value={reqText}
+              onChange={(e) => setReqText(e.target.value)}
+              rows={5}
+              placeholder={"KTP\nNPWP"}
+              className="w-full rounded-lg border border-[#DFE1E6] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
+            />
+            <button
+              data-testid="requirements-save-button"
+              onClick={saveRequirements}
+              className="mt-3 w-full h-9 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors active:scale-95"
+            >
+              Simpan Syarat
+            </button>
+          </div>
+        </div>
+      )}
       {showAutomation && (
         <AutomationModal boardId={boardId} lists={lists} labels={labels} divisions={divisions} onClose={() => setShowAutomation(false)} />
       )}

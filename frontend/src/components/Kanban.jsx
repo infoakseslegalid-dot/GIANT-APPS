@@ -3,7 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  MessageSquare, Paperclip, CheckSquare, AlignLeft, Link2, MoreHorizontal, Pencil, Trash2, Plus, X,
+  MessageSquare, Paperclip, CheckSquare, AlignLeft, Link2, MoreHorizontal, Pencil, Trash2, Plus, X, ShieldCheck,
 } from "lucide-react";
 import { Avatar, LabelChip, DueBadge, PriorityFlag, StatusBadge } from "./common";
 import {
@@ -154,7 +154,7 @@ export function AddCardComposer({ onAdd, testidPrefix }) {
   );
 }
 
-export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardId, onCardClick, onAddCard, onRenameList, onDeleteList }) {
+export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardId, onCardClick, onAddCard, onRenameList, onDeleteList, onSetRequirements, canManage }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: list.id,
     data: { type: "list", list },
@@ -194,12 +194,15 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
           />
         ) : (
           <h2
-            className="font-semibold text-sm text-[#172B4D] truncate flex-1"
+            className="font-semibold text-sm text-[#172B4D] truncate flex-1 flex items-center gap-1"
             onDoubleClick={() => setEditing(true)}
             data-testid={`list-title-${list.id}`}
           >
             {list.name}
-            <span className="ml-2 text-xs font-normal text-[#8590A2]">{cards.length}</span>
+            {(list.entry_requirements || []).length > 0 && (
+              <ShieldCheck size={13} className="text-[#E56910] shrink-0" aria-label="Punya syarat masuk" />
+            )}
+            <span className="ml-1 text-xs font-normal text-[#8590A2]">{cards.length}</span>
           </h2>
         )}
         <DropdownMenu>
@@ -217,6 +220,11 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
             <DropdownMenuItem data-testid={`list-rename-${list.id}`} onClick={() => setEditing(true)} className="cursor-pointer">
               <Pencil size={14} className="mr-2" /> Ubah nama
             </DropdownMenuItem>
+            {canManage && (
+              <DropdownMenuItem data-testid={`list-requirements-${list.id}`} onClick={() => onSetRequirements(list)} className="cursor-pointer">
+                <ShieldCheck size={14} className="mr-2" /> Atur syarat masuk
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem data-testid={`list-delete-${list.id}`} onClick={() => onDeleteList(list.id)} className="text-[#CA3521] cursor-pointer">
               <Trash2 size={14} className="mr-2" /> Hapus list (arsipkan kartu)
             </DropdownMenuItem>

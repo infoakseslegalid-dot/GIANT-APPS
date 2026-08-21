@@ -1,16 +1,19 @@
 import os
+import hmac
+import asyncio
 import logging
 
 import jwt
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from starlette.middleware.cors import CORSMiddleware
 
-from deps import db, client, ws_manager, jwt_secret, JWT_ALGORITHM
+from deps import db, client, ws_manager, jwt_secret, JWT_ALGORITHM, new_id, now_iso
 from storage import init_storage
 from routes_auth import router as auth_router
 from routes_admin import router as admin_router
 from routes_work import router as work_router
-from seed import seed_admin, seed_demo
+from cron_jobs import advance_hari_job
+from seed import seed_admin, seed_demo, migrate_stage_requirements
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ali.server")
@@ -45,6 +48,26 @@ async def websocket_endpoint(websocket: WebSocket):
         ws_manager.disconnect(websocket)
 
 
+@app.post("/api/cron/advance-hari")
+async def cron_advance_hari(request: Request):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(401, "Unauthorized")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    run_id = request.headers.get("X-Webhook-Id") or body.get("run_id") or new_id()
+    if await db.cron_runs.find_one({"run_id": run_id}):
+        return {"ok": True, "duplicate": True}
+    await db.cron_runs.insert_one({"run_id": run_id, "at": now_iso(), "job": "advance-hari"})
+    asyncio.create_task(advance_hari_job())
+    return {"ok": True}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -73,6 +96,7 @@ async def startup():
         logger.error(f"Storage init failed: {e}")
     await seed_admin()
     await seed_demo()
+    await migrate_stage_requirements()
     logger.info("Seeding complete")
 
 

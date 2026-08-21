@@ -250,3 +250,26 @@ async def seed_demo():
             )
 
     await db.settings.insert_one({"key": "demo_seeded", "at": now_iso()})
+
+
+CS_STAGE_REQUIREMENTS = {
+    "SKOR 3": ["KTP", "NPWP"],
+    "SKOR 4": ["Pembayaran DP/Lunas"],
+    "SKOR 5": ["Konfirmasi Klien"],
+    "SKOR 6": ["Penyerahan"],
+}
+
+
+async def migrate_stage_requirements():
+    for prefix, reqs in CS_STAGE_REQUIREMENTS.items():
+        await db.lists.update_many(
+            {"name": {"$regex": f"^{prefix}", "$options": "i"}, "entry_requirements": {"$exists": False}},
+            {"$set": {"entry_requirements": reqs}},
+        )
+    skor5_lists = await db.lists.find({"name": {"$regex": "^SKOR 5", "$options": "i"}}).to_list(100)
+    skor5_ids = [l["id"] for l in skor5_lists]
+    if skor5_ids:
+        await db.work_items.update_many(
+            {"list_id": {"$in": skor5_ids}, "hari_stage": {"$exists": False}, "status": {"$ne": "done"}},
+            {"$set": {"hari_stage": 1, "hari_entered_at": now_iso()}},
+        )

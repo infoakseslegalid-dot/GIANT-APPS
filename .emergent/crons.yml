@@ -1,0 +1,9 @@
+crons:
+  - name: hari-auto-advance
+    description: "Memajukan tahap HARI pekerjaan SKOR 5 secara otomatis setiap hari kerja"
+    cron: "30 0 * * *"
+    timezone: "Asia/Jakarta"
+    endpoint: "{{BASE_URL}}/api/cron/advance-hari"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true
