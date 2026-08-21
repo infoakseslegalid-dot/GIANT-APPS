@@ -1,0 +1,133 @@
+{
+  "theme": "Light mode by default to match classic Trello. The main contrast comes from deep blue headers and vibrant board backgrounds against clean white/grey content areas.",
+  "typography": {
+    "fonts": {
+      "heading": "Work Sans, sans-serif",
+      "body": "IBM Plex Sans, sans-serif"
+    },
+    "hierarchy": {
+      "h1": "text-2xl sm:text-3xl font-bold tracking-tight text-white (Board titles)",
+      "h2": "text-sm font-semibold tracking-tight text-[#172B4D] (List titles)",
+      "h3": "text-sm font-medium text-[#172B4D] (Card titles)",
+      "body": "text-sm text-slate-700 leading-relaxed",
+      "labels": "text-xs font-semibold uppercase tracking-wider"
+    }
+  },
+  "colors": {
+    "primary": {
+      "header_bg": "#026aa7",
+      "header_text": "#ffffff",
+      "board_bg": "#0079bf",
+      "list_bg": "#f1f2f4",
+      "card_bg": "#ffffff",
+      "cta": "#0c66e4",
+      "cta_hover": "#0052cc"
+    },
+    "text": {
+      "default": "#172B4D",
+      "subtle": "#44546F",
+      "inverse": "#ffffff"
+    },
+    "status": {
+      "success": "#22A06B",
+      "warning": "#F5CD47",
+      "danger": "#CA3521",
+      "info": "#0C66E4"
+    },
+    "labels": {
+      "red": "bg-red-500 hover:bg-red-600 text-white",
+      "green": "bg-green-500 hover:bg-green-600 text-white",
+      "yellow": "bg-yellow-400 hover:bg-yellow-500 text-slate-900",
+      "blue": "bg-blue-500 hover:bg-blue-600 text-white",
+      "purple": "bg-purple-500 hover:bg-purple-600 text-white"
+    }
+  },
+  "layouts": {
+    "app_container": "h-screen w-full flex flex-col overflow-hidden bg-[#0079bf] font-sans",
+    "header": "h-12 w-full flex items-center justify-between px-4 bg-[#026aa7] shadow-sm shrink-0 z-40 text-white border-b border-black/10",
+    "board_header": "h-14 w-full flex items-center px-4 bg-black/10 backdrop-blur-sm shrink-0 text-white justify-between",
+    "board_canvas": "flex-1 overflow-x-auto overflow-y-hidden p-3 flex items-start space-x-3",
+    "list_container": "w-72 shrink-0 bg-[#f1f2f4] rounded-xl flex flex-col max-h-full shadow-sm",
+    "list_header": "p-3 pb-2 font-semibold text-[#172B4D] flex justify-between items-center cursor-pointer shrink-0",
+    "card_list_area": "flex-1 overflow-y-auto px-2 pb-2 space-y-2 minimal-scrollbar",
+    "card": "bg-white rounded-lg shadow-sm hover:bg-gray-50 border-b border-gray-300 p-3 cursor-pointer group flex flex-col gap-2 relative",
+    "modal_overlay": "fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-16 overflow-y-auto",
+    "card_modal": "bg-[#f4f5f7] w-full max-w-3xl rounded-xl shadow-2xl relative mb-16 p-6 flex flex-col md:flex-row gap-6 text-[#172B4D]"
+  },
+  "components": {
+    "dnd": "Use @dnd-kit/core and @dnd-kit/sortable for smooth drag and drop interactions of both lists and cards.",
+    "buttons": "Standard actions: bg-[#091E420F] hover:bg-[#091E4224] text-[#172B4D]. Primary actions: bg-[#0c66e4] hover:bg-[#0052cc] text-white.",
+    "avatars": "Rounded full, h-8 w-8 object-cover border-2 border-white (or list background) if overlapping to create depth.",
+    "popovers": "Shadcn UI popovers for assigning members, adding labels, and moving cards. Must have a solid background (bg-white) and drop shadow.",
+    "badges": "Small, rounded-sm px-2 py-1 text-xs font-semibold for tags/labels."
+  },
+  "visual_enhancers": {
+    "shadows": "Cards use a distinct 1px border-b border-gray-300 and shadow-sm to visually sit above the list background.",
+    "hover_states": "Cards reveal a small pencil edit icon in the top right only on hover. List items subtly darken on hover.",
+    "scrollbars": "Implement `.minimal-scrollbar` in global CSS. Width 8px, track transparent, thumb black/20 rounded.",
+    "empty_states": "Empty lists show a translucent 'Tambahkan kartu...' button."
+  },
+  "motion": {
+    "drag_drop": "Add 2-3 degrees of rotation (`rotate-2`) and slight scale (`scale-105`) plus a stronger shadow (`shadow-xl`) to the element currently being dragged.",
+    "modals": "Fade in overlay (`opacity-0` to `opacity-100`), slight translate-y-4 upward slide for modal entrance.",
+    "interactions": "Active buttons must use `active:scale-95` for immediate tactile feedback."
+  },
+  "accessibility": {
+    "contrast": "Ensure text inside lighter colored labels (like yellow/lime) is slate-900 for WCAG AA compliance.",
+    "focus": "All interactive elements (buttons, inputs) must have visible focus outlines (focus:ring-2 focus:ring-[#0c66e4] focus:outline-none).",
+    "aria": "Use aria-labels for icon buttons. Examples: 'Tutup', 'Menu', 'Edit Kartu'."
+  },
+  "media": {
+    "image_urls": {
+      "user_avatar_male": {
+        "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDB8fHx8MTc4NzIxODQ3Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "Male professional avatar for user profiles",
+        "category": "avatars"
+      },
+      "user_avatar_female": {
+        "url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHw0fHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDB8fHx8MTc4NzIxODQ3Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "Female professional avatar for user profiles",
+        "category": "avatars"
+      },
+      "board_background": {
+        "url": "https://images.unsplash.com/photo-1604223190546-a43e4c7f29d7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwbW91bnRhaW4lMjBsYW5kc2NhcGV8ZW58MHx8fHwxNzg3MjkzMzAyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Minimalist mountain landscape for a custom board background (Trello style)",
+        "category": "backgrounds"
+      }
+    }
+  },
+  "GENERAL UI UX DESIGN GUIDELINES": [
+    "Always maintain a clear hierarchical layout: Top Header -> Board Header -> List -> Card.",
+    "Do NOT center align text globally. Keep text left-aligned for readability, especially in card details, lists, and activity logs.",
+    "Use generous padding inside the Card Modal (e.g., p-6) to ensure dense information (checklists, activity) is digestible.",
+    "The 'Klaim' (Claim) workflow must be prominent on OPEN cards. Use a distinct solid color (like Success Green) to make it stand out against the white card.",
+    "Implement real-time visual cues where applicable, and maintain a seamless Drag & Drop experience across lists.",
+    "All interactive elements and form inputs MUST have `data-testid` attributes (e.g., `data-testid='login-submit-button'`, `data-testid='add-card-button'`) for testing.",
+    "Do not use complete transparent backgrounds in dropdowns, modals, or popovers. Ensure they have a solid background (`bg-white` or `bg-slate-50`) with `shadow-md`.",
+    "For the 'Classic Trello' feel, rely heavily on the contrast between the colorful blue board background (`#0079bf`), the grey lists (`#f1f2f4`), and the crisp white cards (`#ffffff`)."
+  ],
+  "instructions_to_main_agent": [
+    "CRITICAL: Write standard Javascript/JSX (.js/.jsx files), NOT TypeScript (.tsx) for components.",
+    "Use pure Tailwind CSS + Headless components (like Radix or Shadcn) for complex interactive elements.",
+    "For Drag and Drop functionality, integrate @dnd-kit/core and @dnd-kit/sortable for performant list and card dragging.",
+    "Use `lucide-react` for all iconography.",
+    "Seed the application with the exact requested boards: ADMIN DRAF INPUT, ADMIN PAJAK, ADMIN PERIZINAN, CS DEDES ALI, CS DEVI ALI, CS DEWI ALI, CS JULIA ALI, DESAIN & KONTEN.",
+    "Ensure all UI copy, labels, and placeholders are strictly in Indonesian (Bahasa Indonesia).",
+    "Construct the specific multi-tier role system: super_admin, admin, supervisor, staff, viewer, and enforce UI restrictions based on these roles.",
+    "Design a 'My Work' (Pekerjaan Saya) dashboard that aggregates assigned cards across all boards."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) only where it enhances UI (like the board secondary header).",
+    "You MUST NOT apply universal transitions (e.g., `transition: all`). Always add transitions for specific interactive elements to avoid breaking transforms like Drag and Drop.",
+    "You MUST NOT center align the app container. Do not add `.App { text-align: center; }`.",
+    "Always use modern interactive button styles.",
+    "NEVER use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 for icons. Use proper lucide-react icons.",
+    "Every interaction needs micro-animations - hover states, transitions, focus rings. Static UI is dead UI.",
+    "Use `sonner` for toast notifications.",
+    "Prioritize using pre-existing components from `src/components/ui` when applicable before building custom ones."
+  ]
+}
