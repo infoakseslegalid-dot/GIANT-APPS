@@ -13,6 +13,7 @@ import AdminPanel from "@/pages/AdminPanel";
 import BankData from "@/pages/BankData";
 import GlobalHari from "@/pages/GlobalHari";
 import GlobalSkor from "@/pages/GlobalSkor";
+import Calendar from "@/pages/Calendar";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -53,6 +54,7 @@ function App() {
             <Route path="/bank-data/:divisionId" element={<BankData />} />
             <Route path="/global/hari" element={<GlobalHari />} />
             <Route path="/global/skor" element={<GlobalSkor />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="/admin" element={<AdminPanel />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

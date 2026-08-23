@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   X, AlignLeft, Tags, Clock, Users, Building2, CheckSquare, Paperclip,
-  MessageSquare, Link2, Hand, CheckCircle2, Archive, ArchiveRestore, Trash2, Flag, Send, Plus, Download, Activity,
+  MessageSquare, Hand, CheckCircle2, Archive, ArchiveRestore, Trash2, Flag, Send, Plus, Download, Activity,
+  Eye, Copy, ChevronUp, ChevronDown, ArrowRightToLine, Link as LinkIcon, Image as ImageIcon, Pencil, CalendarPlus,
 } from "lucide-react";
-import { api, errMsg, PRIORITIES, fmtDateTime, LABEL_COLORS, API } from "../lib/api";
+import { api, errMsg, PRIORITIES, fmtDateTime, fmtDate, LABEL_COLORS, API } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "./common";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import SendWorkDialog from "./SendWorkDialog";
+
+const EMOJIS = ["👍", "❤️", "😂", "✅"];
 
 function SectionTitle({ icon, children }) {
   return (
@@ -19,9 +23,9 @@ function SectionTitle({ icon, children }) {
   );
 }
 
-function ActionChip({ icon, label, onClick, testid, color = "default", disabled }) {
+function ActionChip({ icon, label, onClick, testid, color = "default", disabled, active }) {
   const styles = {
-    default: "bg-[#091E420F] hover:bg-[#091E4224] text-[#172B4D]",
+    default: active ? "bg-[#0C66E4] text-white" : "bg-[#091E420F] hover:bg-[#091E4224] text-[#172B4D]",
     green: "bg-[#22A06B] hover:bg-[#1D8A5C] text-white",
     blue: "bg-[#0c66e4] hover:bg-[#0052cc] text-white",
     red: "bg-[#FFECE8] hover:bg-[#FFD5CC] text-[#CA3521]",
@@ -48,6 +52,23 @@ export default function CardModal({ itemId, onClose }) {
   const [newChecklistTitle, setNewChecklistTitle] = useState("");
   const [addingChecklist, setAddingChecklist] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showSend, setShowSend] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [editingComment, setEditingComment] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [cfName, setCfName] = useState("");
+  const [cfValue, setCfValue] = useState("");
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkName, setLinkName] = useState("");
+
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
   const { data, refetch } = useQuery({
     queryKey: ["work-item", itemId],
@@ -55,7 +76,6 @@ export default function CardModal({ itemId, onClose }) {
   });
   const { data: users } = useQuery({ queryKey: ["users"], queryFn: () => api.get("/users").then((r) => r.data) });
   const { data: divisions } = useQuery({ queryKey: ["divisions"], queryFn: () => api.get("/divisions").then((r) => r.data) });
-  const { data: allBoards } = useQuery({ queryKey: ["boards"], queryFn: () => api.get("/boards").then((r) => r.data) });
 
   if (!data) {
     return (
@@ -75,6 +95,7 @@ export default function CardModal({ itemId, onClose }) {
     qc.invalidateQueries({ queryKey: ["bank-data"] });
     qc.invalidateQueries({ queryKey: ["global-hari"] });
     qc.invalidateQueries({ queryKey: ["global-skor"] });
+    qc.invalidateQueries({ queryKey: ["calendar"] });
   };
   const run = async (fn, successMsg) => {
     try {
@@ -82,6 +103,7 @@ export default function CardModal({ itemId, onClose }) {
       if (r?.data?.warning) toast.warning(r.data.warning);
       if (successMsg) toast.success(successMsg);
       invalidate();
+      return r;
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -90,14 +112,13 @@ export default function CardModal({ itemId, onClose }) {
   const isSupervisorUp = ["super_admin", "admin", "supervisor"].includes(user?.role);
   const isAdmin = ["super_admin", "admin"].includes(user?.role);
   const isMember = (item.member_ids || []).includes(user?.id);
+  const isWatching = (item.watcher_ids || []).includes(user?.id);
   const clTotal = (item.checklists || []).reduce((a, c) => a + c.items.length, 0);
   const clDone = (item.checklists || []).reduce((a, c) => a + c.items.filter((i) => i.done).length, 0);
   const progress = clTotal ? Math.round((clDone / clTotal) * 100) : 0;
   const usersById = Object.fromEntries((users || []).map((u) => [u.id, u]));
   const members = (item.member_ids || []).map((id) => usersById[id]).filter(Boolean);
-  const mirrorCandidates = (allBoards || []).filter(
-    (b) => b.id !== item.board_id && !(item.mirror_board_ids || []).includes(b.id)
-  );
+  const attachmentsById = Object.fromEntries((attachments || []).map((a) => [a.id, a]));
 
   const saveField = (field, value) => run(() => api.patch(`/work-items/${itemId}`, { [field]: value }));
 
@@ -117,15 +138,20 @@ export default function CardModal({ itemId, onClose }) {
     run(() => api.post(`/work-items/${itemId}/assign`, isIn ? { remove_division_ids: [did] } : { add_division_ids: [did] }), "Divisi diperbarui");
   };
 
-  const uploadFile = async (e) => {
+  const uploadFile = async (e, forComment = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     const fd = new FormData();
     fd.append("file", file);
     try {
-      await api.post(`/work-items/${itemId}/attachments`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("Lampiran diunggah");
+      const r = await api.post(`/work-items/${itemId}/attachments`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      if (forComment) {
+        setPendingAttachment(r.data);
+        toast.success(`"${file.name}" siap dilampirkan ke komentar`);
+      } else {
+        toast.success("Lampiran diunggah");
+      }
       invalidate();
     } catch (err) {
       toast.error(errMsg(err));
@@ -133,6 +159,33 @@ export default function CardModal({ itemId, onClose }) {
       setUploading(false);
       e.target.value = "";
     }
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(`${window.location.origin}/board/${item.board_id}?card=${item.id}`);
+    toast.success("Link kartu disalin");
+  };
+
+  const addCustomField = () => {
+    if (!cfName.trim()) return;
+    const cfs = [...(item.custom_fields || []), { id: Date.now().toString(36), name: cfName.trim(), value: cfValue.trim() }];
+    run(() => api.patch(`/work-items/${itemId}`, { custom_fields: cfs }));
+    setCfName("");
+    setCfValue("");
+  };
+
+  const removeCustomField = (id) => {
+    const cfs = (item.custom_fields || []).filter((f) => f.id !== id);
+    run(() => api.patch(`/work-items/${itemId}`, { custom_fields: cfs }));
+  };
+
+  const reorderItem = (cl, subId, dir) => {
+    const ids = cl.items.map((i) => i.id);
+    const idx = ids.indexOf(subId);
+    const swap = idx + dir;
+    if (swap < 0 || swap >= ids.length) return;
+    [ids[idx], ids[swap]] = [ids[swap], ids[idx]];
+    run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/reorder`, { ordered_ids: ids }));
   };
 
   const renderCommentText = (text) =>
@@ -156,11 +209,17 @@ export default function CardModal({ itemId, onClose }) {
       data-testid="card-modal-overlay"
     >
       <div
-        className="bg-[#f4f5f7] w-full max-w-5xl rounded-xl shadow-2xl relative mb-16 text-[#172B4D] modal-enter"
+        className="bg-[#f4f5f7] w-full max-w-5xl rounded-xl shadow-2xl relative mb-16 text-[#172B4D] modal-enter overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         data-testid="card-modal"
       >
-        <button aria-label="Tutup" data-testid="card-modal-close" onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-[#091E4224] text-[#44546F] z-10">
+        {item.cover_attachment_id && attachmentsById[item.cover_attachment_id] ? (
+          <img src={`${API}/attachments/${item.cover_attachment_id}/download`} alt="Cover" className="w-full h-36 object-cover" data-testid="card-cover-image" />
+        ) : item.cover_color ? (
+          <div className="w-full h-16" style={{ backgroundColor: item.cover_color }} data-testid="card-cover-color" />
+        ) : null}
+
+        <button aria-label="Tutup" data-testid="card-modal-close" onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-full bg-white/70 hover:bg-white text-[#44546F] z-10 transition-colors">
           <X size={18} />
         </button>
 
@@ -175,6 +234,14 @@ export default function CardModal({ itemId, onClose }) {
           <p className="text-xs text-[#44546F] mt-1 px-1">
             di list <span className="font-semibold underline">{list_name}</span> · board <span className="font-semibold">{board_name}</span>
             {item.hari_stage ? <> · <span className="font-semibold text-[#E56910]">Proses HARI {item.hari_stage}</span></> : null}
+            {(mirror_boards || []).length > 0 && (
+              <> · ter-mirror di {mirror_boards.map((b) => (
+                <span key={b.id} className="inline-flex items-center gap-1 font-semibold text-[#2684FF]" data-testid={`mirrored-at-${b.id}`}>
+                  {b.name}
+                  <button data-testid={`unmirror-${b.id}`} onClick={() => run(() => api.post(`/work-items/${itemId}/unmirror`, { board_id: b.id }), "Mirror dihapus")} className="text-[#CA3521] hover:underline text-[10px]">(hapus)</button>
+                </span>
+              ))}</>
+            )}
           </p>
           <div className="flex flex-wrap items-center gap-2 mt-3">
             {!isMember && item.status !== "done" && (
@@ -182,8 +249,11 @@ export default function CardModal({ itemId, onClose }) {
                 onClick={() => run(() => api.post(`/work-items/${itemId}/claim`), "Anda menjadi PIC pekerjaan ini")} />
             )}
             {isMember && item.status !== "done" && (
-              <ActionChip testid="release-button" icon={<X size={13} />} label="Lepas"
-                onClick={() => run(() => api.post(`/work-items/${itemId}/release`), "Pekerjaan dilepas")} />
+              <ActionChip testid="release-button" icon={<X size={13} />} label="Lepaskan"
+                onClick={() => {
+                  const reason = window.prompt("Alasan melepas pekerjaan (opsional):") || "";
+                  run(() => api.post(`/work-items/${itemId}/release`, { reason }), "Pekerjaan dilepas & kembali ke Bank Data");
+                }} />
             )}
             {item.status === "active" && (
               <ActionChip testid="submit-done-button" icon={<Send size={13} />} label={item.needs_approval ? "Ajukan Penyelesaian" : "Tandai Selesai"} color="blue"
@@ -202,47 +272,15 @@ export default function CardModal({ itemId, onClose }) {
               <ActionChip testid="reopen-button" icon={<ArchiveRestore size={13} />} label="Buka Kembali"
                 onClick={() => run(() => api.post(`/work-items/${itemId}/reopen`), "Pekerjaan dibuka kembali")} />
             )}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button data-testid="mirror-button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#091E420F] hover:bg-[#091E4224] text-[#172B4D] transition-colors active:scale-95">
-                  <Link2 size={13} /> Mirror ke Board
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 bg-white shadow-lg" align="start">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Mirror ke board lain</p>
-                <div className="max-h-48 overflow-y-auto minimal-scrollbar space-y-1">
-                  {mirrorCandidates.map((b) => (
-                    <button
-                      key={b.id}
-                      data-testid={`mirror-to-${b.id}`}
-                      onClick={() => run(() => api.post(`/work-items/${itemId}/mirror`, { board_id: b.id }), `Di-mirror ke ${b.name}`)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left"
-                    >
-                      <span className="w-4 h-4 rounded shrink-0" style={{ backgroundColor: b.background }} />
-                      <span className="text-sm">{b.name}</span>
-                    </button>
-                  ))}
-                  {mirrorCandidates.length === 0 && <p className="text-xs text-[#8590A2]">Tidak ada board lain yang tersedia.</p>}
-                </div>
-                {(mirror_boards || []).length > 0 && (
-                  <div className="border-t mt-2 pt-2">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-1">Ter-mirror di:</p>
-                    {mirror_boards.map((b) => (
-                      <div key={b.id} className="flex items-center justify-between px-2 py-1" data-testid={`mirrored-at-${b.id}`}>
-                        <span className="text-sm text-[#172B4D]">{b.name}</span>
-                        <button
-                          data-testid={`unmirror-${b.id}`}
-                          onClick={() => run(() => api.post(`/work-items/${itemId}/unmirror`, { board_id: b.id }), "Mirror dihapus")}
-                          className="text-xs text-[#CA3521] hover:underline"
-                        >
-                          Hapus dari board
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
+            <ActionChip testid="send-work-button" icon={<Send size={13} />} label="Kirim / Mirror ke Divisi" color="blue"
+              onClick={() => setShowSend(true)} />
+            <ActionChip testid="watch-button" icon={<Eye size={13} />} label={isWatching ? "Dipantau" : "Pantau"} active={isWatching}
+              onClick={() => run(() => api.post(`/work-items/${itemId}/watch`, { on: !isWatching }), isWatching ? "Berhenti memantau" : "Anda memantau kartu ini")} />
+            <ActionChip testid="copy-link-button" icon={<Copy size={13} />} label="Salin Link" onClick={copyLink} />
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#091E420F] text-xs font-semibold cursor-pointer" data-testid="needs-approval-toggle">
+              <input type="checkbox" checked={!!item.needs_approval} onChange={(e) => saveField("needs_approval", e.target.checked)} className="w-3.5 h-3.5 accent-[#0C66E4]" />
+              Butuh approval
+            </label>
             {!item.archived ? (
               <ActionChip testid="archive-button" icon={<Archive size={13} />} label="Arsipkan"
                 onClick={() => run(() => api.post(`/work-items/${itemId}/archive`), "Diarsipkan")} />
@@ -250,15 +288,6 @@ export default function CardModal({ itemId, onClose }) {
               <ActionChip testid="unarchive-button" icon={<ArchiveRestore size={13} />} label="Kembalikan"
                 onClick={() => run(() => api.post(`/work-items/${itemId}/unarchive`), "Dikembalikan")} />
             )}
-            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#091E420F] text-xs font-semibold cursor-pointer" data-testid="needs-approval-toggle">
-              <input
-                type="checkbox"
-                checked={!!item.needs_approval}
-                onChange={(e) => saveField("needs_approval", e.target.checked)}
-                className="w-3.5 h-3.5 accent-[#0C66E4]"
-              />
-              Butuh approval
-            </label>
             {isAdmin && (
               <ActionChip testid="delete-item-button" icon={<Trash2 size={13} />} label="Hapus" color="red"
                 onClick={() => {
@@ -298,12 +327,8 @@ export default function CardModal({ itemId, onClose }) {
                   <PopoverContent className="w-64 bg-white shadow-lg max-h-64 overflow-y-auto minimal-scrollbar" align="start">
                     <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Tugaskan PIC</p>
                     {(users || []).map((u) => (
-                      <button
-                        key={u.id}
-                        data-testid={`assign-user-${u.id}`}
-                        onClick={() => toggleMember(u.id)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left"
-                      >
+                      <button key={u.id} data-testid={`assign-user-${u.id}`} onClick={() => toggleMember(u.id)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left">
                         <Avatar name={u.name} color={u.avatar_color} size="h-6 w-6 text-[10px]" />
                         <span className="text-sm flex-1">{u.name}</span>
                         {(item.member_ids || []).includes(u.id) && <CheckCircle2 size={14} className="text-[#22A06B]" />}
@@ -329,12 +354,8 @@ export default function CardModal({ itemId, onClose }) {
                   <PopoverContent className="w-64 bg-white shadow-lg" align="start">
                     <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Assign ke Divisi</p>
                     {(divisions || []).map((d) => (
-                      <button
-                        key={d.id}
-                        data-testid={`assign-division-${d.id}`}
-                        onClick={() => toggleDivision(d.id)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left"
-                      >
+                      <button key={d.id} data-testid={`assign-division-${d.id}`} onClick={() => toggleDivision(d.id)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left">
                         <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
                         <span className="text-sm flex-1">{d.name}</span>
                         {(item.division_ids || []).includes(d.id) && <CheckCircle2 size={14} className="text-[#22A06B]" />}
@@ -371,21 +392,15 @@ export default function CardModal({ itemId, onClose }) {
                     </div>
                     <div className="border-t mt-3 pt-3">
                       <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Label Baru</p>
-                      <input
-                        data-testid="new-label-name-input"
-                        value={newLabelName}
-                        onChange={(e) => setNewLabelName(e.target.value)}
-                        placeholder="Nama label"
-                        className="w-full h-8 rounded border border-[#DFE1E6] px-2 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4]"
-                      />
+                      <input data-testid="new-label-name-input" value={newLabelName} onChange={(e) => setNewLabelName(e.target.value)} placeholder="Nama label"
+                        className="w-full h-8 rounded border border-[#DFE1E6] px-2 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4]" />
                       <div className="flex flex-wrap gap-1 mt-2">
                         {LABEL_COLORS.map((c) => (
                           <button key={c} aria-label={`Warna ${c}`} data-testid={`label-color-${c.replace("#", "")}`} onClick={() => setNewLabelColor(c)}
                             className={`w-6 h-6 rounded ${newLabelColor === c ? "ring-2 ring-offset-1 ring-[#172B4D]" : ""}`} style={{ backgroundColor: c }} />
                         ))}
                       </div>
-                      <button
-                        data-testid="create-label-button"
+                      <button data-testid="create-label-button"
                         onClick={() => {
                           if (!newLabelName.trim()) return;
                           run(async () => {
@@ -394,8 +409,7 @@ export default function CardModal({ itemId, onClose }) {
                           }, "Label dibuat");
                           setNewLabelName("");
                         }}
-                        className="mt-2 w-full h-8 rounded bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors"
-                      >
+                        className="mt-2 w-full h-8 rounded bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors">
                         Buat Label
                       </button>
                     </div>
@@ -406,50 +420,63 @@ export default function CardModal({ itemId, onClose }) {
 
             <div className="flex flex-wrap gap-4">
               <div>
+                <SectionTitle icon={<CalendarPlus size={14} />}>Mulai</SectionTitle>
+                <input data-testid="card-start-date-input" type="date" value={item.start_date || ""}
+                  onChange={(e) => saveField("start_date", e.target.value || null)}
+                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
+              </div>
+              <div>
                 <SectionTitle icon={<Clock size={14} />}>Tenggat</SectionTitle>
-                <input
-                  data-testid="card-due-date-input"
-                  type="date"
-                  value={item.due_date || ""}
+                <input data-testid="card-due-date-input" type="date" value={item.due_date || ""}
                   onChange={(e) => saveField("due_date", e.target.value || null)}
-                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]"
-                />
+                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
               </div>
               <div>
                 <SectionTitle icon={<Flag size={14} />}>Prioritas</SectionTitle>
-                <select
-                  data-testid="card-priority-select"
-                  value={item.priority || "none"}
-                  onChange={(e) => saveField("priority", e.target.value)}
-                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]"
-                >
+                <select data-testid="card-priority-select" value={item.priority || "none"} onChange={(e) => saveField("priority", e.target.value)}
+                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]">
                   {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
               <div>
                 <SectionTitle icon={<Building2 size={14} />}>Nama Klien</SectionTitle>
-                <input
-                  data-testid="card-client-input"
-                  key={"c" + item.id}
-                  defaultValue={item.client_name || ""}
+                <input data-testid="card-client-input" key={"c" + item.id} defaultValue={item.client_name || ""}
                   onBlur={(e) => e.target.value !== item.client_name && saveField("client_name", e.target.value.trim())}
                   placeholder="mis: PT ABC"
-                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]"
-                />
+                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
               </div>
             </div>
 
             <div>
               <SectionTitle icon={<AlignLeft size={14} />}>Deskripsi</SectionTitle>
-              <textarea
-                data-testid="card-description-input"
-                key={"d" + item.id}
-                defaultValue={item.description || ""}
+              <textarea data-testid="card-description-input" key={"d" + item.id} defaultValue={item.description || ""}
                 onBlur={(e) => e.target.value !== item.description && saveField("description", e.target.value)}
-                placeholder="Tambahkan deskripsi yang lebih detail..."
-                rows={4}
-                className="w-full rounded-lg border border-[#DFE1E6] bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
-              />
+                placeholder="Tambahkan deskripsi yang lebih detail..." rows={4}
+                className="w-full rounded-lg border border-[#DFE1E6] bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y" />
+            </div>
+
+            <div>
+              <SectionTitle icon={<AlignLeft size={14} />}>Custom Fields</SectionTitle>
+              <div className="space-y-1.5" data-testid="custom-fields-list">
+                {(item.custom_fields || []).map((f) => (
+                  <div key={f.id} className="flex items-center gap-2 bg-white rounded-lg border border-[#DFE1E6] px-3 py-1.5 group" data-testid={`cf-row-${f.id}`}>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-[#8590A2] w-32 shrink-0 truncate">{f.name}</span>
+                    <span className="text-sm text-[#172B4D] flex-1">{f.value || "—"}</span>
+                    <button aria-label="Hapus field" data-testid={`cf-delete-${f.id}`} onClick={() => removeCustomField(f.id)} className="opacity-0 group-hover:opacity-100 text-[#CA3521] p-0.5">
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <input data-testid="cf-name-input" value={cfName} onChange={(e) => setCfName(e.target.value)} placeholder="Nama field (mis: No. HP)"
+                  className="h-8 w-40 rounded border border-[#DFE1E6] px-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
+                <input data-testid="cf-value-input" value={cfValue} onChange={(e) => setCfValue(e.target.value)} placeholder="Nilai (mis: 0812xxxx)"
+                  className="h-8 flex-1 rounded border border-[#DFE1E6] px-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
+                <button data-testid="cf-add-button" onClick={addCustomField} className="h-8 px-3 rounded bg-[#091E420F] hover:bg-[#091E4224] text-xs font-semibold transition-colors">
+                  Tambah
+                </button>
+              </div>
             </div>
 
             <div>
@@ -462,26 +489,51 @@ export default function CardModal({ itemId, onClose }) {
               {(item.checklists || []).map((cl) => (
                 <div key={cl.id} className="mb-4" data-testid={`checklist-${cl.id}`}>
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm font-semibold">{cl.title}</p>
+                    <ChecklistTitle cl={cl} onRename={(t) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}`, { title: t }))} />
                     <button data-testid={`delete-checklist-${cl.id}`} onClick={() => run(() => api.delete(`/work-items/${itemId}/checklists/${cl.id}`))} className="text-xs text-[#CA3521] hover:underline">
                       Hapus
                     </button>
                   </div>
                   {cl.items.map((sub) => (
-                    <div key={sub.id} className="flex items-center gap-2 py-1 group" data-testid={`checklist-item-${sub.id}`}>
-                      <input
-                        type="checkbox"
-                        data-testid={`checklist-toggle-${sub.id}`}
-                        checked={sub.done}
+                    <div key={sub.id} className="flex items-center gap-1.5 py-1 group" data-testid={`checklist-item-${sub.id}`}>
+                      <input type="checkbox" data-testid={`checklist-toggle-${sub.id}`} checked={sub.done}
                         onChange={(e) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`, { done: e.target.checked }))}
-                        className="w-4 h-4 accent-[#0C66E4] cursor-pointer"
+                        className="w-4 h-4 accent-[#0C66E4] cursor-pointer shrink-0" />
+                      <span className={`text-sm flex-1 min-w-0 break-words ${sub.done ? "line-through text-[#8590A2]" : ""}`}>
+                        {sub.text}
+                        {sub.assignee_id && usersById[sub.assignee_id] && (
+                          <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-[#0C66E4] bg-[#E9F2FF] rounded-full px-1.5 py-0.5 align-middle">
+                            {usersById[sub.assignee_id].name}
+                          </span>
+                        )}
+                        {sub.due_date && (
+                          <span className="ml-1 text-[10px] font-semibold text-[#E56910] align-middle">· {fmtDate(sub.due_date)}</span>
+                        )}
+                      </span>
+                      <select
+                        data-testid={`cl-item-assignee-${sub.id}`}
+                        value={sub.assignee_id || ""}
+                        onChange={(e) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`, { assignee_id: e.target.value }))}
+                        className="h-6 w-24 rounded border border-[#DFE1E6] px-1 text-[10px] bg-white outline-none opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
+                      >
+                        <option value="">PIC...</option>
+                        {(users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                      <input
+                        type="date"
+                        data-testid={`cl-item-due-${sub.id}`}
+                        value={sub.due_date || ""}
+                        onChange={(e) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`, { due_date: e.target.value }))}
+                        className="h-6 w-[7.5rem] rounded border border-[#DFE1E6] px-1 text-[10px] bg-white outline-none opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
                       />
-                      <span className={`text-sm flex-1 ${sub.done ? "line-through text-[#8590A2]" : ""}`}>{sub.text}</span>
+                      <button aria-label="Naik" data-testid={`cl-item-up-${sub.id}`} onClick={() => reorderItem(cl, sub.id, -1)} className="opacity-0 group-hover:opacity-100 text-[#44546F] p-0.5 shrink-0"><ChevronUp size={13} /></button>
+                      <button aria-label="Turun" data-testid={`cl-item-down-${sub.id}`} onClick={() => reorderItem(cl, sub.id, 1)} className="opacity-0 group-hover:opacity-100 text-[#44546F] p-0.5 shrink-0"><ChevronDown size={13} /></button>
+                      <button aria-label="Jadikan kartu" title="Jadikan kartu" data-testid={`cl-item-convert-${sub.id}`}
+                        onClick={() => run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}/convert`), "Item dijadikan kartu baru")}
+                        className="opacity-0 group-hover:opacity-100 text-[#0C66E4] p-0.5 shrink-0"><ArrowRightToLine size={13} /></button>
                       <button aria-label="Hapus item" data-testid={`checklist-item-delete-${sub.id}`}
                         onClick={() => run(() => api.delete(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`))}
-                        className="opacity-0 group-hover:opacity-100 text-[#CA3521] p-0.5">
-                        <X size={13} />
-                      </button>
+                        className="opacity-0 group-hover:opacity-100 text-[#CA3521] p-0.5 shrink-0"><X size={13} /></button>
                     </div>
                   ))}
                   <AddChecklistItem testid={cl.id} onAdd={(text) => run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/items`, { text }))} />
@@ -489,24 +541,16 @@ export default function CardModal({ itemId, onClose }) {
               ))}
               {addingChecklist ? (
                 <div className="flex items-center gap-2 mt-2">
-                  <input
-                    data-testid="new-checklist-title-input"
-                    autoFocus
-                    value={newChecklistTitle}
-                    onChange={(e) => setNewChecklistTitle(e.target.value)}
-                    placeholder="Judul checklist"
-                    className="h-9 flex-1 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]"
-                  />
-                  <button
-                    data-testid="create-checklist-button"
+                  <input data-testid="new-checklist-title-input" autoFocus value={newChecklistTitle} onChange={(e) => setNewChecklistTitle(e.target.value)} placeholder="Judul checklist"
+                    className="h-9 flex-1 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
+                  <button data-testid="create-checklist-button"
                     onClick={() => {
                       if (!newChecklistTitle.trim()) return;
                       run(() => api.post(`/work-items/${itemId}/checklists`, { title: newChecklistTitle.trim() }), "Checklist dibuat");
                       setNewChecklistTitle("");
                       setAddingChecklist(false);
                     }}
-                    className="h-9 px-3 rounded-lg bg-[#0c66e4] text-white text-sm font-semibold"
-                  >
+                    className="h-9 px-3 rounded-lg bg-[#0c66e4] text-white text-sm font-semibold">
                     Tambah
                   </button>
                   <button aria-label="Batal" onClick={() => setAddingChecklist(false)} className="p-1.5 text-[#44546F]"><X size={16} /></button>
@@ -521,31 +565,76 @@ export default function CardModal({ itemId, onClose }) {
             <div>
               <SectionTitle icon={<Paperclip size={14} />}>Lampiran</SectionTitle>
               <div className="space-y-2">
-                {(attachments || []).map((a) => (
-                  <div key={a.id} className="flex items-center gap-3 bg-white rounded-lg border border-[#DFE1E6] px-3 py-2" data-testid={`attachment-${a.id}`}>
-                    <Paperclip size={14} className="text-[#44546F] shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{a.original_filename}</p>
-                      <p className="text-[11px] text-[#8590A2]">{a.uploaded_by_name} · {(a.size / 1024).toFixed(0)} KB · {fmtDateTime(a.created_at)}</p>
+                {(attachments || []).map((a) => {
+                  const isImage = (a.content_type || "").startsWith("image/");
+                  const href = a.content_type === "link" ? a.external_url : `${API}/attachments/${a.id}/download`;
+                  return (
+                    <div key={a.id} className="flex items-center gap-3 bg-white rounded-lg border border-[#DFE1E6] px-3 py-2" data-testid={`attachment-${a.id}`}>
+                      {a.content_type === "link" ? <LinkIcon size={14} className="text-[#0C66E4] shrink-0" /> : <Paperclip size={14} className="text-[#44546F] shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{a.original_filename}</p>
+                        <p className="text-[11px] text-[#8590A2]">{a.uploaded_by_name}{a.size ? ` · ${(a.size / 1024).toFixed(0)} KB` : ""} · {fmtDateTime(a.created_at)}</p>
+                      </div>
+                      {isImage && (
+                        <button data-testid={`attachment-cover-${a.id}`}
+                          onClick={() => saveField("cover_attachment_id", item.cover_attachment_id === a.id ? null : a.id)}
+                          className={`p-1.5 rounded text-[11px] font-semibold flex items-center gap-1 ${item.cover_attachment_id === a.id ? "bg-[#E9F2FF] text-[#0C66E4]" : "hover:bg-[#F1F2F4] text-[#44546F]"}`}>
+                          <ImageIcon size={13} /> {item.cover_attachment_id === a.id ? "Cover ✓" : "Jadikan Cover"}
+                        </button>
+                      )}
+                      <a data-testid={`attachment-download-${a.id}`} href={href} target="_blank" rel="noreferrer"
+                        className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#0C66E4]" aria-label="Buka">
+                        <Download size={15} />
+                      </a>
+                      {(a.uploaded_by === user?.id || isAdmin) && (
+                        <button aria-label="Hapus lampiran" data-testid={`attachment-delete-${a.id}`} onClick={() => run(() => api.delete(`/attachments/${a.id}`))} className="p-1.5 rounded hover:bg-[#FFECE8] text-[#CA3521]">
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </div>
-                    <a data-testid={`attachment-download-${a.id}`} href={`${API}/attachments/${a.id}/download`} target="_blank" rel="noreferrer"
-                      className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#0C66E4]" aria-label="Unduh">
-                      <Download size={15} />
-                    </a>
-                    {(a.uploaded_by === user?.id || isAdmin) && (
-                      <button aria-label="Hapus lampiran" data-testid={`attachment-delete-${a.id}`} onClick={() => run(() => api.delete(`/attachments/${a.id}`))} className="p-1.5 rounded hover:bg-[#FFECE8] text-[#CA3521]">
-                        <Trash2 size={15} />
-                      </button>
-                    )}
+                  );
+                })}
+                <div className="flex flex-wrap items-center gap-2">
+                  <label data-testid="attachment-upload-label"
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#091E420F] hover:bg-[#091E4224] text-sm font-medium cursor-pointer transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+                    <Paperclip size={14} /> {uploading ? "Mengunggah..." : "Unggah lampiran"}
+                    <input data-testid="attachment-upload-input" type="file" className="hidden" onChange={(e) => uploadFile(e)} disabled={uploading} />
+                  </label>
+                  <button data-testid="link-attachment-open" onClick={() => setShowLinkForm(!showLinkForm)}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#091E420F] hover:bg-[#091E4224] text-sm font-medium transition-colors">
+                    <LinkIcon size={14} /> Tambah tautan
+                  </button>
+                  {(item.cover_color || item.cover_attachment_id) && (
+                    <button data-testid="cover-clear-button" onClick={() => run(() => api.patch(`/work-items/${itemId}`, { cover_color: null, cover_attachment_id: null }))}
+                      className="text-xs text-[#CA3521] hover:underline">
+                      Hapus cover
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap" data-testid="cover-color-palette">
+                  <span className="text-[11px] text-[#8590A2] font-semibold">Cover warna:</span>
+                  {LABEL_COLORS.slice(0, 8).map((c) => (
+                    <button key={c} aria-label={`Cover ${c}`} data-testid={`cover-color-${c.replace("#", "")}`} onClick={() => run(() => api.patch(`/work-items/${itemId}`, { cover_color: c, cover_attachment_id: null }))}
+                      className={`w-6 h-5 rounded ${item.cover_color === c ? "ring-2 ring-offset-1 ring-[#172B4D]" : ""}`} style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+                {showLinkForm && (
+                  <div className="flex gap-2 items-center bg-white rounded-lg border border-[#DFE1E6] p-2" data-testid="link-attachment-form">
+                    <input data-testid="link-name-input" value={linkName} onChange={(e) => setLinkName(e.target.value)} placeholder="Nama tautan"
+                      className="h-8 w-36 rounded border border-[#DFE1E6] px-2 text-xs outline-none" />
+                    <input data-testid="link-url-input" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://..."
+                      className="h-8 flex-1 rounded border border-[#DFE1E6] px-2 text-xs outline-none" />
+                    <button data-testid="link-attachment-submit"
+                      onClick={() => {
+                        if (!linkUrl.trim()) return;
+                        run(() => api.post(`/work-items/${itemId}/attachments/link`, { url: linkUrl.trim(), name: linkName.trim() || linkUrl.trim() }), "Tautan ditambahkan");
+                        setLinkUrl(""); setLinkName(""); setShowLinkForm(false);
+                      }}
+                      className="h-8 px-3 rounded bg-[#0c66e4] text-white text-xs font-semibold">
+                      Simpan
+                    </button>
                   </div>
-                ))}
-                <label
-                  data-testid="attachment-upload-label"
-                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#091E420F] hover:bg-[#091E4224] text-sm font-medium cursor-pointer transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}
-                >
-                  <Paperclip size={14} /> {uploading ? "Mengunggah..." : "Unggah lampiran"}
-                  <input data-testid="attachment-upload-input" type="file" className="hidden" onChange={uploadFile} disabled={uploading} />
-                </label>
+                )}
               </div>
             </div>
           </div>
@@ -557,38 +646,37 @@ export default function CardModal({ itemId, onClose }) {
                 <h3 className="text-xs font-bold uppercase tracking-wider">Komentar & Aktivitas</h3>
               </div>
               <label className="flex items-center gap-1.5 text-[11px] text-[#44546F] cursor-pointer">
-                <input
-                  type="checkbox"
-                  data-testid="toggle-activity-details"
-                  checked={showActivityDetail}
-                  onChange={(e) => setShowActivityDetail(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-[#0C66E4]"
-                />
+                <input type="checkbox" data-testid="toggle-activity-details" checked={showActivityDetail} onChange={(e) => setShowActivityDetail(e.target.checked)} className="w-3.5 h-3.5 accent-[#0C66E4]" />
                 Detail aktivitas
               </label>
             </div>
             <div className="flex gap-2 mb-4">
               <Avatar name={user?.name} color={user?.avatar_color} size="h-8 w-8 text-xs" />
               <div className="flex-1">
-                <textarea
-                  data-testid="comment-input"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Tulis komentar... gunakan @nama untuk mention"
-                  rows={2}
-                  className="w-full rounded-lg border border-[#DFE1E6] bg-white p-2.5 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none"
-                />
-                <button
-                  data-testid="comment-submit-button"
-                  disabled={!comment.trim()}
-                  onClick={() => {
-                    run(() => api.post(`/work-items/${itemId}/comments`, { text: comment }), "Komentar ditambahkan");
-                    setComment("");
-                  }}
-                  className="mt-1.5 h-8 px-3 rounded bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold disabled:opacity-40 transition-colors active:scale-95"
-                >
-                  Kirim
-                </button>
+                <textarea data-testid="comment-input" value={comment} onChange={(e) => setComment(e.target.value)}
+                  placeholder="Tulis komentar... gunakan @nama untuk mention" rows={2}
+                  className="w-full rounded-lg border border-[#DFE1E6] bg-white p-2.5 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none" />
+                {pendingAttachment && (
+                  <div className="flex items-center gap-2 mt-1 text-xs bg-[#E9F2FF] text-[#0C66E4] rounded px-2 py-1" data-testid="comment-pending-attachment">
+                    <Paperclip size={11} /> {pendingAttachment.original_filename}
+                    <button aria-label="Hapus lampiran komentar" onClick={() => setPendingAttachment(null)} className="ml-auto"><X size={11} /></button>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 mt-1.5">
+                  <button data-testid="comment-submit-button" disabled={!comment.trim()}
+                    onClick={() => {
+                      run(() => api.post(`/work-items/${itemId}/comments`, { text: comment, attachment_id: pendingAttachment?.id || null }), "Komentar ditambahkan");
+                      setComment("");
+                      setPendingAttachment(null);
+                    }}
+                    className="h-8 px-3 rounded bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold disabled:opacity-40 transition-colors active:scale-95">
+                    Kirim
+                  </button>
+                  <label data-testid="comment-attachment-button" className={`p-1.5 rounded hover:bg-[#091E420F] text-[#44546F] cursor-pointer transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`} aria-label="Lampirkan file">
+                    <Paperclip size={15} />
+                    <input type="file" className="hidden" onChange={(e) => uploadFile(e, true)} disabled={uploading} />
+                  </label>
+                </div>
               </div>
             </div>
             <div className="space-y-3 flex-1 overflow-y-auto minimal-scrollbar max-h-[520px]" data-testid="card-feed">
@@ -600,9 +688,56 @@ export default function CardModal({ itemId, onClose }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-[#44546F]">
                         <span className="font-semibold text-[#172B4D]">{entry.data.user_name}</span> · {fmtDateTime(entry.data.created_at)}
+                        {entry.data.edited_at && <span className="text-[10px] text-[#8590A2]"> (diedit)</span>}
                       </p>
-                      <div className="bg-white rounded-lg border border-[#DFE1E6] px-3 py-2 mt-1 text-sm leading-relaxed break-words">
-                        {renderCommentText(entry.data.text)}
+                      {editingComment === entry.data.id ? (
+                        <div className="mt-1">
+                          <textarea data-testid={`comment-edit-input-${entry.data.id}`} value={editText} onChange={(e) => setEditText(e.target.value)} rows={2}
+                            className="w-full rounded-lg border border-[#0C66E4] bg-white p-2 text-sm outline-none resize-none" />
+                          <div className="flex gap-1.5 mt-1">
+                            <button data-testid={`comment-edit-save-${entry.data.id}`}
+                              onClick={() => {
+                                run(() => api.patch(`/comments/${entry.data.id}`, { text: editText }), "Komentar diperbarui");
+                                setEditingComment(null);
+                              }}
+                              className="h-7 px-2.5 rounded bg-[#0c66e4] text-white text-xs font-semibold">Simpan</button>
+                            <button onClick={() => setEditingComment(null)} className="h-7 px-2.5 rounded bg-[#091E420F] text-xs font-semibold">Batal</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded-lg border border-[#DFE1E6] px-3 py-2 mt-1 text-sm leading-relaxed break-words">
+                          {renderCommentText(entry.data.text)}
+                          {entry.data.attachment_id && attachmentsById[entry.data.attachment_id] && (
+                            <a
+                              data-testid={`comment-attachment-${entry.data.id}`}
+                              href={attachmentsById[entry.data.attachment_id].content_type === "link" ? attachmentsById[entry.data.attachment_id].external_url : `${API}/attachments/${entry.data.attachment_id}/download`}
+                              target="_blank" rel="noreferrer"
+                              className="flex items-center gap-1.5 mt-1.5 text-xs text-[#0C66E4] bg-[#E9F2FF] rounded px-2 py-1 hover:underline w-fit"
+                            >
+                              <Paperclip size={11} /> {attachmentsById[entry.data.attachment_id].original_filename}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 mt-1">
+                        {EMOJIS.map((em) => {
+                          const count = (entry.data.reactions?.[em] || []).length;
+                          const mine = (entry.data.reactions?.[em] || []).includes(user?.id);
+                          return (
+                            <button key={em} data-testid={`comment-react-${entry.data.id}-${em}`}
+                              onClick={() => run(() => api.post(`/comments/${entry.data.id}/react`, { emoji: em }))}
+                              className={`text-xs px-1.5 py-0.5 rounded-full border transition-colors ${mine ? "bg-[#E9F2FF] border-[#0C66E4]" : "border-transparent hover:bg-[#F1F2F4]"}`}>
+                              {em}{count > 0 && <span className="ml-0.5 text-[10px] font-bold text-[#44546F]">{count}</span>}
+                            </button>
+                          );
+                        })}
+                        {entry.data.user_id === user?.id && editingComment !== entry.data.id && (
+                          <button aria-label="Edit komentar" data-testid={`comment-edit-${entry.data.id}`}
+                            onClick={() => { setEditingComment(entry.data.id); setEditText(entry.data.text); }}
+                            className="p-1 text-[#44546F] opacity-50 hover:opacity-100">
+                            <Pencil size={11} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     {(entry.data.user_id === user?.id || isAdmin) && (
@@ -626,8 +761,34 @@ export default function CardModal({ itemId, onClose }) {
             </div>
           </div>
         </div>
+        {showSend && <SendWorkDialog item={item} onClose={() => setShowSend(false)} onDone={invalidate} />}
       </div>
     </div>
+  );
+}
+
+function ChecklistTitle({ cl, onRename }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(cl.title);
+  if (!editing)
+    return (
+      <p className="text-sm font-semibold flex items-center gap-1.5">
+        {cl.title}
+        <button aria-label="Ubah nama checklist" data-testid={`checklist-rename-${cl.id}`} onClick={() => setEditing(true)} className="text-[#8590A2] hover:text-[#44546F]">
+          <Pencil size={11} />
+        </button>
+      </p>
+    );
+  return (
+    <input
+      data-testid={`checklist-rename-input-${cl.id}`}
+      autoFocus
+      value={title}
+      onChange={(e) => setTitle(e.target.value)}
+      onBlur={() => { setEditing(false); if (title.trim() && title !== cl.title) onRename(title.trim()); }}
+      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") { setTitle(cl.title); setEditing(false); } }}
+      className="h-7 rounded border border-[#0C66E4] px-2 text-sm font-semibold outline-none"
+    />
   );
 }
 

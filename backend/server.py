@@ -13,7 +13,7 @@ from routes_auth import router as auth_router
 from routes_admin import router as admin_router
 from routes_work import router as work_router
 from cron_jobs import advance_hari_job
-from seed import seed_admin, seed_demo, migrate_stage_requirements
+from seed import seed_admin, seed_demo, migrate_stage_requirements, ensure_demo_passwords
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ali.server")
@@ -97,6 +97,7 @@ async def startup():
     await seed_admin()
     await seed_demo()
     await migrate_stage_requirements()
+    await ensure_demo_passwords()
     logger.info("Seeding complete")
 
 

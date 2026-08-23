@@ -125,6 +125,13 @@ async def create_item(body: CreateItemBody, user=Depends(get_current_user)):
         "division_ids": body.division_ids or ([board["division_id"]] if board.get("division_id") else []),
         "mirror_board_ids": [],
         "checklists": [],
+        "watcher_ids": [],
+        "start_date": None,
+        "cover_color": None,
+        "cover_attachment_id": None,
+        "custom_fields": [],
+        "distribution_status": "diambil" if body.member_ids else "menunggu",
+        "distribution_updated_at": now_iso(),
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "completed_at": None,
@@ -179,9 +186,13 @@ class UpdateItemBody(BaseModel):
     client_name: Optional[str] = None
     description: Optional[str] = None
     due_date: Optional[str] = None
+    start_date: Optional[str] = None
     priority: Optional[str] = None
     label_ids: Optional[List[str]] = None
     needs_approval: Optional[bool] = None
+    cover_color: Optional[str] = None
+    cover_attachment_id: Optional[str] = None
+    custom_fields: Optional[List[dict]] = None
 
 
 @router.patch("/work-items/{item_id}")
@@ -189,7 +200,7 @@ async def update_item(item_id: str, body: UpdateItemBody, user=Depends(get_curre
     item = await get_item_checked(item_id, user)
     updates = {}
     data = body.model_dump()
-    for field in ("title", "client_name", "description", "due_date", "needs_approval", "label_ids"):
+    for field in ("title", "client_name", "description", "due_date", "start_date", "needs_approval", "label_ids", "cover_color", "cover_attachment_id", "custom_fields"):
         if data.get(field) is not None:
             updates[field] = data[field]
     if data.get("priority") is not None and data["priority"] in PRIORITIES:
@@ -265,6 +276,10 @@ async def move_item(item_id: str, body: MoveBody, user=Depends(get_current_user)
         elif item.get("hari_stage") and old_name.startswith("SKOR 5") and not new_name.startswith("SKOR 5"):
             await db.work_items.update_one({"id": item_id}, {"$set": {"hari_stage": None, "hari_entered_at": None}})
             item["hari_stage"] = None
+    if item.get("watcher_ids"):
+        await notify(item["watcher_ids"], "watch", "Perubahan kartu yang Anda pantau",
+                     f"\"{item['title']}\" dipindah ke {target_list['name']}",
+                     item_id, target_board_id, exclude={user["id"]})
     await ensure_requirement_checklist(item, target_list)
     await run_automation(target_board_id, "card_moved", item, user, body.list_id)
     await broadcast_item(item)
@@ -278,7 +293,7 @@ async def claim_item(item_id: str, user=Depends(get_current_user)):
     if user["id"] in members:
         raise HTTPException(400, "Anda sudah menjadi PIC pekerjaan ini")
     members.append(user["id"])
-    await db.work_items.update_one({"id": item_id}, {"$set": {"member_ids": members, "updated_at": now_iso()}})
+    await db.work_items.update_one({"id": item_id}, {"$set": {"member_ids": members, "distribution_status": "diambil", "distribution_updated_at": now_iso(), "updated_at": now_iso()}})
     await log_activity(item_id, item["board_id"], user, f"mengambil (claim) pekerjaan \"{item['title']}\"")
     await notify([item["created_by"]], "claimed", "Pekerjaan diambil",
                  f"{user['name']} mengambil pekerjaan \"{item['title']}\"",
@@ -288,12 +303,23 @@ async def claim_item(item_id: str, user=Depends(get_current_user)):
     return {"ok": True, "member_ids": members}
 
 
+class ReleaseBody(BaseModel):
+    reason: str = ""
+
+
 @router.post("/work-items/{item_id}/release")
-async def release_item(item_id: str, user=Depends(get_current_user)):
+async def release_item(item_id: str, body: ReleaseBody = None, user=Depends(get_current_user)):
     item = await get_item_checked(item_id, user)
+    reason = (body.reason if body else "") or ""
     members = [m for m in item.get("member_ids", []) if m != user["id"]]
-    await db.work_items.update_one({"id": item_id}, {"$set": {"member_ids": members, "updated_at": now_iso()}})
-    await log_activity(item_id, item["board_id"], user, f"melepas pekerjaan \"{item['title']}\"")
+    await db.work_items.update_one({"id": item_id}, {"$set": {"member_ids": members, "distribution_status": "menunggu", "distribution_updated_at": now_iso(), "updated_at": now_iso()}})
+    log_text = f"melepas pekerjaan \"{item['title']}\""
+    if reason:
+        log_text += f" — Alasan: {reason}"
+    await log_activity(item_id, item["board_id"], user, log_text)
+    await notify([item["created_by"]], "released", "Pekerjaan dilepaskan",
+                 f"{user['name']} melepaskan \"{item['title']}\"" + (f". Alasan: {reason}" if reason else ""),
+                 item_id, item["board_id"], exclude={user["id"]})
     item["member_ids"] = members
     await broadcast_item(item)
     return {"ok": True, "member_ids": members}
@@ -322,7 +348,8 @@ async def assign_item(item_id: str, body: AssignBody, user=Depends(get_current_u
             divisions.append(did)
     divisions = [d for d in divisions if d not in body.remove_division_ids]
     await db.work_items.update_one({"id": item_id},
-        {"$set": {"member_ids": members, "division_ids": divisions, "updated_at": now_iso()}})
+        {"$set": {"member_ids": members, "division_ids": divisions, "updated_at": now_iso(),
+                  **({"distribution_status": "diambil", "distribution_updated_at": now_iso()} if body.add_user_ids else {})}})
     if body.add_user_ids:
         await log_activity(item_id, item["board_id"], user, f"menugaskan PIC pada \"{item['title']}\"")
         await notify(body.add_user_ids, "assigned", "Anda ditugaskan",
@@ -490,6 +517,8 @@ async def add_checklist_item(item_id: str, cl_id: str, body: ChecklistItemBody, 
 class ChecklistItemUpdate(BaseModel):
     done: Optional[bool] = None
     text: Optional[str] = None
+    assignee_id: Optional[str] = None
+    due_date: Optional[str] = None
 
 
 @router.patch("/work-items/{item_id}/checklists/{cl_id}/items/{sub_id}")
@@ -504,6 +533,14 @@ async def update_checklist_item(item_id: str, cl_id: str, sub_id: str, body: Che
                         it["done"] = body.done
                     if body.text is not None:
                         it["text"] = body.text.strip()
+                    if body.assignee_id is not None:
+                        it["assignee_id"] = body.assignee_id or None
+                    if body.due_date is not None:
+                        it["due_date"] = body.due_date or None
+                    if body.assignee_id:
+                        await notify([body.assignee_id], "checklist_assigned", "Item checklist untuk Anda",
+                                     f"{user['name']} menugaskan item \"{it['text']}\" di \"{item['title']}\"",
+                                     item_id, item["board_id"], exclude={user["id"]})
     await db.work_items.update_one({"id": item_id}, {"$set": {"checklists": checklists, "updated_at": now_iso()}})
     await broadcast_item(item)
     return {"ok": True, "checklists": checklists}
@@ -525,6 +562,7 @@ async def delete_checklist_item(item_id: str, cl_id: str, sub_id: str, user=Depe
 
 class CommentBody(BaseModel):
     text: str
+    attachment_id: Optional[str] = None
 
 
 @router.post("/work-items/{item_id}/comments")
@@ -546,12 +584,15 @@ async def add_comment(item_id: str, body: CommentBody, user=Depends(get_current_
         "user_name": user["name"],
         "avatar_color": user.get("avatar_color", "#0C66E4"),
         "text": body.text.strip(),
+        "attachment_id": body.attachment_id,
         "mentions": mentioned,
+        "reactions": {},
+        "edited_at": None,
         "created_at": now_iso(),
     }
     await db.comments.insert_one(doc)
     await log_activity(item_id, item["board_id"], user, f"berkomentar di \"{item['title']}\"")
-    targets = set(item.get("member_ids", []) + [item["created_by"]] + mentioned)
+    targets = set(item.get("member_ids", []) + [item["created_by"]] + mentioned + (item.get("watcher_ids") or []))
     await notify(list(targets), "comment", "Komentar baru",
                  f"{user['name']}: {body.text.strip()[:80]}",
                  item_id, item["board_id"], exclude={user["id"]})
@@ -874,3 +915,274 @@ async def bank_data(division_id: str, user=Depends(get_current_user)):
             by_list[lname] = by_list.get(lname, 0) + 1
         workload.append({"user": m, "total": len(mine), "by_list": by_list})
     return {"division": clean(division), "boards": boards, "items": items, "workload": workload}
+
+
+# ---------- KIRIM / AMBIL ALIH / WATCH ----------
+
+class SendBody(BaseModel):
+    division_id: str
+    list_id: Optional[str] = None
+    member_ids: List[str] = Field(default_factory=list)
+    note: str = ""
+    priority: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+@router.post("/work-items/{item_id}/send")
+async def send_item(item_id: str, body: SendBody, user=Depends(get_current_user)):
+    item = await get_item_checked(item_id, user)
+    division = await db.divisions.find_one({"id": body.division_id})
+    if not division:
+        raise HTTPException(404, "Divisi tujuan tidak ditemukan")
+    target_boards = await db.boards.find({"division_id": body.division_id, "is_archived": {"$ne": True}}).sort("created_at", 1).to_list(1)
+    if not target_boards:
+        raise HTTPException(400, f"Divisi {division['name']} belum memiliki board")
+    target_board = target_boards[0]
+    updates = {"updated_at": now_iso()}
+    if body.list_id:
+        lst = await db.lists.find_one({"id": body.list_id, "board_id": target_board["id"]})
+        if not lst:
+            raise HTTPException(404, "List tujuan tidak ditemukan di board divisi tersebut")
+    mirrors = item.get("mirror_board_ids", []) or []
+    if target_board["id"] != item["board_id"] and target_board["id"] not in mirrors:
+        mirrors.append(target_board["id"])
+    divisions = item.get("division_ids", []) or []
+    if body.division_id not in divisions:
+        divisions.append(body.division_id)
+    members = list(item.get("member_ids", []))
+    for uid in body.member_ids:
+        if uid not in members:
+            members.append(uid)
+    updates["mirror_board_ids"] = mirrors
+    updates["division_ids"] = divisions
+    updates["member_ids"] = members
+    updates["distribution_status"] = "diambil" if members else "menunggu"
+    updates["distribution_updated_at"] = now_iso()
+    if body.priority and body.priority in PRIORITIES:
+        updates["priority"] = body.priority
+    if body.due_date:
+        updates["due_date"] = body.due_date
+    await db.work_items.update_one({"id": item_id}, {"$set": updates})
+    if body.note.strip():
+        await db.comments.insert_one({
+            "id": new_id(), "work_item_id": item_id, "user_id": user["id"],
+            "user_name": user["name"], "avatar_color": user.get("avatar_color", "#0C66E4"),
+            "text": body.note.strip(), "attachment_id": None, "mentions": [],
+            "reactions": {}, "edited_at": None, "created_at": now_iso(),
+        })
+    await log_activity(item_id, item["board_id"], user, f"mengirim \"{item['title']}\" ke Bank Data {division['name']}")
+    if body.member_ids:
+        await notify(body.member_ids, "assigned", "Anda ditugaskan",
+                     f"{user['name']} menugaskan Anda pada \"{item['title']}\"",
+                     item_id, item["board_id"], exclude={user["id"]})
+    else:
+        div_members = await db.users.find({"division_id": body.division_id, "is_active": {"$ne": False}}).to_list(50)
+        await notify([u["id"] for u in div_members], "bank_data", f"Pekerjaan baru di Bank Data {division['name']}",
+                     f"{user['name']} mengirim \"{item['title']}\" — terbuka untuk diambil",
+                     item_id, item["board_id"], exclude={user["id"]})
+    item.update(updates)
+    await broadcast_item(item)
+    return {"ok": True}
+
+
+@router.post("/work-items/{item_id}/takeover")
+async def takeover_item(item_id: str, user=Depends(get_current_user)):
+    require_supervisor(user)
+    item = await get_item_checked(item_id, user)
+    old_members = item.get("member_ids", [])
+    await db.work_items.update_one({"id": item_id}, {"$set": {
+        "member_ids": [user["id"]], "distribution_status": "diambil",
+        "distribution_updated_at": now_iso(), "updated_at": now_iso(),
+    }})
+    await log_activity(item_id, item["board_id"], user, f"mengambil alih pekerjaan \"{item['title']}\"")
+    await notify(old_members + [item["created_by"]], "takeover", "Pekerjaan diambil alih",
+                 f"{user['name']} mengambil alih \"{item['title']}\"",
+                 item_id, item["board_id"], exclude={user["id"]})
+    item["member_ids"] = [user["id"]]
+    await broadcast_item(item)
+    return {"ok": True}
+
+
+class WatchBody(BaseModel):
+    on: bool
+
+
+@router.post("/work-items/{item_id}/watch")
+async def watch_item(item_id: str, body: WatchBody, user=Depends(get_current_user)):
+    item = await get_item_checked(item_id, user)
+    watchers = item.get("watcher_ids", []) or []
+    if body.on and user["id"] not in watchers:
+        watchers.append(user["id"])
+    if not body.on:
+        watchers = [w for w in watchers if w != user["id"]]
+    await db.work_items.update_one({"id": item_id}, {"$set": {"watcher_ids": watchers}})
+    item["watcher_ids"] = watchers
+    await broadcast_item(item)
+    return {"ok": True, "watcher_ids": watchers}
+
+
+# ---------- COMMENT EDIT & REACTION ----------
+
+class CommentEditBody(BaseModel):
+    text: str
+
+
+@router.patch("/comments/{comment_id}")
+async def edit_comment(comment_id: str, body: CommentEditBody, user=Depends(get_current_user)):
+    c = await db.comments.find_one({"id": comment_id})
+    if not c:
+        raise HTTPException(404, "Komentar tidak ditemukan")
+    if c["user_id"] != user["id"]:
+        raise HTTPException(403, "Hanya penulis yang dapat mengedit komentar")
+    if not body.text.strip():
+        raise HTTPException(400, "Komentar kosong")
+    await db.comments.update_one({"id": comment_id}, {"$set": {"text": body.text.strip(), "edited_at": now_iso()}})
+    item = await db.work_items.find_one({"id": c["work_item_id"]})
+    if item:
+        await broadcast_item(clean(item))
+    return clean(await db.comments.find_one({"id": comment_id}))
+
+
+class ReactBody(BaseModel):
+    emoji: str
+
+
+@router.post("/comments/{comment_id}/react")
+async def react_comment(comment_id: str, body: ReactBody, user=Depends(get_current_user)):
+    if body.emoji not in ("👍", "❤️", "😂", "✅"):
+        raise HTTPException(400, "Emoji tidak didukung")
+    c = await db.comments.find_one({"id": comment_id})
+    if not c:
+        raise HTTPException(404, "Komentar tidak ditemukan")
+    reactions = c.get("reactions", {}) or {}
+    arr = reactions.get(body.emoji, [])
+    if user["id"] in arr:
+        arr = [x for x in arr if x != user["id"]]
+    else:
+        arr.append(user["id"])
+    reactions[body.emoji] = arr
+    await db.comments.update_one({"id": comment_id}, {"$set": {"reactions": reactions}})
+    if user["id"] in arr and c["user_id"] != user["id"]:
+        await notify([c["user_id"]], "reaction", "Reaksi baru",
+                     f"{user['name']} mereaksi {body.emoji} pada komentar Anda",
+                     c["work_item_id"], None, exclude={user["id"]})
+    item = await db.work_items.find_one({"id": c["work_item_id"]})
+    if item:
+        await broadcast_item(clean(item))
+    return {"ok": True, "reactions": reactions}
+
+
+# ---------- CHECKLIST ADVANCED ----------
+
+@router.patch("/work-items/{item_id}/checklists/{cl_id}")
+async def rename_checklist(item_id: str, cl_id: str, body: ChecklistBody, user=Depends(get_current_user)):
+    item = await get_item_checked(item_id, user)
+    checklists = item.get("checklists", [])
+    for c in checklists:
+        if c["id"] == cl_id:
+            c["title"] = body.title.strip()
+    await db.work_items.update_one({"id": item_id}, {"$set": {"checklists": checklists, "updated_at": now_iso()}})
+    await broadcast_item(item)
+    return {"ok": True}
+
+
+class ReorderItemsBody(BaseModel):
+    ordered_ids: List[str]
+
+
+@router.post("/work-items/{item_id}/checklists/{cl_id}/reorder")
+async def reorder_checklist_items(item_id: str, cl_id: str, body: ReorderItemsBody, user=Depends(get_current_user)):
+    item = await get_item_checked(item_id, user)
+    checklists = item.get("checklists", [])
+    for c in checklists:
+        if c["id"] == cl_id:
+            order = {iid: idx for idx, iid in enumerate(body.ordered_ids)}
+            c["items"] = sorted(c["items"], key=lambda x: order.get(x["id"], 999))
+    await db.work_items.update_one({"id": item_id}, {"$set": {"checklists": checklists, "updated_at": now_iso()}})
+    await broadcast_item(item)
+    return {"ok": True}
+
+
+@router.post("/work-items/{item_id}/checklists/{cl_id}/items/{sub_id}/convert")
+async def convert_checklist_item(item_id: str, cl_id: str, sub_id: str, user=Depends(get_current_user)):
+    item = await get_item_checked(item_id, user)
+    checklists = item.get("checklists", [])
+    sub = None
+    for c in checklists:
+        if c["id"] == cl_id:
+            sub = next((i for i in c["items"] if i["id"] == sub_id), None)
+    if not sub:
+        raise HTTPException(404, "Item checklist tidak ditemukan")
+    count = await db.work_items.count_documents({"list_id": item["list_id"], "archived": {"$ne": True}})
+    doc = {
+        "id": new_id(),
+        "title": sub["text"],
+        "client_name": item.get("client_name", ""),
+        "description": f"Dari checklist kartu: {item['title']}",
+        "board_id": item["board_id"],
+        "list_id": item["list_id"],
+        "position": (count + 1) * 1000.0,
+        "label_ids": [], "due_date": None, "start_date": None, "priority": "none",
+        "status": "active", "archived": False, "needs_approval": False,
+        "created_by": user["id"], "created_by_name": user["name"],
+        "member_ids": [], "division_ids": item.get("division_ids", []),
+        "mirror_board_ids": [], "checklists": [], "watcher_ids": [],
+        "cover_color": None, "cover_attachment_id": None, "custom_fields": [],
+        "distribution_status": "menunggu", "distribution_updated_at": now_iso(),
+        "created_at": now_iso(), "updated_at": now_iso(),
+        "completed_at": None, "submitted_by": None, "approved_by": None,
+    }
+    await db.work_items.insert_one(doc)
+    sub["done"] = True
+    await db.work_items.update_one({"id": item_id}, {"$set": {"checklists": checklists, "updated_at": now_iso()}})
+    await log_activity(item_id, item["board_id"], user, f"mengubah item checklist \"{sub['text']}\" menjadi kartu baru")
+    await broadcast_item(item)
+    return clean(doc)
+
+
+# ---------- LINK ATTACHMENT & CALENDAR ----------
+
+class LinkAttachmentBody(BaseModel):
+    url: str
+    name: str
+
+
+@router.post("/work-items/{item_id}/attachments/link")
+async def link_attachment(item_id: str, body: LinkAttachmentBody, user=Depends(get_current_user)):
+    item = await get_item_checked(item_id, user)
+    if not body.url.startswith(("http://", "https://")):
+        raise HTTPException(400, "URL tidak valid")
+    doc = {
+        "id": new_id(),
+        "work_item_id": item_id,
+        "storage_path": None,
+        "external_url": body.url,
+        "original_filename": body.name.strip() or body.url,
+        "content_type": "link",
+        "size": 0,
+        "uploaded_by": user["id"],
+        "uploaded_by_name": user["name"],
+        "is_deleted": False,
+        "created_at": now_iso(),
+    }
+    await db.attachments.insert_one(doc)
+    await log_activity(item_id, item["board_id"], user, f"menambahkan tautan {doc['original_filename']}")
+    await broadcast_item(item)
+    return clean(doc)
+
+
+@router.get("/calendar")
+async def calendar_items(month: str, user=Depends(get_current_user)):
+    boards = clean_many(await db.boards.find({"is_archived": {"$ne": True}}).to_list(500))
+    visible_ids = [b["id"] for b in boards if can_view_board(user, b)]
+    items = clean_many(await db.work_items.find({
+        "due_date": {"$regex": f"^{month}"},
+        "archived": {"$ne": True},
+        "$or": [{"board_id": {"$in": visible_ids}}, {"member_ids": user["id"]}, {"mirror_board_ids": {"$in": visible_ids}}],
+    }).to_list(1000))
+    board_map = {b["id"]: b for b in boards}
+    for i in items:
+        b = board_map.get(i["board_id"], {})
+        i["board_name"] = b.get("name")
+        i["board_background"] = b.get("background")
+    return items

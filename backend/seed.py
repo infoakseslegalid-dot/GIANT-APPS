@@ -273,3 +273,11 @@ async def migrate_stage_requirements():
             {"list_id": {"$in": skor5_ids}, "hari_stage": {"$exists": False}, "status": {"$ne": "done"}},
             {"$set": {"hari_stage": 1, "hari_entered_at": now_iso()}},
         )
+
+
+async def ensure_demo_passwords():
+    from deps import verify_password
+    for name, email, role, div_key, color in USERS:
+        u = await db.users.find_one({"email": email})
+        if u and not verify_password("Staff123!", u.get("password_hash", "")):
+            await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password("Staff123!")}})

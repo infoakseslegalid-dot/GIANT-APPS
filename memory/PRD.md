@@ -37,6 +37,21 @@ User meminta aplikasi seperti Trello untuk operasional internal ALI (legalitas).
 
 ## Status Implementasi
 
+### Iterasi 3 (23 Agu 2026 — Trello Feature Parity + Bank Data v3; lulus 75/75 backend, 100% UI)
+- [x] **Bank Data v3 (Inbox Divisi)**: tabel Menunggu Diambil (Sumber, List, Umur 🟢🟡🔴, AMBIL PEKERJAAN khusus anggota divisi) + tabel Sedang Dikerjakan (✓ Pekerjaan Anda / 🔒 Dikerjakan X / ⚔ Ambil Alih supervisor+); form "Kirim Pekerjaan" 3 lapis (wajib → distribusi → opsi tambahan), divisi tujuan menggantikan pilihan board
+- [x] **Kirim/Mirror ke Divisi** dari card modal (`POST /work-items/{id}/send`): mirror ke board divisi + bank data + notifikasi anggota divisi; radio "divisi memilih sendiri / user tertentu"
+- [x] **Card v3**: cover (warna + gambar dari lampiran), start date, custom fields bebas, Watch/Pantau (notifikasi perubahan ke watcher), salin link kartu, lepas pekerjaan dengan alasan → notifikasi pembuat
+- [x] **Komentar lengkap**: edit (penulis), emoji reaction 👍❤️😂✅ (toggle + notifikasi), lampiran file di komentar, lampiran tautan/URL
+- [x] **Advanced Checklist**: rename checklist, item assignee + due date, reorder naik/turun, convert item → kartu baru
+- [x] **List ops**: collapse/expand, urutkan (manual/terbaru/judul/tenggat), salin list + kartu, pindah ke board lain, arsipkan semua kartu, arsipkan list
+- [x] **Board ops**: salin board (± kartu, checklist di-reset), arsipkan/buka kembali (Admin Panel), template SKOR 1-7, deskripsi & visibility field, salin link board
+- [x] **Filter board**: label multi-select + anggota + filter status
+- [x] **Kalender** `/calendar`: grid bulanan kartu by due date
+- [x] **Cron harian**: advance HARI + reminder due date hari ini/besok (idempoten) ke PIC+watcher+pembuat
+- [x] Keyboard: `/` fokus search, Esc tutup modal
+- [x] Seed self-healing: password demo di-reset otomatis jika berubah
+- **SKIP (per instruksi user, perlu integrasi eksternal)**: Email→Card, AI checklist, Google Drive/Dropbox/OneDrive, mobile native, API/Webhook publik
+
 ### Iterasi 2 (21 Agu 2026 — Bank Data + Board Harian + Peta Skor + Validasi Syarat; lulus testing 49/49 backend, 100% UI)
 - [x] **Bank Data per divisi** (`/bank-data/:divisionId`): tabel No|Pekerjaan|List|PIC|Tenggat|Status|Aksi; semua user bisa lihat semua divisi, hanya anggota divisi bisa Klaim; Tambah Pekerjaan lintas divisi (assign divisi otomatis + opsional pilih PIC); panel beban kerja per anggota dengan rincian per list (S1:5, dll)
 - [x] **Card Modal ala Trello**: pane kiri konten (PIC jelas avatar+nama, divisi, label, tenggat, prioritas, klien, deskripsi, checklist, lampiran), pane kanan rail Komentar & Aktivitas (feed gabungan + toggle detail)

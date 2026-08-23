@@ -41,6 +41,8 @@ export default function BoardView() {
   const [cardsByList, setCardsByList] = useState({});
   const [activeDrag, setActiveDrag] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [filterLabels, setFilterLabels] = useState([]);
+  const [filterMember, setFilterMember] = useState("");
   const [showAutomation, setShowAutomation] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [addingList, setAddingList] = useState(false);
@@ -53,6 +55,7 @@ export default function BoardView() {
     queryFn: () => api.get(`/boards/${boardId}/full`).then((r) => r.data),
   });
   const { data: divisions } = useQuery({ queryKey: ["divisions"], queryFn: () => api.get("/divisions").then((r) => r.data) });
+  const { data: allBoards } = useQuery({ queryKey: ["boards"], queryFn: () => api.get("/boards").then((r) => r.data) });
   const { data: archivedCards } = useQuery({
     queryKey: ["board-archived", boardId],
     queryFn: () => api.get(`/boards/${boardId}/archived`).then((r) => r.data),
@@ -94,10 +97,12 @@ export default function BoardView() {
   const today = new Date().toISOString().slice(0, 10);
 
   const passesFilter = (c) => {
-    if (filter === "unassigned") return (c.member_ids || []).length === 0 && c.status !== "done";
-    if (filter === "mine") return (c.member_ids || []).includes(user?.id);
-    if (filter === "urgent") return c.priority === "urgent";
-    if (filter === "overdue") return c.due_date && c.due_date < today && c.status !== "done";
+    if (filter === "unassigned" && !((c.member_ids || []).length === 0 && c.status !== "done")) return false;
+    if (filter === "mine" && !(c.member_ids || []).includes(user?.id)) return false;
+    if (filter === "urgent" && c.priority !== "urgent") return false;
+    if (filter === "overdue" && !(c.due_date && c.due_date < today && c.status !== "done")) return false;
+    if (filterLabels.length && !filterLabels.some((l) => (c.label_ids || []).includes(l))) return false;
+    if (filterMember && !(c.member_ids || []).includes(filterMember)) return false;
     return true;
   };
 
@@ -199,6 +204,55 @@ export default function BoardView() {
     }
   };
 
+  const archiveAllCards = async (listId) => {
+    if (!window.confirm("Arsipkan semua kartu di list ini?")) return;
+    try {
+      const r = await api.post(`/lists/${listId}/archive-all-cards`);
+      toast.success(`${r.data.archived} kartu diarsipkan`);
+      qc.invalidateQueries({ queryKey: ["board", boardId] });
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const copyList = async (listId) => {
+    try {
+      await api.post(`/lists/${listId}/copy`);
+      toast.success("List disalin beserta kartunya");
+      qc.invalidateQueries({ queryKey: ["board", boardId] });
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const moveListToBoard = async (listId, targetBoardId) => {
+    if (!window.confirm("Pindahkan list beserta seluruh kartunya ke board lain?")) return;
+    try {
+      await api.post(`/lists/${listId}/move`, { board_id: targetBoardId });
+      toast.success("List dipindahkan");
+      qc.invalidateQueries({ queryKey: ["board", boardId] });
+      qc.invalidateQueries({ queryKey: ["boards"] });
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const archiveList = async (listId) => {
+    if (!window.confirm("Arsipkan list ini? Kartu di dalamnya tetap tersimpan.")) return;
+    try {
+      await api.patch(`/lists/${listId}`, { archived: true });
+      toast.success("List diarsipkan");
+      qc.invalidateQueries({ queryKey: ["board", boardId] });
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const copyBoardLink = () => {
+    navigator.clipboard.writeText(`${window.location.origin}/board/${boardId}`);
+    toast.success("Link board disalin");
+  };
+
   const addCard = async (listId, title, clientName) => {
     try {
       await api.post("/work-items", { board_id: boardId, list_id: listId, title, client_name: clientName });
@@ -270,7 +324,7 @@ export default function BoardView() {
                 <Filter size={14} /> {FILTERS.find((f) => f.value === filter)?.label}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-48 bg-white shadow-lg p-1" align="end">
+            <PopoverContent className="w-64 bg-white shadow-lg p-2" align="end">
               {FILTERS.map((f) => (
                 <button
                   key={f.value}
@@ -281,6 +335,42 @@ export default function BoardView() {
                   {f.label}
                 </button>
               ))}
+              <div className="border-t border-[#DFE1E6] mt-2 pt-2 px-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2] px-2 mb-1">Label</p>
+                <div className="max-h-32 overflow-y-auto minimal-scrollbar space-y-0.5">
+                  {(labels || []).map((l) => (
+                    <label key={l.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#F1F2F4] cursor-pointer" data-testid={`filter-label-${l.id}`}>
+                      <input
+                        type="checkbox"
+                        checked={filterLabels.includes(l.id)}
+                        onChange={() => setFilterLabels((f) => (f.includes(l.id) ? f.filter((x) => x !== l.id) : [...f, l.id]))}
+                        className="w-3.5 h-3.5 accent-[#0C66E4]"
+                      />
+                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
+                      <span className="text-xs text-[#172B4D]">{l.name}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2] px-2 mt-2 mb-1">Anggota</p>
+                <select
+                  data-testid="filter-member-select"
+                  value={filterMember}
+                  onChange={(e) => setFilterMember(e.target.value)}
+                  className="w-full h-8 rounded border border-[#DFE1E6] px-2 text-xs text-[#172B4D] bg-white outline-none"
+                >
+                  <option value="">Semua anggota</option>
+                  {(users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+                {(filterLabels.length > 0 || filterMember) && (
+                  <button
+                    data-testid="filter-clear-button"
+                    onClick={() => { setFilterLabels([]); setFilterMember(""); setFilter("all"); }}
+                    className="mt-2 w-full text-xs text-[#CA3521] hover:underline"
+                  >
+                    Hapus semua filter
+                  </button>
+                )}
+              </div>
             </PopoverContent>
           </Popover>
 
@@ -311,6 +401,13 @@ export default function BoardView() {
             </PopoverContent>
           </Popover>
 
+          <button
+            data-testid="board-copy-link-button"
+            onClick={copyBoardLink}
+            className="flex items-center gap-1.5 h-8 px-3 rounded bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors active:scale-95"
+          >
+            Salin Link
+          </button>
           {isSupervisorUp && (
             <button
               data-testid="board-automation-button"
@@ -359,6 +456,11 @@ export default function BoardView() {
                   onRenameList={renameList}
                   onDeleteList={deleteList}
                   onSetRequirements={openRequirements}
+                  onArchiveAllCards={archiveAllCards}
+                  onCopyList={copyList}
+                  onMoveList={moveListToBoard}
+                  onArchiveList={archiveList}
+                  allBoards={allBoards}
                   canManage={isSupervisorUp}
                 />
               ))}

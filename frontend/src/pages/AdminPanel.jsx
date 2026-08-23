@@ -217,14 +217,16 @@ function DivisionsTab({ divisions }) {
 function BoardsTab({ divisions }) {
   const qc = useQueryClient();
   const { data: boards } = useQuery({ queryKey: ["boards"], queryFn: () => api.get("/boards").then((r) => r.data) });
+  const { data: archivedBoards } = useQuery({ queryKey: ["boards-archived"], queryFn: () => api.get("/boards-archived").then((r) => r.data) });
   const [name, setName] = useState("");
   const [divisionId, setDivisionId] = useState("");
   const [bg, setBg] = useState(BG_COLORS[0]);
+  const [template, setTemplate] = useState("");
 
   const create = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/boards", { name, division_id: divisionId || null, background: bg });
+      await api.post("/boards", { name, division_id: divisionId || null, background: bg, template: template || null });
       toast.success("Board dibuat");
       setName("");
       qc.invalidateQueries({ queryKey: ["boards"] });
@@ -237,7 +239,28 @@ function BoardsTab({ divisions }) {
     if (!window.confirm("Arsipkan board ini?")) return;
     await api.delete(`/boards/${id}`);
     qc.invalidateQueries({ queryKey: ["boards"] });
+    qc.invalidateQueries({ queryKey: ["boards-archived"] });
     toast.success("Board diarsipkan");
+  };
+
+  const reopen = async (id) => {
+    await api.post(`/boards/${id}/unarchive`);
+    qc.invalidateQueries({ queryKey: ["boards"] });
+    qc.invalidateQueries({ queryKey: ["boards-archived"] });
+    toast.success("Board dibuka kembali");
+  };
+
+  const copyBoard = async (id, boardName) => {
+    const newName = window.prompt("Nama board salinan:", `${boardName} (salinan)`);
+    if (!newName) return;
+    const withCards = window.confirm("Sertakan semua kartu? (OK = ya, Batal = hanya list & label)");
+    try {
+      await api.post(`/boards/${id}/copy`, { name: newName, with_cards: withCards });
+      qc.invalidateQueries({ queryKey: ["boards"] });
+      toast.success("Board disalin");
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
   };
 
   return (
@@ -255,6 +278,10 @@ function BoardsTab({ divisions }) {
               <button key={c} type="button" aria-label={`Latar ${c}`} data-testid={`board-bg-${c.replace("#", "")}`} onClick={() => setBg(c)} className={`w-7 h-7 rounded ${bg === c ? "ring-2 ring-offset-1 ring-[#172B4D]" : ""}`} style={{ backgroundColor: c }} />
             ))}
           </div>
+          <select data-testid="board-template-select" value={template} onChange={(e) => setTemplate(e.target.value)} className={`${inputCls} w-52`}>
+            <option value="">Tanpa template</option>
+            <option value="skor">Template SKOR 1-7 (CS)</option>
+          </select>
           <button data-testid="board-create-button" type="submit" className={btnPrimary}>Buat Board</button>
         </div>
       </form>
@@ -263,7 +290,10 @@ function BoardsTab({ divisions }) {
           <div key={b.id} className="rounded-xl p-4 text-white shadow-sm" style={{ backgroundColor: b.background }} data-testid={`admin-board-card-${b.id}`}>
             <p className="font-heading font-bold">{b.name}</p>
             <p className="text-xs opacity-80 mt-1">{b.division_name || "Tanpa divisi"} · {b.card_count} kartu</p>
-            <div className="flex justify-end mt-2">
+            <div className="flex justify-end gap-1.5 mt-2">
+              <button data-testid={`board-copy-${b.id}`} onClick={() => copyBoard(b.id, b.name)} className="text-xs bg-white/20 hover:bg-white/30 rounded px-2 py-1 font-semibold transition-colors">
+                Salin
+              </button>
               <button data-testid={`board-archive-${b.id}`} onClick={() => archive(b.id)} className="text-xs bg-white/20 hover:bg-white/30 rounded px-2 py-1 font-semibold transition-colors">
                 Arsipkan
               </button>
@@ -271,6 +301,24 @@ function BoardsTab({ divisions }) {
           </div>
         ))}
       </div>
+      {(archivedBoards || []).length > 0 && (
+        <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5" data-testid="archived-boards-section">
+          <h3 className="font-heading font-bold text-[#172B4D] mb-3">Board Diarsipkan</h3>
+          <div className="space-y-2">
+            {archivedBoards.map((b) => (
+              <div key={b.id} className="flex items-center justify-between bg-[#F4F5F7] rounded-lg px-3 py-2" data-testid={`archived-board-${b.id}`}>
+                <div className="flex items-center gap-2">
+                  <span className="w-4 h-4 rounded" style={{ backgroundColor: b.background }} />
+                  <span className="text-sm font-medium text-[#172B4D]">{b.name}</span>
+                </div>
+                <button data-testid={`board-reopen-${b.id}`} onClick={() => reopen(b.id)} className="text-xs text-[#0C66E4] hover:underline font-semibold">
+                  Buka Kembali
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

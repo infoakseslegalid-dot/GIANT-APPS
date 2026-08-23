@@ -138,6 +138,9 @@ class CreateBoardBody(BaseModel):
     division_id: Optional[str] = None
     background: str = "#0079bf"
     member_ids: List[str] = Field(default_factory=list)
+    description: str = ""
+    visibility: str = "workspace"
+    template: Optional[str] = None
 
 
 @router.post("/boards")
@@ -148,12 +151,24 @@ async def create_board(body: CreateBoardBody, user=Depends(get_current_user)):
         "name": body.name.strip(),
         "division_id": body.division_id,
         "background": body.background,
+        "description": body.description,
+        "visibility": body.visibility,
         "member_ids": body.member_ids,
         "is_archived": False,
         "created_by": user["id"],
         "created_at": now_iso(),
     }
     await db.boards.insert_one(doc)
+    if body.template == "skor":
+        for idx, lname in enumerate([
+            "KOMPLAIN", "SKOR 1-2 (Pengumpulan Berkas)", "SKOR 3 (Butuh/Revisi Draf)",
+            "SKOR 4 (Proses Notaris)", "SKOR 5 (NPWP, NIB, Yayasan)",
+            "SKOR 6 (Finish/Penyerahan)", "SKOR 7 (Follow Up Kembali)",
+        ]):
+            await db.lists.insert_one({
+                "id": new_id(), "board_id": doc["id"], "name": lname, "color": None,
+                "position": (idx + 1) * 1000, "created_at": now_iso(),
+            })
     return clean(doc)
 
 
@@ -162,6 +177,8 @@ class UpdateBoardBody(BaseModel):
     background: Optional[str] = None
     division_id: Optional[str] = None
     member_ids: Optional[List[str]] = None
+    description: Optional[str] = None
+    visibility: Optional[str] = None
 
 
 @router.patch("/boards/{board_id}")
@@ -182,12 +199,84 @@ async def archive_board(board_id: str, user=Depends(get_current_user)):
     return {"ok": True}
 
 
+@router.post("/boards/{board_id}/unarchive")
+async def unarchive_board(board_id: str, user=Depends(get_current_user)):
+    require_admin(user)
+    await db.boards.update_one({"id": board_id}, {"$set": {"is_archived": False}})
+    return {"ok": True}
+
+
+@router.get("/boards-archived")
+async def list_archived_boards(user=Depends(get_current_user)):
+    require_admin(user)
+    return clean_many(await db.boards.find({"is_archived": True}).to_list(200))
+
+
+class CopyBoardBody(BaseModel):
+    name: str
+    with_cards: bool = False
+
+
+@router.post("/boards/{board_id}/copy")
+async def copy_board(board_id: str, body: CopyBoardBody, user=Depends(get_current_user)):
+    require_admin(user)
+    src = await get_board(board_id)
+    new_board = {
+        "id": new_id(),
+        "name": body.name.strip(),
+        "division_id": src.get("division_id"),
+        "background": src.get("background", "#0079bf"),
+        "description": src.get("description", ""),
+        "visibility": src.get("visibility", "workspace"),
+        "member_ids": src.get("member_ids", []),
+        "is_archived": False,
+        "created_by": user["id"],
+        "created_at": now_iso(),
+    }
+    await db.boards.insert_one(new_board)
+    lists = clean_many(await db.lists.find({"board_id": board_id, "archived": {"$ne": True}}).sort("position", 1).to_list(200))
+    list_id_map = {}
+    for l in lists:
+        nl = {"id": new_id(), "board_id": new_board["id"], "name": l["name"], "color": l.get("color"),
+              "entry_requirements": l.get("entry_requirements"), "position": l["position"], "created_at": now_iso()}
+        list_id_map[l["id"]] = nl["id"]
+        await db.lists.insert_one(nl)
+    for lab in clean_many(await db.labels.find({"board_id": board_id}).to_list(200)):
+        await db.labels.insert_one({"id": new_id(), "board_id": new_board["id"], "name": lab["name"], "color": lab["color"], "created_at": now_iso()})
+    if body.with_cards:
+        cards = clean_many(await db.work_items.find({"board_id": board_id, "archived": {"$ne": True}}).to_list(500))
+        pos_counter = {}
+        for c in cards:
+            target_list = list_id_map.get(c["list_id"])
+            pos_counter[target_list] = pos_counter.get(target_list, 0) + 1000
+            nc = {
+                "id": new_id(), "title": c["title"], "client_name": c.get("client_name", ""),
+                "description": c.get("description", ""), "board_id": new_board["id"],
+                "list_id": target_list, "position": float(pos_counter[target_list]),
+                "label_ids": [], "due_date": c.get("due_date"), "start_date": None, "priority": c.get("priority", "none"),
+                "status": "active", "archived": False, "needs_approval": c.get("needs_approval", False),
+                "created_by": user["id"], "created_by_name": user["name"],
+                "member_ids": [], "division_ids": c.get("division_ids", []),
+                "mirror_board_ids": [], "checklists": [
+                    {**cl, "items": [{**it, "done": False} for it in cl.get("items", [])]}
+                    for cl in c.get("checklists", [])
+                ], "watcher_ids": [],
+                "cover_color": None, "cover_attachment_id": None, "custom_fields": c.get("custom_fields", []),
+                "distribution_status": "menunggu", "distribution_updated_at": now_iso(),
+                "created_at": now_iso(), "updated_at": now_iso(),
+                "completed_at": None, "submitted_by": None, "approved_by": None,
+            }
+            if nc["list_id"]:
+                await db.work_items.insert_one(nc)
+    return clean(new_board)
+
+
 @router.get("/boards/{board_id}/full")
 async def board_full(board_id: str, user=Depends(get_current_user)):
     board = await get_board(board_id)
     if not can_view_board(user, board):
         raise HTTPException(403, "Anda tidak memiliki akses ke board ini")
-    lists = clean_many(await db.lists.find({"board_id": board_id}).sort("position", 1).to_list(200))
+    lists = clean_many(await db.lists.find({"board_id": board_id, "archived": {"$ne": True}}).sort("position", 1).to_list(200))
     labels = clean_many(await db.labels.find({"board_id": board_id}).to_list(200))
     cards = clean_many(await db.work_items.find(
         {"$or": [{"board_id": board_id}, {"mirror_board_ids": board_id}], "archived": {"$ne": True}}
@@ -246,6 +335,7 @@ class UpdateListBody(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
     entry_requirements: Optional[List[str]] = None
+    archived: Optional[bool] = None
 
 
 @router.patch("/lists/{list_id}")
@@ -282,6 +372,71 @@ async def reorder_lists(board_id: str, body: ReorderListsBody, user=Depends(get_
     for idx, lid in enumerate(body.ordered_ids):
         await db.lists.update_one({"id": lid, "board_id": board_id}, {"$set": {"position": (idx + 1) * 1000}})
     await broadcast_board(board_id)
+    return {"ok": True}
+
+
+@router.post("/lists/{list_id}/copy")
+async def copy_list(list_id: str, user=Depends(get_current_user)):
+    src = await db.lists.find_one({"id": list_id})
+    if not src:
+        raise HTTPException(404, "List tidak ditemukan")
+    count = await db.lists.count_documents({"board_id": src["board_id"]})
+    nl = {
+        "id": new_id(), "board_id": src["board_id"], "name": f"{src['name']} (salinan)",
+        "color": src.get("color"), "entry_requirements": src.get("entry_requirements"),
+        "position": (count + 1) * 1000, "created_at": now_iso(),
+    }
+    await db.lists.insert_one(nl)
+    cards = clean_many(await db.work_items.find({"list_id": list_id, "archived": {"$ne": True}}).to_list(500))
+    for c in cards:
+        nc = dict(c)
+        nc["id"] = new_id()
+        nc["list_id"] = nl["id"]
+        nc["member_ids"] = []
+        nc["mirror_board_ids"] = []
+        nc["watcher_ids"] = []
+        nc["distribution_status"] = "menunggu"
+        nc["status"] = "active"
+        nc["created_by"] = user["id"]
+        nc["created_by_name"] = user["name"]
+        nc["created_at"] = now_iso()
+        nc["updated_at"] = now_iso()
+        nc["completed_at"] = None
+        await db.work_items.insert_one(nc)
+    await broadcast_board(src["board_id"])
+    return clean(nl)
+
+
+@router.post("/lists/{list_id}/archive-all-cards")
+async def archive_all_cards(list_id: str, user=Depends(get_current_user)):
+    lst = await db.lists.find_one({"id": list_id})
+    if not lst:
+        raise HTTPException(404, "List tidak ditemukan")
+    res = await db.work_items.update_many(
+        {"list_id": list_id, "archived": {"$ne": True}},
+        {"$set": {"archived": True, "updated_at": now_iso()}},
+    )
+    await broadcast_board(lst["board_id"])
+    return {"ok": True, "archived": res.modified_count}
+
+
+class MoveListBody(BaseModel):
+    board_id: str
+
+
+@router.post("/lists/{list_id}/move")
+async def move_list(list_id: str, body: MoveListBody, user=Depends(get_current_user)):
+    require_supervisor(user)
+    lst = await db.lists.find_one({"id": list_id})
+    if not lst:
+        raise HTTPException(404, "List tidak ditemukan")
+    target = await get_board(body.board_id)
+    count = await db.lists.count_documents({"board_id": body.board_id})
+    old_board = lst["board_id"]
+    await db.lists.update_one({"id": list_id}, {"$set": {"board_id": body.board_id, "position": (count + 1) * 1000}})
+    await db.work_items.update_many({"list_id": list_id}, {"$set": {"board_id": body.board_id, "updated_at": now_iso()}})
+    await broadcast_board(old_board)
+    await broadcast_board(target["id"])
     return {"ok": True}
 
 

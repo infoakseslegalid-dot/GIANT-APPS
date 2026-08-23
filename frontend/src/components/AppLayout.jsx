@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutGrid, Home, Briefcase, ListChecks, Settings, LogOut, Search, ChevronDown, Trello,
-  Database, CalendarClock, BarChart3,
+  Database, CalendarClock, BarChart3, CalendarDays,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -103,6 +102,17 @@ export default function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
+        e.preventDefault();
+        document.querySelector('[data-testid="global-search-input"]')?.focus();
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
   const isBoard = location.pathname.startsWith("/board/");
   const isAdminRole = ["super_admin", "admin"].includes(user?.role);
   const isSupervisorUp = ["super_admin", "admin", "supervisor"].includes(user?.role);
@@ -175,6 +185,7 @@ export default function AppLayout() {
           <aside className="w-60 bg-white border-r overflow-y-auto minimal-scrollbar shrink-0 py-4 px-3 space-y-1" data-testid="app-sidebar">
             {navItem("/", <Home size={16} />, "Dashboard", "nav-dashboard")}
             {navItem("/my-work", <Briefcase size={16} />, "Pekerjaan Saya", "nav-my-work")}
+            {navItem("/calendar", <CalendarDays size={16} />, "Kalender", "nav-calendar")}
             {isSupervisorUp && navItem("/work", <ListChecks size={16} />, "Semua Pekerjaan", "nav-all-work")}
             <div className="pt-4 pb-1 px-3 flex items-center gap-2">
               <LayoutGrid size={12} className="text-[#8590A2]" />

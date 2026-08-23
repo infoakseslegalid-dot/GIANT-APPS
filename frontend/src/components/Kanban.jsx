@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  MessageSquare, Paperclip, CheckSquare, AlignLeft, Link2, MoreHorizontal, Pencil, Trash2, Plus, X, ShieldCheck,
+  MessageSquare, Paperclip, CheckSquare, AlignLeft, Link2, MoreHorizontal, Pencil, Trash2, Plus, X,
+  ShieldCheck, ChevronDown, ChevronRight, Copy, FolderInput, Archive, ArchiveX,
 } from "lucide-react";
 import { Avatar, LabelChip, DueBadge, PriorityFlag, StatusBadge } from "./common";
+import { API } from "../lib/api";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
 
 export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
@@ -34,61 +37,68 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
       {...listeners}
       onClick={onClick}
       data-testid={`card-tile-${card.id}`}
-      className="bg-white rounded-lg shadow-sm hover:bg-gray-50 border-b border-gray-300 p-3 cursor-pointer group flex flex-col gap-2 relative"
+      className="bg-white rounded-lg shadow-sm hover:bg-gray-50 border-b border-gray-300 cursor-pointer group flex flex-col relative overflow-hidden"
     >
-      <button
-        aria-label="Edit Kartu"
-        data-testid={`card-quick-edit-${card.id}`}
-        onClick={(e) => { e.stopPropagation(); onClick(); }}
-        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-gray-200 text-[#44546F]"
-      >
-        <Pencil size={12} />
-      </button>
-      {cardLabels.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {cardLabels.map((l) => (
-            <LabelChip key={l.id} label={l} />
-          ))}
-        </div>
-      )}
-      <div>
-        <p className="text-sm font-medium text-[#172B4D] leading-snug pr-4">{card.title}</p>
-        {card.client_name && <p className="text-xs text-[#44546F] mt-0.5">{card.client_name}</p>}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <StatusBadge status={card.status} />
-        <PriorityFlag priority={card.priority} />
-        <DueBadge dueDate={card.due_date} status={card.status} />
-        {noPic && card.status !== "done" && (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#E3FCEF] text-[#216E4E] border border-[#22A06B]" data-testid={`card-open-badge-${card.id}`}>
-            Belum ada PIC
-          </span>
+      {card.cover_attachment_id ? (
+        <img src={`${API}/attachments/${card.cover_attachment_id}/download`} alt="" className="w-full h-20 object-cover" />
+      ) : card.cover_color ? (
+        <div className="w-full h-5" style={{ backgroundColor: card.cover_color }} />
+      ) : null}
+      <div className="p-3 flex flex-col gap-2">
+        <button
+          aria-label="Edit Kartu"
+          data-testid={`card-quick-edit-${card.id}`}
+          onClick={(e) => { e.stopPropagation(); onClick(); }}
+          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-white/80 hover:bg-gray-200 text-[#44546F] z-10"
+        >
+          <Pencil size={12} />
+        </button>
+        {cardLabels.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {cardLabels.map((l) => (
+              <LabelChip key={l.id} label={l} />
+            ))}
+          </div>
         )}
-      </div>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[#44546F]">
-          {card.description ? <AlignLeft size={13} /> : null}
-          {isMirror && <Link2 size={13} className="text-[#2684FF]" aria-label="Kartu mirror" />}
-          {clTotal > 0 && (
-            <span className={`flex items-center gap-1 text-[11px] font-semibold ${clDone === clTotal ? "text-[#22A06B]" : ""}`}>
-              <CheckSquare size={13} /> {clDone}/{clTotal}
-            </span>
-          )}
-          {(card.comment_count || 0) > 0 && (
-            <span className="flex items-center gap-1 text-[11px]">
-              <MessageSquare size={13} /> {card.comment_count}
-            </span>
-          )}
-          {(card.attachment_count || 0) > 0 && (
-            <span className="flex items-center gap-1 text-[11px]">
-              <Paperclip size={13} /> {card.attachment_count}
+        <div>
+          <p className="text-sm font-medium text-[#172B4D] leading-snug pr-4">{card.title}</p>
+          {card.client_name && <p className="text-xs text-[#44546F] mt-0.5">{card.client_name}</p>}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge status={card.status} />
+          <PriorityFlag priority={card.priority} />
+          <DueBadge dueDate={card.due_date} status={card.status} />
+          {noPic && card.status !== "done" && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#E3FCEF] text-[#216E4E] border border-[#22A06B]" data-testid={`card-open-badge-${card.id}`}>
+              Belum ada PIC
             </span>
           )}
         </div>
-        <div className="flex -space-x-1.5">
-          {members.slice(0, 4).map((m) => (
-            <Avatar key={m.id} name={m.name} color={m.avatar_color} size="h-6 w-6 text-[10px]" />
-          ))}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[#44546F]">
+            {card.description ? <AlignLeft size={13} /> : null}
+            {isMirror && <Link2 size={13} className="text-[#2684FF]" aria-label="Kartu mirror" />}
+            {clTotal > 0 && (
+              <span className={`flex items-center gap-1 text-[11px] font-semibold ${clDone === clTotal ? "text-[#22A06B]" : ""}`}>
+                <CheckSquare size={13} /> {clDone}/{clTotal}
+              </span>
+            )}
+            {(card.comment_count || 0) > 0 && (
+              <span className="flex items-center gap-1 text-[11px]">
+                <MessageSquare size={13} /> {card.comment_count}
+              </span>
+            )}
+            {(card.attachment_count || 0) > 0 && (
+              <span className="flex items-center gap-1 text-[11px]">
+                <Paperclip size={13} /> {card.attachment_count}
+              </span>
+            )}
+          </div>
+          <div className="flex -space-x-1.5">
+            {members.slice(0, 4).map((m) => (
+              <Avatar key={m.id} name={m.name} color={m.avatar_color} size="h-6 w-6 text-[10px]" />
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -154,24 +164,57 @@ export function AddCardComposer({ onAdd, testidPrefix }) {
   );
 }
 
-export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardId, onCardClick, onAddCard, onRenameList, onDeleteList, onSetRequirements, canManage }) {
+const SORTS = [
+  { value: "default", label: "Urutan manual" },
+  { value: "newest", label: "Terbaru" },
+  { value: "title", label: "Judul A-Z" },
+  { value: "due", label: "Tenggat terdekat" },
+];
+
+export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardId, allBoards, onCardClick, onAddCard, onRenameList, onDeleteList, onSetRequirements, onArchiveAllCards, onCopyList, onMoveList, onArchiveList, canManage }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: list.id,
     data: { type: "list", list },
   });
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(list.name);
+  const [collapsed, setCollapsed] = useState(false);
+  const [sortMode, setSortMode] = useState("default");
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const sortedCards = useMemo(() => {
+    const arr = [...cards];
+    if (sortMode === "newest") arr.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    if (sortMode === "title") arr.sort((a, b) => a.title.localeCompare(b.title));
+    if (sortMode === "due") arr.sort((a, b) => (a.due_date || "9999").localeCompare(b.due_date || "9999"));
+    return arr;
+  }, [cards, sortMode]);
+
   const saveName = () => {
     setEditing(false);
     if (name.trim() && name.trim() !== list.name) onRenameList(list.id, name.trim());
     else setName(list.name);
   };
+
+  if (collapsed) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        data-testid={`list-column-${list.id}`}
+        className="w-12 shrink-0 bg-[#f1f2f4] rounded-xl flex flex-col items-center py-3 gap-2 shadow-sm cursor-pointer hover:bg-[#e4e6ea] transition-colors max-h-full"
+        onClick={() => setCollapsed(false)}
+      >
+        <ChevronRight size={14} className="text-[#44546F]" />
+        <span className="text-xs font-semibold text-[#172B4D] [writing-mode:vertical-rl] rotate-180 truncate max-h-48">{list.name}</span>
+        <span className="text-[10px] font-bold text-[#8590A2] bg-white rounded-full px-1.5 py-0.5">{cards.length}</span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -205,35 +248,85 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
             <span className="ml-1 text-xs font-normal text-[#8590A2]">{cards.length}</span>
           </h2>
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              aria-label="Menu List"
-              data-testid={`list-menu-${list.id}`}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded hover:bg-[#091E4224] text-[#44546F] transition-colors"
-            >
-              <MoreHorizontal size={16} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-white shadow-lg">
-            <DropdownMenuItem data-testid={`list-rename-${list.id}`} onClick={() => setEditing(true)} className="cursor-pointer">
-              <Pencil size={14} className="mr-2" /> Ubah nama
-            </DropdownMenuItem>
-            {canManage && (
-              <DropdownMenuItem data-testid={`list-requirements-${list.id}`} onClick={() => onSetRequirements(list)} className="cursor-pointer">
-                <ShieldCheck size={14} className="mr-2" /> Atur syarat masuk
+        <div className="flex items-center shrink-0">
+          <button
+            aria-label="Ciutkan list"
+            data-testid={`list-collapse-${list.id}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => setCollapsed(true)}
+            className="p-1 rounded hover:bg-[#091E4224] text-[#44546F] transition-colors"
+          >
+            <ChevronDown size={15} />
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label="Menu List"
+                data-testid={`list-menu-${list.id}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="p-1 rounded hover:bg-[#091E4224] text-[#44546F] transition-colors"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-white shadow-lg w-56">
+              <DropdownMenuItem data-testid={`list-rename-${list.id}`} onClick={() => setEditing(true)} className="cursor-pointer">
+                <Pencil size={14} className="mr-2" /> Ubah nama
               </DropdownMenuItem>
-            )}
-            <DropdownMenuItem data-testid={`list-delete-${list.id}`} onClick={() => onDeleteList(list.id)} className="text-[#CA3521] cursor-pointer">
-              <Trash2 size={14} className="mr-2" /> Hapus list (arsipkan kartu)
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {canManage && (
+                <DropdownMenuItem data-testid={`list-requirements-${list.id}`} onClick={() => onSetRequirements(list)} className="cursor-pointer">
+                  <ShieldCheck size={14} className="mr-2" /> Atur syarat masuk
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger data-testid={`list-sort-${list.id}`} className="cursor-pointer">
+                  <ChevronDown size={14} className="mr-2" /> Urutkan kartu
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="bg-white shadow-lg">
+                  {SORTS.map((s) => (
+                    <DropdownMenuItem key={s.value} data-testid={`list-sort-${s.value}-${list.id}`} onClick={() => setSortMode(s.value)} className={`cursor-pointer ${sortMode === s.value ? "font-bold text-[#0C66E4]" : ""}`}>
+                      {s.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem data-testid={`list-copy-${list.id}`} onClick={() => onCopyList(list.id)} className="cursor-pointer">
+                <Copy size={14} className="mr-2" /> Salin list
+              </DropdownMenuItem>
+              {canManage && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger data-testid={`list-move-${list.id}`} className="cursor-pointer">
+                    <FolderInput size={14} className="mr-2" /> Pindah ke board
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-white shadow-lg">
+                    {(allBoards || []).filter((b) => b.id !== currentBoardId).map((b) => (
+                      <DropdownMenuItem key={b.id} data-testid={`list-move-to-${b.id}`} onClick={() => onMoveList(list.id, b.id)} className="cursor-pointer">
+                        {b.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem data-testid={`list-archive-cards-${list.id}`} onClick={() => onArchiveAllCards(list.id)} className="cursor-pointer">
+                <ArchiveX size={14} className="mr-2" /> Arsipkan semua kartu
+              </DropdownMenuItem>
+              {canManage && (
+                <DropdownMenuItem data-testid={`list-archive-${list.id}`} onClick={() => onArchiveList(list.id)} className="cursor-pointer">
+                  <Archive size={14} className="mr-2" /> Arsipkan list
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem data-testid={`list-delete-${list.id}`} onClick={() => onDeleteList(list.id)} className="text-[#CA3521] cursor-pointer">
+                <Trash2 size={14} className="mr-2" /> Hapus list
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto minimal-scrollbar px-2 pb-1 space-y-2 min-h-[8px]">
-        <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-          {cards.map((card) => (
+        <SortableContext items={sortedCards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+          {sortedCards.map((card) => (
             <CardTile
               key={card.id}
               card={card}

@@ -51,4 +51,33 @@ async def advance_hari_job():
         item["hari_stage"] = target
         await broadcast_item(item)
         advanced += 1
+
+    today = now.strftime("%Y-%m-%d")
+    tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    due_items = await db.work_items.find({
+        "due_date": {"$in": [today, tomorrow]},
+        "archived": {"$ne": True},
+        "status": {"$ne": "done"},
+    }).to_list(2000)
+    for item in due_items:
+        already = await db.notifications.find_one({
+            "work_item_id": item["id"], "type": "due",
+            "created_at": {"$regex": f"^{today}"},
+        })
+        if already:
+            continue
+        targets = list(set(
+            (item.get("member_ids") or []) + (item.get("watcher_ids") or []) + [item.get("created_by")]
+        ))
+        label = "hari ini" if item["due_date"] == today else "besok"
+        for uid in targets:
+            if not uid:
+                continue
+            await db.notifications.insert_one({
+                "id": __import__("uuid").uuid4().hex, "user_id": uid, "type": "due",
+                "title": f"Jatuh tempo {label}",
+                "body": f"\"{item['title']}\" jatuh tempo {label} ({item['due_date']})",
+                "work_item_id": item["id"], "board_id": item.get("board_id"),
+                "is_read": False, "created_at": now_iso(),
+            })
     return advanced
