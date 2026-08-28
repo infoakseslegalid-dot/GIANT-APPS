@@ -7,7 +7,7 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://perizinan-hub.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 API = f"{BASE_URL}/api"
 
 ADMIN = {"email": "info.akseslegal.id@gmail.com", "password": "Admin123!"}
@@ -221,7 +221,7 @@ class TestWorkItemFlow:
         elis_session.post(f"{API}/work-items/{item_id}/claim")
         r = elis_session.post(f"{API}/work-items/{item_id}/submit")
         assert r.status_code == 200
-        assert r.json()["status"] == "submitted"
+        assert r.json()["status"] in ("MENUNGGU", "submitted")
 
         # staff cannot approve
         r = elis_session.post(f"{API}/work-items/{item_id}/approve")
@@ -230,7 +230,7 @@ class TestWorkItemFlow:
         # admin approves
         r = admin_session.post(f"{API}/work-items/{item_id}/approve")
         assert r.status_code == 200
-        assert r.json()["status"] == "done"
+        assert r.json()["status"] in ("SELESAI", "done")
 
         admin_session.delete(f"{API}/work-items/{item_id}")
 
@@ -442,7 +442,7 @@ class TestApprovalSeed:
         full = admin_session.get(f"{API}/boards/{b['id']}/full").json()
         card = next((c for c in full["cards"] if "Nusantara" in c.get("title", "")), None)
         assert card is not None, "Seed card 'PT Nusantara Jaya' missing"
-        assert card.get("status") == "submitted", f"expected submitted, got {card.get('status')}"
+        assert card.get("status") in ("MENUNGGU", "submitted"), f"expected submitted/MENUNGGU, got {card.get('status')}"
 
     def test_graha_mirror_seed(self, admin_session):
         boards = admin_session.get(f"{API}/boards").json()

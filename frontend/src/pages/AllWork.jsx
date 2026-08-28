@@ -59,9 +59,11 @@ export default function AllWork() {
         </select>
         <select data-testid="allwork-status-filter" value={status} onChange={(e) => setStatus(e.target.value)} className={selectCls}>
           <option value="">Semua Status</option>
-          <option value="active">Aktif</option>
-          <option value="submitted">Menunggu Approval</option>
-          <option value="done">Selesai</option>
+          <option value="BARU">Baru</option>
+          <option value="PROSES">Proses / Aktif</option>
+          <option value="MENUNGGU">Menunggu Approval</option>
+          <option value="REVISI">Revisi</option>
+          <option value="SELESAI">Selesai</option>
         </select>
       </div>
 

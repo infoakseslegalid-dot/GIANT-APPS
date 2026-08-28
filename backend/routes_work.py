@@ -9,7 +9,8 @@ from deps import (
     db, now_iso, today_str, new_id, clean, clean_many, get_current_user,
     require_supervisor, get_board, can_view_board, get_work_item, log_activity,
     notify, broadcast_board, broadcast_item, run_automation, ADMIN_ROLES,
-    SUPERVISOR_ROLES, public_user,
+    SUPERVISOR_ROLES, public_user, DISTRIBUTION_STATUSES, WORK_STATUSES,
+    is_done_status, is_submitted_status, is_active_status,
 )
 from storage import put_object, get_object
 
@@ -18,12 +19,79 @@ router = APIRouter(tags=["work"])
 PRIORITIES = ("none", "low", "medium", "high", "urgent")
 
 
+async def get_or_create_client_helper(client_name: Optional[str], client_id: Optional[str], user_id: str) -> tuple[Optional[str], str]:
+    if client_id:
+        c = await db.clients.find_one({"id": client_id})
+        if c:
+            return c["id"], c["name"]
+    if client_name and client_name.strip():
+        name = client_name.strip()
+        existing = await db.clients.find_one({"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}})
+        if existing:
+            return existing["id"], existing["name"]
+        cid = new_id()
+        cdoc = {
+            "id": cid,
+            "name": name,
+            "business_type": "Perusahaan" if any(p in name.upper() for p in ["PT", "CV", "UD", "YAYASAN"]) else "Perorangan",
+            "pic_name": "",
+            "whatsapp": "",
+            "email": "",
+            "address": "",
+            "npwp": "",
+            "nib": "",
+            "created_by": user_id,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+        await db.clients.insert_one(cdoc)
+        return cid, name
+    return None, ""
+
+
+async def record_work_assignment(
+    work_item_id: str,
+    division_id: str,
+    user_id: Optional[str] = None,
+    assigned_by: Optional[str] = None,
+    status: str = "MENUNGGU_DIAMBIL",
+    unassigned_reason: Optional[str] = None,
+    claimed: bool = False,
+    completed: bool = False,
+) -> dict:
+    now = now_iso()
+    doc = {
+        "id": new_id(),
+        "work_item_id": work_item_id,
+        "division_id": division_id,
+        "user_id": user_id,
+        "assigned_by": assigned_by,
+        "assigned_at": now,
+        "claimed_at": now if (claimed or user_id) else None,
+        "status": status,
+        "completed_at": now if completed else None,
+        "unassigned_reason": unassigned_reason,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.work_assignments.insert_one(doc)
+    return doc
+
+
 async def get_item_checked(item_id: str, user: dict) -> dict:
     item = await get_work_item(item_id)
     board = await get_board(item["board_id"])
-    if not can_view_board(user, board):
-        raise HTTPException(403, "Anda tidak memiliki akses ke pekerjaan ini")
-    return item
+    if can_view_board(user, board):
+        return item
+    if user["id"] in (item.get("member_ids") or []):
+        return item
+    if user.get("division_id") and user["division_id"] in (item.get("division_ids") or []):
+        return item
+    for mbid in item.get("mirror_board_ids", []) or []:
+        mb = await db.boards.find_one({"id": mbid})
+        if mb and can_view_board(user, mb):
+            return item
+    raise HTTPException(403, "Anda tidak memiliki akses ke pekerjaan ini")
 
 
 STAGE_GATES = {4: ["AKTA", "SK"], 6: ["NPWP", "AKUN CORETAX", "SUKET"], 8: ["NIB"]}
@@ -89,6 +157,7 @@ class CreateItemBody(BaseModel):
     list_id: str
     title: str
     client_name: str = ""
+    client_id: Optional[str] = None
     description: str = ""
     priority: str = "none"
     due_date: Optional[str] = None
@@ -105,10 +174,17 @@ async def create_item(body: CreateItemBody, user=Depends(get_current_user)):
     if not lst:
         raise HTTPException(404, "List tidak ditemukan di board ini")
     count = await db.work_items.count_documents({"list_id": body.list_id, "archived": {"$ne": True}})
+    
+    cid, cname = await get_or_create_client_helper(body.client_name, body.client_id, user["id"])
+    div_ids = body.division_ids or ([board["division_id"]] if board.get("division_id") else [])
+    dist_status = "DIRECT_ASSIGNED" if body.member_ids else "MENUNGGU_DIAMBIL"
+    work_status = "PROSES" if body.member_ids else "BARU"
+    
     doc = {
         "id": new_id(),
         "title": body.title.strip(),
-        "client_name": body.client_name.strip(),
+        "client_name": cname or body.client_name.strip(),
+        "client_id": cid,
         "description": body.description,
         "board_id": body.board_id,
         "list_id": body.list_id,
@@ -116,13 +192,14 @@ async def create_item(body: CreateItemBody, user=Depends(get_current_user)):
         "label_ids": body.label_ids,
         "due_date": body.due_date,
         "priority": body.priority if body.priority in PRIORITIES else "none",
-        "status": "active",
+        "status": work_status,
+        "work_status": work_status,
         "archived": False,
         "needs_approval": body.needs_approval,
         "created_by": user["id"],
         "created_by_name": user["name"],
         "member_ids": body.member_ids,
-        "division_ids": body.division_ids or ([board["division_id"]] if board.get("division_id") else []),
+        "division_ids": div_ids,
         "mirror_board_ids": [],
         "checklists": [],
         "watcher_ids": [],
@@ -130,7 +207,7 @@ async def create_item(body: CreateItemBody, user=Depends(get_current_user)):
         "cover_color": None,
         "cover_attachment_id": None,
         "custom_fields": [],
-        "distribution_status": "diambil" if body.member_ids else "menunggu",
+        "distribution_status": dist_status,
         "distribution_updated_at": now_iso(),
         "created_at": now_iso(),
         "updated_at": now_iso(),
@@ -139,6 +216,20 @@ async def create_item(body: CreateItemBody, user=Depends(get_current_user)):
         "approved_by": None,
     }
     await db.work_items.insert_one(doc)
+    
+    # Record initial WorkAssignment for each division
+    for did in div_ids:
+        # Assign first member if available for this division
+        assigned_user = body.member_ids[0] if body.member_ids else None
+        await record_work_assignment(
+            work_item_id=doc["id"],
+            division_id=did,
+            user_id=assigned_user,
+            assigned_by=user["id"],
+            status=dist_status,
+            claimed=bool(assigned_user),
+        )
+
     await log_activity(doc["id"], doc["board_id"], user, f"membuat pekerjaan \"{doc['title']}\"")
     await ensure_requirement_checklist(doc, lst)
     await run_automation(doc["board_id"], "card_created", doc, user, doc["list_id"])
@@ -156,21 +247,38 @@ async def item_detail(item_id: str, user=Depends(get_current_user)):
     comments = clean_many(await db.comments.find({"work_item_id": item_id}).sort("created_at", 1).to_list(500))
     attachments = clean_many(await db.attachments.find({"work_item_id": item_id, "is_deleted": {"$ne": True}}).to_list(200))
     activities = clean_many(await db.activities.find({"work_item_id": item_id}).sort("created_at", -1).to_list(60))
+    assignments = clean_many(await db.work_assignments.find({"work_item_id": item_id}).sort("created_at", -1).to_list(100))
+    divisions = {d["id"]: d for d in clean_many(await db.divisions.find({}).to_list(100))}
+    users_map = {u["id"]: u for u in clean_many(await db.users.find({}).to_list(500))}
+    for a in assignments:
+        a["division_name"] = divisions.get(a.get("division_id"), {}).get("name")
+        a["division_color"] = divisions.get(a.get("division_id"), {}).get("color")
+        a["user_name"] = users_map.get(a.get("user_id"), {}).get("name") if a.get("user_id") else None
+        a["assigned_by_name"] = users_map.get(a.get("assigned_by"), {}).get("name") if a.get("assigned_by") else None
+    
     board_labels = clean_many(await db.labels.find({"board_id": item["board_id"]}).to_list(200))
     lst = await db.lists.find_one({"id": item["list_id"]})
     board = await db.boards.find_one({"id": item["board_id"]})
+    
+    client = None
+    if item.get("client_id"):
+        client = clean(await db.clients.find_one({"id": item["client_id"]}))
+    elif item.get("client_name"):
+        client = clean(await db.clients.find_one({"name": {"$regex": f"^{re.escape(item['client_name'])}$", "$options": "i"}}))
+        
     mirror_boards = []
     for bid in item.get("mirror_board_ids", []) or []:
         b = await db.boards.find_one({"id": bid})
         if b:
             mirror_boards.append({"id": b["id"], "name": b["name"]})
-    divisions = {d["id"]: d for d in clean_many(await db.divisions.find({}).to_list(100))}
     item["division_names"] = [
         {"id": d, "name": divisions[d]["name"], "color": divisions[d]["color"]}
         for d in item.get("division_ids", []) if d in divisions
     ]
     return {
         "item": item,
+        "client": client,
+        "assignments": assignments,
         "comments": comments,
         "attachments": attachments,
         "activities": activities,
@@ -181,9 +289,24 @@ async def item_detail(item_id: str, user=Depends(get_current_user)):
     }
 
 
+@router.get("/work-items/{item_id}/assignments")
+async def get_item_assignments(item_id: str, user=Depends(get_current_user)):
+    item = await get_item_checked(item_id, user)
+    assignments = clean_many(await db.work_assignments.find({"work_item_id": item_id}).sort("created_at", -1).to_list(100))
+    divisions = {d["id"]: d for d in clean_many(await db.divisions.find({}).to_list(100))}
+    users_map = {u["id"]: u for u in clean_many(await db.users.find({}).to_list(500))}
+    for a in assignments:
+        a["division_name"] = divisions.get(a.get("division_id"), {}).get("name")
+        a["division_color"] = divisions.get(a.get("division_id"), {}).get("color")
+        a["user_name"] = users_map.get(a.get("user_id"), {}).get("name") if a.get("user_id") else None
+        a["assigned_by_name"] = users_map.get(a.get("assigned_by"), {}).get("name") if a.get("assigned_by") else None
+    return assignments
+
+
 class UpdateItemBody(BaseModel):
     title: Optional[str] = None
     client_name: Optional[str] = None
+    client_id: Optional[str] = None
     description: Optional[str] = None
     due_date: Optional[str] = None
     start_date: Optional[str] = None
@@ -200,11 +323,19 @@ async def update_item(item_id: str, body: UpdateItemBody, user=Depends(get_curre
     item = await get_item_checked(item_id, user)
     updates = {}
     data = body.model_dump()
-    for field in ("title", "client_name", "description", "due_date", "start_date", "needs_approval", "label_ids", "cover_color", "cover_attachment_id", "custom_fields"):
+    for field in ("title", "description", "due_date", "start_date", "needs_approval", "label_ids", "cover_color", "cover_attachment_id", "custom_fields"):
         if data.get(field) is not None:
             updates[field] = data[field]
     if data.get("priority") is not None and data["priority"] in PRIORITIES:
         updates["priority"] = data["priority"]
+    if data.get("client_name") is not None or data.get("client_id") is not None:
+        c_name = data.get("client_name") if data.get("client_name") is not None else item.get("client_name")
+        c_id = data.get("client_id") if data.get("client_id") is not None else item.get("client_id")
+        cid, cname = await get_or_create_client_helper(c_name, c_id, user["id"])
+        if cid:
+            updates["client_id"] = cid
+        if cname:
+            updates["client_name"] = cname
     if not updates:
         return item
     updates["updated_at"] = now_iso()
@@ -221,6 +352,7 @@ async def delete_item(item_id: str, user=Depends(get_current_user)):
         raise HTTPException(403, "Hanya admin yang dapat menghapus pekerjaan")
     item = await get_work_item(item_id)
     await db.work_items.delete_one({"id": item_id})
+    await db.work_assignments.delete_many({"work_item_id": item_id})
     await db.comments.delete_many({"work_item_id": item_id})
     await db.attachments.update_many({"work_item_id": item_id}, {"$set": {"is_deleted": True}})
     await log_activity(None, item["board_id"], user, f"menghapus pekerjaan \"{item['title']}\"")
@@ -293,12 +425,64 @@ async def claim_item(item_id: str, user=Depends(get_current_user)):
     if user["id"] in members:
         raise HTTPException(400, "Anda sudah menjadi PIC pekerjaan ini")
     members.append(user["id"])
-    await db.work_items.update_one({"id": item_id}, {"$set": {"member_ids": members, "distribution_status": "diambil", "distribution_updated_at": now_iso(), "updated_at": now_iso()}})
+    now = now_iso()
+    new_work_status = "PROSES" if is_active_status(item.get("status")) else item.get("status", "PROSES")
+    await db.work_items.update_one(
+        {"id": item_id},
+        {"$set": {
+            "member_ids": members,
+            "distribution_status": "DIAMBIL",
+            "distribution_updated_at": now,
+            "status": new_work_status,
+            "work_status": new_work_status,
+            "updated_at": now,
+        }}
+    )
+
+    user_div_id = user.get("division_id")
+    open_assign = None
+    if user_div_id:
+        open_assign = await db.work_assignments.find_one({
+            "work_item_id": item_id,
+            "division_id": user_div_id,
+            "status": {"$in": ["MENUNGGU_DIAMBIL", "DILEPASKAN", "menunggu"]},
+        })
+    if not open_assign:
+        open_assign = await db.work_assignments.find_one({
+            "work_item_id": item_id,
+            "status": {"$in": ["MENUNGGU_DIAMBIL", "DILEPASKAN", "menunggu"]},
+        })
+
+    if open_assign:
+        await db.work_assignments.update_one(
+            {"id": open_assign["id"]},
+            {"$set": {
+                "user_id": user["id"],
+                "claimed_at": now,
+                "status": "DIAMBIL",
+                "updated_at": now,
+            }}
+        )
+    else:
+        div_to_assign = user_div_id or (item.get("division_ids") or [None])[0]
+        if div_to_assign:
+            await record_work_assignment(
+                work_item_id=item_id,
+                division_id=div_to_assign,
+                user_id=user["id"],
+                assigned_by=user["id"],
+                status="DIAMBIL",
+                claimed=True,
+            )
+
     await log_activity(item_id, item["board_id"], user, f"mengambil (claim) pekerjaan \"{item['title']}\"")
     await notify([item["created_by"]], "claimed", "Pekerjaan diambil",
                  f"{user['name']} mengambil pekerjaan \"{item['title']}\"",
                  item_id, item["board_id"], exclude={user["id"]})
     item["member_ids"] = members
+    item["distribution_status"] = "DIAMBIL"
+    item["status"] = new_work_status
+    item["work_status"] = new_work_status
     await broadcast_item(item)
     return {"ok": True, "member_ids": members}
 
@@ -312,7 +496,49 @@ async def release_item(item_id: str, body: ReleaseBody = None, user=Depends(get_
     item = await get_item_checked(item_id, user)
     reason = (body.reason if body else "") or ""
     members = [m for m in item.get("member_ids", []) if m != user["id"]]
-    await db.work_items.update_one({"id": item_id}, {"$set": {"member_ids": members, "distribution_status": "menunggu", "distribution_updated_at": now_iso(), "updated_at": now_iso()}})
+    now = now_iso()
+    new_dist = "DIAMBIL" if members else "DILEPASKAN"
+    new_work_status = "BARU" if not members and item.get("status") == "PROSES" else item.get("status", "BARU")
+
+    await db.work_items.update_one(
+        {"id": item_id},
+        {"$set": {
+            "member_ids": members,
+            "distribution_status": new_dist,
+            "distribution_updated_at": now,
+            "status": new_work_status,
+            "work_status": new_work_status,
+            "updated_at": now,
+        }}
+    )
+
+    active_assign = await db.work_assignments.find_one({
+        "work_item_id": item_id,
+        "user_id": user["id"],
+        "status": {"$in": ["DIAMBIL", "DIRECT_ASSIGNED", "diambil"]},
+    })
+    div_id = active_assign["division_id"] if active_assign else (user.get("division_id") or (item.get("division_ids") or [None])[0])
+
+    if active_assign:
+        await db.work_assignments.update_one(
+            {"id": active_assign["id"]},
+            {"$set": {
+                "status": "DILEPASKAN",
+                "unassigned_reason": reason or "Dilepaskan oleh anggota",
+                "updated_at": now,
+            }}
+        )
+
+    if div_id and not members:
+        await record_work_assignment(
+            work_item_id=item_id,
+            division_id=div_id,
+            user_id=None,
+            assigned_by=user["id"],
+            status="MENUNGGU_DIAMBIL",
+            claimed=False,
+        )
+
     log_text = f"melepas pekerjaan \"{item['title']}\""
     if reason:
         log_text += f" — Alasan: {reason}"
@@ -321,6 +547,9 @@ async def release_item(item_id: str, body: ReleaseBody = None, user=Depends(get_
                  f"{user['name']} melepaskan \"{item['title']}\"" + (f". Alasan: {reason}" if reason else ""),
                  item_id, item["board_id"], exclude={user["id"]})
     item["member_ids"] = members
+    item["distribution_status"] = new_dist
+    item["status"] = new_work_status
+    item["work_status"] = new_work_status
     await broadcast_item(item)
     return {"ok": True, "member_ids": members}
 
@@ -347,9 +576,66 @@ async def assign_item(item_id: str, body: AssignBody, user=Depends(get_current_u
         if did not in divisions:
             divisions.append(did)
     divisions = [d for d in divisions if d not in body.remove_division_ids]
-    await db.work_items.update_one({"id": item_id},
-        {"$set": {"member_ids": members, "division_ids": divisions, "updated_at": now_iso(),
-                  **({"distribution_status": "diambil", "distribution_updated_at": now_iso()} if body.add_user_ids else {})}})
+
+    now = now_iso()
+    dist_status = "DIRECT_ASSIGNED" if members else "MENUNGGU_DIAMBIL"
+    work_status = "PROSES" if members and item.get("status") in ("BARU", "active") else item.get("status", "BARU")
+
+    await db.work_items.update_one(
+        {"id": item_id},
+        {"$set": {
+            "member_ids": members,
+            "division_ids": divisions,
+            "distribution_status": dist_status,
+            "distribution_updated_at": now,
+            "status": work_status,
+            "work_status": work_status,
+            "updated_at": now,
+        }}
+    )
+
+    for uid in body.add_user_ids:
+        u_doc = await db.users.find_one({"id": uid})
+        u_div = (u_doc.get("division_id") if u_doc else None) or (divisions[0] if divisions else None)
+        if u_div:
+            open_assign = await db.work_assignments.find_one({
+                "work_item_id": item_id,
+                "division_id": u_div,
+                "status": {"$in": ["MENUNGGU_DIAMBIL", "DILEPASKAN", "menunggu"]},
+            })
+            if open_assign:
+                await db.work_assignments.update_one(
+                    {"id": open_assign["id"]},
+                    {"$set": {"user_id": uid, "assigned_by": user["id"], "claimed_at": now, "status": "DIRECT_ASSIGNED", "updated_at": now}}
+                )
+            else:
+                await record_work_assignment(
+                    work_item_id=item_id,
+                    division_id=u_div,
+                    user_id=uid,
+                    assigned_by=user["id"],
+                    status="DIRECT_ASSIGNED",
+                    claimed=True,
+                )
+
+    for did in body.add_division_ids:
+        exist_assign = await db.work_assignments.find_one({"work_item_id": item_id, "division_id": did})
+        if not exist_assign:
+            await record_work_assignment(
+                work_item_id=item_id,
+                division_id=did,
+                user_id=members[0] if members else None,
+                assigned_by=user["id"],
+                status="DIRECT_ASSIGNED" if members else "MENUNGGU_DIAMBIL",
+                claimed=bool(members),
+            )
+
+    for uid in body.remove_user_ids:
+        await db.work_assignments.update_many(
+            {"work_item_id": item_id, "user_id": uid, "status": {"$in": ["DIAMBIL", "DIRECT_ASSIGNED", "diambil"]}},
+            {"$set": {"status": "DILEPASKAN", "unassigned_reason": f"Dihapus oleh {user['name']}", "updated_at": now}}
+        )
+
     if body.add_user_ids:
         await log_activity(item_id, item["board_id"], user, f"menugaskan PIC pada \"{item['title']}\"")
         await notify(body.add_user_ids, "assigned", "Anda ditugaskan",
@@ -359,6 +645,9 @@ async def assign_item(item_id: str, body: AssignBody, user=Depends(get_current_u
         await log_activity(item_id, item["board_id"], user, f"menambahkan divisi pada \"{item['title']}\"")
     item["member_ids"] = members
     item["division_ids"] = divisions
+    item["distribution_status"] = dist_status
+    item["status"] = work_status
+    item["work_status"] = work_status
     await broadcast_item(item)
     return {"ok": True, "member_ids": members, "division_ids": divisions}
 
@@ -366,11 +655,12 @@ async def assign_item(item_id: str, body: AssignBody, user=Depends(get_current_u
 @router.post("/work-items/{item_id}/submit")
 async def submit_item(item_id: str, user=Depends(get_current_user)):
     item = await get_item_checked(item_id, user)
-    if item.get("status") == "done":
+    if is_done_status(item.get("status")):
         raise HTTPException(400, "Pekerjaan sudah selesai")
+    now = now_iso()
     if item.get("needs_approval"):
         await db.work_items.update_one({"id": item_id},
-            {"$set": {"status": "submitted", "submitted_by": user["id"], "updated_at": now_iso()}})
+            {"$set": {"status": "MENUNGGU", "work_status": "MENUNGGU", "submitted_by": user["id"], "updated_at": now}})
         await log_activity(item_id, item["board_id"], user, f"mengajukan penyelesaian \"{item['title']}\"")
         approvers = await db.users.find({
             "$or": [
@@ -383,7 +673,11 @@ async def submit_item(item_id: str, user=Depends(get_current_user)):
                      item_id, item["board_id"], exclude={user["id"]})
     else:
         await db.work_items.update_one({"id": item_id},
-            {"$set": {"status": "done", "completed_at": now_iso(), "updated_at": now_iso()}})
+            {"$set": {"status": "SELESAI", "work_status": "SELESAI", "completed_at": now, "updated_at": now}})
+        await db.work_assignments.update_many(
+            {"work_item_id": item_id, "status": {"$in": ["DIAMBIL", "DIRECT_ASSIGNED", "diambil"]}},
+            {"$set": {"completed_at": now, "updated_at": now}}
+        )
         await log_activity(item_id, item["board_id"], user, f"menyelesaikan pekerjaan \"{item['title']}\"")
     item = await get_work_item(item_id)
     await broadcast_item(item)
@@ -394,10 +688,15 @@ async def submit_item(item_id: str, user=Depends(get_current_user)):
 async def approve_item(item_id: str, user=Depends(get_current_user)):
     require_supervisor(user)
     item = await get_item_checked(item_id, user)
-    if item.get("status") != "submitted":
+    if not is_submitted_status(item.get("status")):
         raise HTTPException(400, "Pekerjaan tidak sedang menunggu persetujuan")
+    now = now_iso()
     await db.work_items.update_one({"id": item_id},
-        {"$set": {"status": "done", "completed_at": now_iso(), "approved_by": user["id"], "updated_at": now_iso()}})
+        {"$set": {"status": "SELESAI", "work_status": "SELESAI", "completed_at": now, "approved_by": user["id"], "updated_at": now}})
+    await db.work_assignments.update_many(
+        {"work_item_id": item_id, "status": {"$in": ["DIAMBIL", "DIRECT_ASSIGNED", "diambil"]}},
+        {"$set": {"completed_at": now, "updated_at": now}}
+    )
     await log_activity(item_id, item["board_id"], user, f"menyetujui penyelesaian \"{item['title']}\"")
     await notify(item.get("member_ids", []) + [item["created_by"]], "approved", "Pekerjaan disetujui",
                  f"{user['name']} menyetujui penyelesaian \"{item['title']}\"",
@@ -410,8 +709,15 @@ async def approve_item(item_id: str, user=Depends(get_current_user)):
 @router.post("/work-items/{item_id}/reopen")
 async def reopen_item(item_id: str, user=Depends(get_current_user)):
     item = await get_item_checked(item_id, user)
+    members = item.get("member_ids", [])
+    work_status = "PROSES" if members else "BARU"
+    now = now_iso()
     await db.work_items.update_one({"id": item_id},
-        {"$set": {"status": "active", "completed_at": None, "approved_by": None, "updated_at": now_iso()}})
+        {"$set": {"status": work_status, "work_status": work_status, "completed_at": None, "approved_by": None, "updated_at": now}})
+    await db.work_assignments.update_many(
+        {"work_item_id": item_id},
+        {"$set": {"completed_at": None, "updated_at": now}}
+    )
     await log_activity(item_id, item["board_id"], user, f"membuka kembali pekerjaan \"{item['title']}\"")
     item = await get_work_item(item_id)
     await broadcast_item(item)
@@ -728,7 +1034,15 @@ async def all_work(q: Optional[str] = None, division_id: Optional[str] = None,
     if division_id:
         filt["division_ids"] = division_id
     if status:
-        filt["status"] = status
+        st_upper = status.upper()
+        if st_upper in ("SELESAI", "DONE"):
+            filt["status"] = {"$in": ["SELESAI", "done"]}
+        elif st_upper in ("MENUNGGU", "SUBMITTED"):
+            filt["status"] = {"$in": ["MENUNGGU", "submitted"]}
+        elif st_upper in ("ACTIVE", "AKTIF", "PROSES", "BARU"):
+            filt["status"] = {"$in": ["BARU", "PROSES", "REVISI", "active"]}
+        else:
+            filt["status"] = {"$in": [status, status.upper(), status.lower()]}
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
         filt["$or"] = [{"title": rx}, {"client_name": rx}]
@@ -792,12 +1106,16 @@ async def move_hari(item_id: str, body: HariBody, user=Depends(get_current_user)
     if target == 8:
         lists = await db.lists.find({"board_id": item["board_id"]}).sort("position", 1).to_list(100)
         finish_list = next((l for l in lists if l["name"].upper().startswith("SKOR 6")), None)
-        updates = {"hari_stage": None, "hari_entered_at": None, "status": "done",
+        updates = {"hari_stage": None, "hari_entered_at": None, "status": "SELESAI", "work_status": "SELESAI",
                    "completed_at": now_iso(), "updated_at": now_iso()}
         if finish_list and finish_list["id"] != item["list_id"]:
             updates["list_id"] = finish_list["id"]
             updates["list_entered_at"] = now_iso()
         await db.work_items.update_one({"id": item_id}, {"$set": updates})
+        await db.work_assignments.update_many(
+            {"work_item_id": item_id, "status": {"$in": ["DIAMBIL", "DIRECT_ASSIGNED", "diambil"]}},
+            {"$set": {"completed_at": now_iso(), "updated_at": now_iso()}}
+        )
         await log_activity(item_id, item["board_id"], user, f"menyelesaikan proses harian \"{item['title']}\" (FINISH)")
     else:
         await db.work_items.update_one({"id": item_id},
@@ -826,7 +1144,7 @@ async def global_hari(user=Depends(get_current_user)):
     if not await can_access_hari(user):
         raise HTTPException(403, "Halaman ini hanya untuk tim Admin Draf, Pajak, Perizinan, Desain, dan admin")
     items = clean_many(await db.work_items.find(
-        {"hari_stage": {"$gte": 1, "$lte": 7}, "archived": {"$ne": True}, "status": {"$ne": "done"}}
+        {"hari_stage": {"$gte": 1, "$lte": 7}, "archived": {"$ne": True}, "status": {"$nin": ["done", "SELESAI"]}}
     ).to_list(1000))
     await enrich_items(items)
     for i in items:
@@ -859,7 +1177,7 @@ async def global_skor(user=Depends(get_current_user)):
         lname = lst["name"].upper()
         dkey = key_by_id.get(board.get("division_id"))
         bucket = None
-        if item.get("status") == "done" or lname.startswith("SKOR 6"):
+        if is_done_status(item.get("status")) or lname.startswith("SKOR 6"):
             bucket = "6"
         elif item.get("hari_stage") or (dkey == "cs" and lname.startswith("SKOR 5")):
             bucket = "5"
@@ -908,7 +1226,7 @@ async def bank_data(division_id: str, user=Depends(get_current_user)):
     members = [public_user(u) for u in await db.users.find({"division_id": division_id, "is_active": {"$ne": False}}).to_list(200)]
     workload = []
     for m in members:
-        mine = [i for i in items if m["id"] in (i.get("member_ids") or []) and i.get("status") != "done"]
+        mine = [i for i in items if m["id"] in (i.get("member_ids") or []) and not is_done_status(i.get("status"))]
         by_list = {}
         for i in mine:
             lname = i.get("list_name") or "?"
@@ -938,7 +1256,8 @@ async def send_item(item_id: str, body: SendBody, user=Depends(get_current_user)
     if not target_boards:
         raise HTTPException(400, f"Divisi {division['name']} belum memiliki board")
     target_board = target_boards[0]
-    updates = {"updated_at": now_iso()}
+    now = now_iso()
+    updates = {"updated_at": now}
     if body.list_id:
         lst = await db.lists.find_one({"id": body.list_id, "board_id": target_board["id"]})
         if not lst:
@@ -953,22 +1272,35 @@ async def send_item(item_id: str, body: SendBody, user=Depends(get_current_user)
     for uid in body.member_ids:
         if uid not in members:
             members.append(uid)
+
+    dist_status = "DIRECT_ASSIGNED" if body.member_ids else "MENUNGGU_DIAMBIL"
     updates["mirror_board_ids"] = mirrors
     updates["division_ids"] = divisions
     updates["member_ids"] = members
-    updates["distribution_status"] = "diambil" if members else "menunggu"
-    updates["distribution_updated_at"] = now_iso()
+    updates["distribution_status"] = dist_status
+    updates["distribution_updated_at"] = now
     if body.priority and body.priority in PRIORITIES:
         updates["priority"] = body.priority
     if body.due_date:
         updates["due_date"] = body.due_date
     await db.work_items.update_one({"id": item_id}, {"$set": updates})
+
+    assigned_user = body.member_ids[0] if body.member_ids else None
+    await record_work_assignment(
+        work_item_id=item_id,
+        division_id=body.division_id,
+        user_id=assigned_user,
+        assigned_by=user["id"],
+        status=dist_status,
+        claimed=bool(assigned_user),
+    )
+
     if body.note.strip():
         await db.comments.insert_one({
             "id": new_id(), "work_item_id": item_id, "user_id": user["id"],
             "user_name": user["name"], "avatar_color": user.get("avatar_color", "#0C66E4"),
             "text": body.note.strip(), "attachment_id": None, "mentions": [],
-            "reactions": {}, "edited_at": None, "created_at": now_iso(),
+            "reactions": {}, "edited_at": None, "created_at": now,
         })
     await log_activity(item_id, item["board_id"], user, f"mengirim \"{item['title']}\" ke Bank Data {division['name']}")
     if body.member_ids:
@@ -990,15 +1322,31 @@ async def takeover_item(item_id: str, user=Depends(get_current_user)):
     require_supervisor(user)
     item = await get_item_checked(item_id, user)
     old_members = item.get("member_ids", [])
+    now = now_iso()
     await db.work_items.update_one({"id": item_id}, {"$set": {
-        "member_ids": [user["id"]], "distribution_status": "diambil",
-        "distribution_updated_at": now_iso(), "updated_at": now_iso(),
+        "member_ids": [user["id"]], "distribution_status": "DIAMBIL",
+        "distribution_updated_at": now, "updated_at": now,
     }})
+    await db.work_assignments.update_many(
+        {"work_item_id": item_id, "status": {"$in": ["DIAMBIL", "DIRECT_ASSIGNED", "diambil"]}},
+        {"$set": {"status": "DILEPASKAN", "unassigned_reason": f"Diambil alih oleh supervisor {user['name']}", "updated_at": now}}
+    )
+    user_div = user.get("division_id") or (item.get("division_ids") or [None])[0]
+    if user_div:
+        await record_work_assignment(
+            work_item_id=item_id,
+            division_id=user_div,
+            user_id=user["id"],
+            assigned_by=user["id"],
+            status="DIAMBIL",
+            claimed=True,
+        )
     await log_activity(item_id, item["board_id"], user, f"mengambil alih pekerjaan \"{item['title']}\"")
     await notify(old_members + [item["created_by"]], "takeover", "Pekerjaan diambil alih",
                  f"{user['name']} mengambil alih \"{item['title']}\"",
                  item_id, item["board_id"], exclude={user["id"]})
     item["member_ids"] = [user["id"]]
+    item["distribution_status"] = "DIAMBIL"
     await broadcast_item(item)
     return {"ok": True}
 
@@ -1114,27 +1462,41 @@ async def convert_checklist_item(item_id: str, cl_id: str, sub_id: str, user=Dep
     if not sub:
         raise HTTPException(404, "Item checklist tidak ditemukan")
     count = await db.work_items.count_documents({"list_id": item["list_id"], "archived": {"$ne": True}})
+    div_ids = item.get("division_ids", [])
+    now = now_iso()
     doc = {
         "id": new_id(),
         "title": sub["text"],
         "client_name": item.get("client_name", ""),
+        "client_id": item.get("client_id"),
         "description": f"Dari checklist kartu: {item['title']}",
         "board_id": item["board_id"],
         "list_id": item["list_id"],
         "position": (count + 1) * 1000.0,
         "label_ids": [], "due_date": None, "start_date": None, "priority": "none",
-        "status": "active", "archived": False, "needs_approval": False,
+        "status": "BARU", "work_status": "BARU", "archived": False, "needs_approval": False,
         "created_by": user["id"], "created_by_name": user["name"],
-        "member_ids": [], "division_ids": item.get("division_ids", []),
+        "member_ids": [], "division_ids": div_ids,
         "mirror_board_ids": [], "checklists": [], "watcher_ids": [],
         "cover_color": None, "cover_attachment_id": None, "custom_fields": [],
-        "distribution_status": "menunggu", "distribution_updated_at": now_iso(),
-        "created_at": now_iso(), "updated_at": now_iso(),
+        "distribution_status": "MENUNGGU_DIAMBIL", "distribution_updated_at": now,
+        "created_at": now, "updated_at": now,
         "completed_at": None, "submitted_by": None, "approved_by": None,
     }
     await db.work_items.insert_one(doc)
+
+    for did in div_ids:
+        await record_work_assignment(
+            work_item_id=doc["id"],
+            division_id=did,
+            user_id=None,
+            assigned_by=user["id"],
+            status="MENUNGGU_DIAMBIL",
+            claimed=False,
+        )
+
     sub["done"] = True
-    await db.work_items.update_one({"id": item_id}, {"$set": {"checklists": checklists, "updated_at": now_iso()}})
+    await db.work_items.update_one({"id": item_id}, {"$set": {"checklists": checklists, "updated_at": now}})
     await log_activity(item_id, item["board_id"], user, f"mengubah item checklist \"{sub['text']}\" menjadi kartu baru")
     await broadcast_item(item)
     return clean(doc)

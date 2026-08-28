@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { api, errMsg, PRIORITIES, fmtDateTime, fmtDate, LABEL_COLORS, API } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { Avatar } from "./common";
+import { Avatar, StatusBadge, DistributionStatusBadge } from "./common";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import SendWorkDialog from "./SendWorkDialog";
 
@@ -85,7 +85,7 @@ export default function CardModal({ itemId, onClose }) {
     );
   }
 
-  const { item, comments, attachments, activities, board_labels, list_name, board_name, mirror_boards } = data;
+  const { item, client, assignments, comments, attachments, activities, board_labels, list_name, board_name, mirror_boards } = data;
   const invalidate = () => {
     refetch();
     qc.invalidateQueries({ queryKey: ["board", item.board_id] });
@@ -96,6 +96,7 @@ export default function CardModal({ itemId, onClose }) {
     qc.invalidateQueries({ queryKey: ["global-hari"] });
     qc.invalidateQueries({ queryKey: ["global-skor"] });
     qc.invalidateQueries({ queryKey: ["calendar"] });
+    qc.invalidateQueries({ queryKey: ["clients"] });
   };
   const run = async (fn, successMsg) => {
     try {
@@ -108,6 +109,10 @@ export default function CardModal({ itemId, onClose }) {
       toast.error(errMsg(e));
     }
   };
+
+  const isDone = item.status === "done" || item.status === "SELESAI";
+  const isSubmitted = item.status === "submitted" || item.status === "MENUNGGU";
+  const isActive = !isDone && !isSubmitted;
 
   const isSupervisorUp = ["super_admin", "admin", "supervisor"].includes(user?.role);
   const isAdmin = ["super_admin", "admin"].includes(user?.role);
@@ -145,13 +150,9 @@ export default function CardModal({ itemId, onClose }) {
     const fd = new FormData();
     fd.append("file", file);
     try {
-      const r = await api.post(`/work-items/${itemId}/attachments`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      if (forComment) {
-        setPendingAttachment(r.data);
-        toast.success(`"${file.name}" siap dilampirkan ke komentar`);
-      } else {
-        toast.success("Lampiran diunggah");
-      }
+      const r = await api.post(`/work-items/${itemId}/attachments`, fd);
+      toast.success("Lampiran berhasil diunggah");
+      if (forComment) setPendingAttachment(r.data);
       invalidate();
     } catch (err) {
       toast.error(errMsg(err));
@@ -161,22 +162,26 @@ export default function CardModal({ itemId, onClose }) {
     }
   };
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/board/${item.board_id}?card=${item.id}`);
-    toast.success("Link kartu disalin");
-  };
+  const removeAttachment = (attId) => run(() => api.delete(`/attachments/${attId}`), "Lampiran dihapus");
 
   const addCustomField = () => {
     if (!cfName.trim()) return;
-    const cfs = [...(item.custom_fields || []), { id: Date.now().toString(36), name: cfName.trim(), value: cfValue.trim() }];
-    run(() => api.patch(`/work-items/${itemId}`, { custom_fields: cfs }));
+    const current = item.custom_fields || [];
+    const next = [...current, { id: "cf_" + Math.random().toString(36).slice(2, 8), name: cfName.trim(), value: cfValue.trim() }];
+    saveField("custom_fields", next);
     setCfName("");
     setCfValue("");
   };
 
-  const removeCustomField = (id) => {
-    const cfs = (item.custom_fields || []).filter((f) => f.id !== id);
-    run(() => api.patch(`/work-items/${itemId}`, { custom_fields: cfs }));
+  const removeCustomField = (cfId) => {
+    const next = (item.custom_fields || []).filter((f) => f.id !== cfId);
+    saveField("custom_fields", next);
+  };
+
+  const copyLink = () => {
+    const url = `${window.location.origin}/boards/${item.board_id}?card=${item.id}`;
+    navigator.clipboard.writeText(url);
+    toast.success("Link kartu disalin ke clipboard");
   };
 
   const reorderItem = (cl, subId, dir) => {
@@ -188,14 +193,21 @@ export default function CardModal({ itemId, onClose }) {
     run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/reorder`, { ordered_ids: ids }));
   };
 
-  const renderCommentText = (text) =>
-    text.split(/(@[\w\.]+)/g).map((part, i) =>
-      part.startsWith("@") ? (
-        <span key={i} className="text-[#0C66E4] font-semibold bg-[#E9F2FF] rounded px-0.5">{part}</span>
-      ) : (
-        <span key={i}>{part}</span>
-      )
-    );
+  const renderCommentText = (text) => {
+    const parts = (text || "").split(/(@[\w\.]+)/g);
+    return parts.map((part, idx) => {
+      if (part.startsWith("@")) {
+        return (
+          <span key={idx} className="font-semibold text-[#0C66E4] bg-[#E9F2FF] px-1 py-0.5 rounded">
+            {part}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
+
+  const toggleReaction = (commentId, emoji) => run(() => api.post(`/comments/${commentId}/react`, { emoji }));
 
   const feed = [
     ...(comments || []).map((c) => ({ kind: "comment", at: c.created_at, data: c })),
@@ -231,44 +243,50 @@ export default function CardModal({ itemId, onClose }) {
             onBlur={(e) => e.target.value.trim() && e.target.value !== item.title && saveField("title", e.target.value.trim())}
             className="w-full bg-transparent font-heading text-xl font-bold text-[#172B4D] outline-none rounded px-1 -ml-1 focus:bg-white focus:ring-2 focus:ring-[#0C66E4]"
           />
-          <p className="text-xs text-[#44546F] mt-1 px-1">
-            di list <span className="font-semibold underline">{list_name}</span> · board <span className="font-semibold">{board_name}</span>
-            {item.hari_stage ? <> · <span className="font-semibold text-[#E56910]">Proses HARI {item.hari_stage}</span></> : null}
-            {(mirror_boards || []).length > 0 && (
-              <> · ter-mirror di {mirror_boards.map((b) => (
-                <span key={b.id} className="inline-flex items-center gap-1 font-semibold text-[#2684FF]" data-testid={`mirrored-at-${b.id}`}>
-                  {b.name}
-                  <button data-testid={`unmirror-${b.id}`} onClick={() => run(() => api.post(`/work-items/${itemId}/unmirror`, { board_id: b.id }), "Mirror dihapus")} className="text-[#CA3521] hover:underline text-[10px]">(hapus)</button>
-                </span>
-              ))}</>
-            )}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-1 px-1">
+            <span className="text-xs text-[#44546F]">
+              di list <span className="font-semibold underline">{list_name}</span> · board <span className="font-semibold">{board_name}</span>
+              {item.hari_stage ? <> · <span className="font-semibold text-[#E56910]">Proses HARI {item.hari_stage}</span></> : null}
+              {(mirror_boards || []).length > 0 && (
+                <> · ter-mirror di {mirror_boards.map((b) => (
+                  <span key={b.id} className="inline-flex items-center gap-1 font-semibold text-[#2684FF]" data-testid={`mirrored-at-${b.id}`}>
+                    {b.name}
+                    <button data-testid={`unmirror-${b.id}`} onClick={() => run(() => api.post(`/work-items/${itemId}/unmirror`, { board_id: b.id }), "Mirror dihapus")} className="text-[#CA3521] hover:underline text-[10px]">(hapus)</button>
+                  </span>
+                ))}</>
+              )}
+            </span>
+            <div className="flex items-center gap-1.5 ml-auto">
+              <StatusBadge status={item.status} />
+              <DistributionStatusBadge status={item.distribution_status} />
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2 mt-3">
-            {!isMember && item.status !== "done" && (
+            {!isMember && !isDone && (
               <ActionChip testid="claim-button" icon={<Hand size={13} />} label="Ambil Pekerjaan" color="green"
                 onClick={() => run(() => api.post(`/work-items/${itemId}/claim`), "Anda menjadi PIC pekerjaan ini")} />
             )}
-            {isMember && item.status !== "done" && (
+            {isMember && !isDone && (
               <ActionChip testid="release-button" icon={<X size={13} />} label="Lepaskan"
                 onClick={() => {
                   const reason = window.prompt("Alasan melepas pekerjaan (opsional):") || "";
                   run(() => api.post(`/work-items/${itemId}/release`, { reason }), "Pekerjaan dilepas & kembali ke Bank Data");
                 }} />
             )}
-            {item.status === "active" && (
+            {isActive && (
               <ActionChip testid="submit-done-button" icon={<Send size={13} />} label={item.needs_approval ? "Ajukan Penyelesaian" : "Tandai Selesai"} color="blue"
                 onClick={() => run(() => api.post(`/work-items/${itemId}/submit`), item.needs_approval ? "Diajukan untuk persetujuan" : "Pekerjaan selesai")} />
             )}
-            {item.status === "submitted" && isSupervisorUp && (
+            {isSubmitted && isSupervisorUp && (
               <ActionChip testid="approve-button" icon={<CheckCircle2 size={13} />} label="Setujui & Selesaikan" color="green"
                 onClick={() => run(() => api.post(`/work-items/${itemId}/approve`), "Pekerjaan disetujui")} />
             )}
-            {item.status === "submitted" && !isSupervisorUp && (
+            {isSubmitted && !isSupervisorUp && (
               <span className="text-xs bg-[#F4F0FF] text-[#5E4DB2] rounded-lg px-3 py-1.5 font-semibold" data-testid="waiting-approval-note">
                 Menunggu persetujuan supervisor/admin
               </span>
             )}
-            {item.status === "done" && (
+            {isDone && (
               <ActionChip testid="reopen-button" icon={<ArchiveRestore size={13} />} label="Buka Kembali"
                 onClick={() => run(() => api.post(`/work-items/${itemId}/reopen`), "Pekerjaan dibuka kembali")} />
             )}
@@ -363,6 +381,39 @@ export default function CardModal({ itemId, onClose }) {
                     ))}
                   </PopoverContent>
                 </Popover>
+              </div>
+            </div>
+
+            <div>
+              <SectionTitle icon={<Building2 size={14} />}>Riwayat Penugasan Divisi & PIC</SectionTitle>
+              <div className="space-y-2 bg-white rounded-lg border border-[#DFE1E6] p-3 text-xs" data-testid="card-assignments-timeline">
+                {(!assignments || assignments.length === 0) && (
+                  <p className="text-[#8590A2]">Belum ada data penugasan divisi.</p>
+                )}
+                {(assignments || []).map((a) => (
+                  <div key={a.id} className="flex items-start justify-between gap-2 border-b border-[#F1F2F4] pb-2 last:border-0 last:pb-0" data-testid={`assignment-row-${a.id}`}>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold px-2 py-0.5 rounded text-[11px] text-white" style={{ backgroundColor: a.division_color || "#0C66E4" }}>
+                          {a.division_name || "Divisi"}
+                        </span>
+                        <DistributionStatusBadge status={a.status} />
+                      </div>
+                      <p className="text-[#172B4D] font-medium mt-1">
+                        PIC: <span className="font-semibold">{a.user_name || "Belum ada PIC"}</span>
+                        {a.assigned_by_name && <span className="text-[#8590A2]"> (oleh {a.assigned_by_name})</span>}
+                      </p>
+                      {a.unassigned_reason && (
+                        <p className="text-[#CA3521] italic text-[11px]">Alasan lepas: {a.unassigned_reason}</p>
+                      )}
+                    </div>
+                    <div className="text-right text-[10px] text-[#8590A2] shrink-0">
+                      <div>Ditugaskan: {fmtDateTime(a.assigned_at || a.created_at)}</div>
+                      {a.claimed_at && <div>Diambil: {fmtDateTime(a.claimed_at)}</div>}
+                      {a.completed_at && <div className="text-[#22A06B] font-semibold">Selesai: {fmtDateTime(a.completed_at)}</div>}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 

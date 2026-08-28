@@ -186,7 +186,8 @@ async def seed_demo():
             })
 
     mirror_seed = None
-    for bname, title, client, list_idx, label_names, due_days, with_checklist, member_name in SAMPLE_CARDS:
+    client_cache = {}
+    for bname, title, client_raw, list_idx, label_names, due_days, with_checklist, member_name in SAMPLE_CARDS:
         bid = board_map[bname]
         lids = list_map[bname]
         if list_idx >= len(lids):
@@ -205,10 +206,44 @@ async def seed_demo():
                 ],
             }]
         needs_approval = "Siap Kirim" in title
+        client_name = (client_raw or "").strip()
+        cid = None
+        if client_name:
+            c_key = client_name.lower()
+            if c_key in client_cache:
+                cid = client_cache[c_key]
+            else:
+                existing_c = await db.clients.find_one({"name": client_name})
+                if existing_c:
+                    cid = existing_c["id"]
+                else:
+                    cid = new_id()
+                    b_type = "Perusahaan" if any(p in client_name.upper() for p in ["PT", "CV", "UD", "YAYASAN"]) else "Perorangan"
+                    await db.clients.insert_one({
+                        "id": cid,
+                        "name": client_name,
+                        "business_type": b_type,
+                        "pic_name": "Bpk/Ibu PIC",
+                        "whatsapp": "081234567890",
+                        "email": f"{client_name.lower().replace(' ', '').replace('.', '')}@akseslegal.id",
+                        "address": "Jakarta, Indonesia",
+                        "npwp": "01.234.567.8-901.000",
+                        "nib": "1234567890123",
+                        "created_by": admin["id"],
+                        "created_at": now_iso(),
+                        "updated_at": now_iso(),
+                    })
+                client_cache[c_key] = cid
+
+        assigned_members = [user_map[member_name]] if member_name and member_name in user_map else []
+        work_status = "MENUNGGU" if needs_approval else ("PROSES" if assigned_members else "BARU")
+        dist_status = "DIRECT_ASSIGNED" if assigned_members else "MENUNGGU_DIAMBIL"
+
         doc = {
             "id": new_id(),
             "title": title,
-            "client_name": client,
+            "client_name": client_name,
+            "client_id": cid,
             "description": "",
             "board_id": bid,
             "list_id": lids[list_idx],
@@ -216,12 +251,15 @@ async def seed_demo():
             "label_ids": [label_map[bname][l] for l in label_names if l in label_map[bname]],
             "due_date": due,
             "priority": "urgent" if "URGENT" in label_names else "none",
-            "status": "submitted" if needs_approval else "active",
+            "status": work_status,
+            "work_status": work_status,
+            "distribution_status": dist_status,
+            "distribution_updated_at": now_iso(),
             "archived": False,
             "needs_approval": needs_approval,
             "created_by": admin["id"],
             "created_by_name": admin["name"],
-            "member_ids": [user_map[member_name]] if member_name else [],
+            "member_ids": assigned_members,
             "division_ids": [],
             "mirror_board_ids": [],
             "checklists": checklists,
@@ -235,6 +273,24 @@ async def seed_demo():
         if board and board.get("division_id"):
             doc["division_ids"] = [board["division_id"]]
         await db.work_items.insert_one(doc)
+
+        for did in doc["division_ids"]:
+            assigned_u = assigned_members[0] if assigned_members else None
+            await db.work_assignments.insert_one({
+                "id": new_id(),
+                "work_item_id": doc["id"],
+                "division_id": did,
+                "user_id": assigned_u,
+                "assigned_by": admin["id"],
+                "assigned_at": now_iso(),
+                "claimed_at": now_iso() if assigned_u else None,
+                "status": dist_status,
+                "completed_at": None,
+                "unassigned_reason": None,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            })
+
         if title.startswith("PT Graha Sentosa - Pendirian"):
             mirror_seed = doc
 
@@ -270,7 +326,7 @@ async def migrate_stage_requirements():
     skor5_ids = [l["id"] for l in skor5_lists]
     if skor5_ids:
         await db.work_items.update_many(
-            {"list_id": {"$in": skor5_ids}, "hari_stage": {"$exists": False}, "status": {"$ne": "done"}},
+            {"list_id": {"$in": skor5_ids}, "hari_stage": {"$exists": False}, "status": {"$nin": ["done", "SELESAI"]}},
             {"$set": {"hari_stage": 1, "hari_entered_at": now_iso()}},
         )
 
@@ -281,3 +337,111 @@ async def ensure_demo_passwords():
         u = await db.users.find_one({"email": email})
         if u and not verify_password("Staff123!", u.get("password_hash", "")):
             await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password("Staff123!")}})
+
+
+async def migrate_tier0_foundations():
+    """Migrates legacy work items to ensure Client separation, WorkAssignment records, and double status enums."""
+    items = await db.work_items.find({}).to_list(5000)
+    admin = await db.users.find_one({"role": "super_admin"})
+    admin_id = admin["id"] if admin else "system"
+
+    client_map = {}
+    existing_clients = await db.clients.find({}).to_list(5000)
+    for c in existing_clients:
+        client_map[c["name"].strip().lower()] = c["id"]
+
+    for item in items:
+        cname = (item.get("client_name") or "").strip()
+        cid = item.get("client_id")
+        if cname:
+            key = cname.lower()
+            if key not in client_map:
+                cid_new = new_id()
+                b_type = "Perusahaan" if any(p in cname.upper() for p in ["PT", "CV", "UD", "YAYASAN"]) else "Perorangan"
+                cdoc = {
+                    "id": cid_new,
+                    "name": cname,
+                    "business_type": b_type,
+                    "pic_name": "Bpk/Ibu PIC",
+                    "whatsapp": "081234567890",
+                    "email": f"{cname.lower().replace(' ', '').replace('.', '')}@akseslegal.id",
+                    "address": "Jakarta, Indonesia",
+                    "npwp": "01.234.567.8-901.000",
+                    "nib": "1234567890123",
+                    "created_by": admin_id,
+                    "created_at": item.get("created_at") or now_iso(),
+                    "updated_at": item.get("updated_at") or now_iso(),
+                }
+                await db.clients.insert_one(cdoc)
+                client_map[key] = cid_new
+            cid = client_map[key]
+
+        old_status = str(item.get("status") or "").strip()
+        old_dist = str(item.get("distribution_status") or "").strip()
+        member_ids = item.get("member_ids") or []
+
+        # 1. Distribution status mapping
+        if old_dist in ("DIAMBIL", "diambil"):
+            new_dist = "DIAMBIL"
+        elif old_dist in ("DIRECT_ASSIGNED", "direct_assigned"):
+            new_dist = "DIRECT_ASSIGNED"
+        elif old_dist in ("DILEPASKAN", "dilepaskan", "lepas"):
+            new_dist = "DILEPASKAN"
+        elif old_dist in ("MENUNGGU_DIAMBIL", "menunggu", "menunggu_diambil"):
+            new_dist = "MENUNGGU_DIAMBIL"
+        else:
+            new_dist = "DIRECT_ASSIGNED" if member_ids else "MENUNGGU_DIAMBIL"
+
+        # 2. Work status mapping
+        if old_status in ("SELESAI", "done", "Done"):
+            new_status = "SELESAI"
+        elif old_status in ("MENUNGGU", "submitted", "Submitted"):
+            new_status = "MENUNGGU"
+        elif old_status in ("REVISI", "revisi"):
+            new_status = "REVISI"
+        elif old_status in ("PROSES", "proses"):
+            new_status = "PROSES"
+        elif old_status in ("BARU", "baru"):
+            new_status = "BARU"
+        elif old_status in ("active", "Active"):
+            new_status = "PROSES" if member_ids else "BARU"
+        else:
+            new_status = "PROSES" if member_ids else "BARU"
+
+        item_updates = {}
+        if item.get("client_id") != cid and cid:
+            item_updates["client_id"] = cid
+        if item.get("status") != new_status:
+            item_updates["status"] = new_status
+        if item.get("work_status") != new_status:
+            item_updates["work_status"] = new_status
+        if item.get("distribution_status") != new_dist:
+            item_updates["distribution_status"] = new_dist
+
+        if item_updates:
+            await db.work_items.update_one({"id": item["id"]}, {"$set": item_updates})
+
+        # 3. Create missing WorkAssignments
+        existing_assignments = await db.work_assignments.count_documents({"work_item_id": item["id"]})
+        if existing_assignments == 0:
+            div_ids = item.get("division_ids") or []
+            if not div_ids and item.get("board_id"):
+                board = await db.boards.find_one({"id": item["board_id"]})
+                if board and board.get("division_id"):
+                    div_ids = [board["division_id"]]
+            for did in div_ids:
+                assigned_u = member_ids[0] if member_ids else None
+                await db.work_assignments.insert_one({
+                    "id": new_id(),
+                    "work_item_id": item["id"],
+                    "division_id": did,
+                    "user_id": assigned_u,
+                    "assigned_by": item.get("created_by") or admin_id,
+                    "assigned_at": item.get("created_at") or now_iso(),
+                    "claimed_at": (item.get("created_at") or now_iso()) if assigned_u else None,
+                    "status": new_dist,
+                    "completed_at": item.get("completed_at"),
+                    "unassigned_reason": None,
+                    "created_at": item.get("created_at") or now_iso(),
+                    "updated_at": item.get("updated_at") or now_iso(),
+                })

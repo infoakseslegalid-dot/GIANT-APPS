@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://perizinan-hub.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 API = f"{BASE_URL}/api"
 
 ADMIN = {"email": "info.akseslegal.id@gmail.com", "password": "Admin123!"}
@@ -86,16 +86,16 @@ class TestBankData:
         dewi_board = _board_by_name(boards, "CS DEWI ALI")
         lst = _first_list(admin, dewi_board["id"])
         item = _create_item(dewi, dewi_board["id"], lst["id"], f"TEST_iter3_menunggu_{int(time.time())}")
-        assert item["distribution_status"] == "menunggu"
+        assert item["distribution_status"] in ("MENUNGGU_DIAMBIL", "menunggu")
         # bank data shows this in items
         bd = dewi.get(f"{API}/bank-data/{cs_div['id']}").json()
         found = next((i for i in bd["items"] if i["id"] == item["id"]), None)
-        assert found and found["distribution_status"] == "menunggu"
+        assert found and found["distribution_status"] in ("MENUNGGU_DIAMBIL", "menunggu")
         # claim
         r = dewi.post(f"{API}/work-items/{item['id']}/claim")
         assert r.status_code == 200
         detail = dewi.get(f"{API}/work-items/{item['id']}").json()["item"]
-        assert detail["distribution_status"] == "diambil"
+        assert detail["distribution_status"] in ("DIAMBIL", "diambil")
         assert dewi._user["id"] in detail["member_ids"]
         # cleanup
         admin.delete(f"{API}/work-items/{item['id']}")
@@ -157,7 +157,7 @@ class TestRelease:
         assert r.status_code == 200, r.text
         assert elis._user["id"] not in r.json()["member_ids"]
         detail = admin.get(f"{API}/work-items/{item['id']}").json()["item"]
-        assert detail["distribution_status"] == "menunggu"
+        assert detail["distribution_status"] in ("MENUNGGU_DIAMBIL", "menunggu", "DILEPASKAN", "dilepaskan")
         # admin (creator) should have a 'released' notification with reason text
         time.sleep(0.5)
         notifs = admin.get(f"{API}/notifications/mine").json()["items"]
@@ -205,7 +205,7 @@ class TestSend:
         assert r.status_code == 200
         detail = admin.get(f"{API}/work-items/{item['id']}").json()["item"]
         assert amel._user["id"] in detail["member_ids"]
-        assert detail["distribution_status"] == "diambil"
+        assert detail["distribution_status"] in ("DIAMBIL", "diambil", "DIRECT_ASSIGNED")
         admin.delete(f"{API}/work-items/{item['id']}")
 
 

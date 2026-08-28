@@ -23,7 +23,7 @@ async def advance_hari_job():
     items = await db.work_items.find({
         "hari_stage": {"$gte": 1, "$lte": 6},
         "archived": {"$ne": True},
-        "status": {"$ne": "done"},
+        "status": {"$nin": ["done", "SELESAI"]},
     }).to_list(2000)
     now = datetime.now(timezone.utc)
     system = {"id": "system", "name": "Sistem"}
@@ -57,7 +57,7 @@ async def advance_hari_job():
     due_items = await db.work_items.find({
         "due_date": {"$in": [today, tomorrow]},
         "archived": {"$ne": True},
-        "status": {"$ne": "done"},
+        "status": {"$nin": ["done", "SELESAI"]},
     }).to_list(2000)
     for item in due_items:
         already = await db.notifications.find_one({

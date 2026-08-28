@@ -7,9 +7,9 @@ from datetime import datetime, timezone, timedelta
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://perizinan-hub.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 API = f"{BASE_URL}/api"
-CRON_SECRET = "c8f4a92e71b6d3f0589ab2c4e6f80123456789abcdef0123"
+CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "webhook_cron_secret_ali_2026")
 
 ADMIN = {"email": "info.akseslegal.id@gmail.com", "password": "Admin123!"}
 STAFF_ELIS = {"email": "elis@ali.id", "password": "Staff123!"}
@@ -102,7 +102,7 @@ class TestBankData:
         assert r.status_code == 200, r.text
         item = r.json()
         assert item["board_id"] == pajak["id"]
-        assert item["status"] == "active"
+        assert item["status"] in ("BARU", "active")
         # cleanup via admin
         # (dewi is staff, can't delete)
 

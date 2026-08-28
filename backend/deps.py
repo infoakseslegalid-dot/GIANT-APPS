@@ -34,6 +34,18 @@ ROLE_LABELS = {
     "viewer": "Viewer",
 }
 
+DISTRIBUTION_STATUSES = ("MENUNGGU_DIAMBIL", "DIAMBIL", "DILEPASKAN", "DIRECT_ASSIGNED")
+WORK_STATUSES = ("BARU", "PROSES", "MENUNGGU", "REVISI", "SELESAI")
+
+def is_done_status(status: Optional[str]) -> bool:
+    return str(status or "").upper() in ("SELESAI", "DONE")
+
+def is_submitted_status(status: Optional[str]) -> bool:
+    return str(status or "").upper() in ("MENUNGGU", "SUBMITTED")
+
+def is_active_status(status: Optional[str]) -> bool:
+    return str(status or "").upper() in ("BARU", "PROSES", "REVISI", "ACTIVE")
+
 
 def jwt_secret() -> str:
     return os.environ["JWT_SECRET"]

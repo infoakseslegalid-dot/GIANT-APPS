@@ -31,7 +31,7 @@ export function LabelChip({ label }) {
 export function DueBadge({ dueDate, status }) {
   if (!dueDate) return null;
   const today = new Date().toISOString().slice(0, 10);
-  const isDone = status === "done";
+  const isDone = status === "done" || status === "SELESAI";
   const isOverdue = !isDone && dueDate < today;
   const isToday = !isDone && dueDate === today;
   let cls = "bg-[#091E420F] text-[#44546F]";
@@ -70,9 +70,29 @@ export function PriorityFlag({ priority }) {
 }
 
 export function StatusBadge({ status }) {
-  if (status === "submitted")
+  const s = (status || "").toUpperCase();
+  if (s === "MENUNGGU" || status === "submitted")
     return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#9F8FEF] text-white" data-testid="card-status-badge">Menunggu Approval</span>;
-  if (status === "done")
+  if (s === "SELESAI" || status === "done")
     return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#22A06B] text-white" data-testid="card-status-badge">Selesai</span>;
+  if (s === "PROSES")
+    return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#0C66E4] text-white" data-testid="card-status-badge">Proses</span>;
+  if (s === "REVISI")
+    return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#E56910] text-white" data-testid="card-status-badge">Revisi</span>;
+  if (s === "BARU")
+    return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#8590A2] text-white" data-testid="card-status-badge">Baru</span>;
+  return null;
+}
+
+export function DistributionStatusBadge({ status }) {
+  const s = (status || "").toUpperCase();
+  if (s === "MENUNGGU_DIAMBIL" || status === "menunggu")
+    return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#FFF8E6] text-[#946F00] border border-[#F5CD47]">Menunggu Diambil</span>;
+  if (s === "DIAMBIL" || status === "diambil")
+    return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#E3FCEF] text-[#216E4E] border border-[#22A06B]">Diambil</span>;
+  if (s === "DILEPASKAN" || status === "dilepaskan")
+    return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#FFECE8] text-[#CA3521] border border-[#CA3521]">Dilepaskan</span>;
+  if (s === "DIRECT_ASSIGNED" || status === "direct_assigned")
+    return <span className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#E9F2FF] text-[#0C66E4] border border-[#0C66E4]">Ditugaskan Langsung</span>;
   return null;
 }

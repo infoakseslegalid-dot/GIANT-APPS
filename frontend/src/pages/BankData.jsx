@@ -57,8 +57,9 @@ export default function BankData() {
   const isDivisionMember = user?.division_id === activeDivId;
   const isSupervisorUp = ["super_admin", "admin", "supervisor"].includes(user?.role);
 
-  const waiting = items.filter((i) => (i.member_ids || []).length === 0 && i.status !== "done");
-  const taken = items.filter((i) => (i.member_ids || []).length > 0 || i.status === "done");
+  const isDone = (i) => i.status === "done" || i.status === "SELESAI";
+  const waiting = items.filter((i) => (i.member_ids || []).length === 0 && !isDone(i));
+  const taken = items.filter((i) => (i.member_ids || []).length > 0 || isDone(i));
 
   const formBoards = formDivData?.boards || [];
   const formBoard = formBoards[0];
@@ -389,7 +390,7 @@ function TakenRow({ item, idx, user, isSupervisorUp, onOpen, onTakeover }) {
       <td className="px-4 py-2.5">
         {isMine ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#216E4E]"><CheckCircle2 size={12} /> Pekerjaan Anda</span>
-        ) : isSupervisorUp && item.status !== "done" ? (
+        ) : isSupervisorUp && item.status !== "done" && item.status !== "SELESAI" ? (
           <button data-testid={`bankdata-takeover-${item.id}`} onClick={onTakeover}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FFF8E6] border border-[#F5CD47] text-[#946F00] text-xs font-bold hover:bg-[#F5CD47]/40 transition-colors active:scale-95">
             <Swords size={12} /> Ambil Alih

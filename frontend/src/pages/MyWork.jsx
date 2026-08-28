@@ -14,10 +14,14 @@ export default function MyWork() {
     queryFn: () => api.get("/my-work").then((r) => r.data),
   });
 
+  const isDone = (i) => i.status === "done" || i.status === "SELESAI";
+  const isSubmitted = (i) => i.status === "submitted" || i.status === "MENUNGGU";
+  const isActive = (i) => !isDone(i) && !isSubmitted(i);
+
   const groups = [
-    { key: "active", label: "Sedang Dikerjakan", icon: <Briefcase size={16} className="text-[#0C66E4]" />, items: (items || []).filter((i) => i.status === "active") },
-    { key: "submitted", label: "Menunggu Persetujuan", icon: <Send size={16} className="text-[#9F8FEF]" />, items: (items || []).filter((i) => i.status === "submitted") },
-    { key: "done", label: "Selesai", icon: <CheckCircle2 size={16} className="text-[#22A06B]" />, items: (items || []).filter((i) => i.status === "done") },
+    { key: "active", label: "Sedang Dikerjakan", icon: <Briefcase size={16} className="text-[#0C66E4]" />, items: (items || []).filter(isActive) },
+    { key: "submitted", label: "Menunggu Persetujuan", icon: <Send size={16} className="text-[#9F8FEF]" />, items: (items || []).filter(isSubmitted) },
+    { key: "done", label: "Selesai", icon: <CheckCircle2 size={16} className="text-[#22A06B]" />, items: (items || []).filter(isDone) },
   ];
 
   const today = new Date().toISOString().slice(0, 10);
@@ -45,7 +49,7 @@ export default function MyWork() {
           ) : (
             <div className="grid md:grid-cols-2 gap-3">
               {g.items.map((item, i) => {
-                const overdue = item.due_date && item.due_date < today && item.status !== "done";
+                const overdue = item.due_date && item.due_date < today && !isDone(item);
                 return (
                   <button
                     key={item.id}

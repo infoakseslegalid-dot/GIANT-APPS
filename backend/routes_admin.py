@@ -116,6 +116,138 @@ async def delete_division(division_id: str, user=Depends(get_current_user)):
     return {"ok": True}
 
 
+# ---------- CLIENTS (CRM-LITE) ----------
+
+class ClientBody(BaseModel):
+    name: str
+    business_type: str = "Perusahaan"
+    pic_name: str = ""
+    whatsapp: str = ""
+    email: str = ""
+    address: str = ""
+    npwp: str = ""
+    nib: str = ""
+
+
+class UpdateClientBody(BaseModel):
+    name: Optional[str] = None
+    business_type: Optional[str] = None
+    pic_name: Optional[str] = None
+    whatsapp: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    npwp: Optional[str] = None
+    nib: Optional[str] = None
+
+
+@router.get("/clients")
+async def list_clients(q: Optional[str] = None, user=Depends(get_current_user)):
+    import re
+    filt = {}
+    if q and q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        filt["$or"] = [
+            {"name": rx}, {"pic_name": rx}, {"whatsapp": rx},
+            {"email": rx}, {"npwp": rx}, {"nib": rx}
+        ]
+    clients = clean_many(await db.clients.find(filt).sort("name", 1).to_list(500))
+    for c in clients:
+        c["work_items_count"] = await db.work_items.count_documents({
+            "$or": [{"client_id": c["id"]}, {"client_name": c["name"]}],
+            "archived": {"$ne": True}
+        })
+        c["active_items_count"] = await db.work_items.count_documents({
+            "$or": [{"client_id": c["id"]}, {"client_name": c["name"]}],
+            "archived": {"$ne": True},
+            "status": {"$nin": ["done", "SELESAI"]}
+        })
+    return clients
+
+
+@router.get("/clients/{client_id}")
+async def get_client(client_id: str, user=Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id})
+    if not c:
+        raise HTTPException(404, "Klien tidak ditemukan")
+    client = clean(c)
+    items = clean_many(await db.work_items.find({
+        "$or": [{"client_id": client_id}, {"client_name": client["name"]}],
+        "archived": {"$ne": True}
+    }).sort("updated_at", -1).to_list(200))
+    boards = {b["id"]: b for b in await db.boards.find({}).to_list(500)}
+    lists = {l["id"]: l for l in await db.lists.find({}).to_list(1000)}
+    for it in items:
+        it["board_name"] = boards.get(it.get("board_id"), {}).get("name")
+        it["list_name"] = lists.get(it.get("list_id"), {}).get("name")
+    client["work_items"] = items
+    client["work_items_count"] = len(items)
+    return client
+
+
+@router.post("/clients")
+async def create_client(body: ClientBody, user=Depends(get_current_user)):
+    import re
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Nama klien / badan usaha wajib diisi")
+    existing = await db.clients.find_one({"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}})
+    if existing:
+        raise HTTPException(400, "Klien dengan nama ini sudah terdaftar")
+    doc = {
+        "id": new_id(),
+        "name": name,
+        "business_type": body.business_type.strip() or "Perusahaan",
+        "pic_name": body.pic_name.strip(),
+        "whatsapp": body.whatsapp.strip(),
+        "email": body.email.strip(),
+        "address": body.address.strip(),
+        "npwp": body.npwp.strip(),
+        "nib": body.nib.strip(),
+        "created_by": user["id"],
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    await db.clients.insert_one(doc)
+    return clean(doc)
+
+
+@router.patch("/clients/{client_id}")
+async def update_client(client_id: str, body: UpdateClientBody, user=Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id})
+    if not c:
+        raise HTTPException(404, "Klien tidak ditemukan")
+    updates = {k: v.strip() if isinstance(v, str) else v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(400, "Tidak ada data yang diubah")
+    updates["updated_at"] = now_iso()
+    old_name = c["name"]
+    await db.clients.update_one({"id": client_id}, {"$set": updates})
+    if "name" in updates and updates["name"] != old_name:
+        await db.work_items.update_many(
+            {"$or": [{"client_id": client_id}, {"client_name": old_name}]},
+            {"$set": {"client_name": updates["name"], "client_id": client_id}}
+        )
+    return clean(await db.clients.find_one({"id": client_id}))
+
+
+@router.delete("/clients/{client_id}")
+async def delete_client(client_id: str, user=Depends(get_current_user)):
+    require_admin(user)
+    c = await db.clients.find_one({"id": client_id})
+    if not c:
+        raise HTTPException(404, "Klien tidak ditemukan")
+    count = await db.work_items.count_documents({
+        "$or": [{"client_id": client_id}, {"client_name": c["name"]}],
+        "archived": {"$ne": True},
+        "status": {"$nin": ["done", "SELESAI"]}
+    })
+    if count > 0:
+        raise HTTPException(400, f"Klien masih memiliki {count} pekerjaan aktif")
+    await db.clients.delete_one({"id": client_id})
+    return {"ok": True}
+
+
+
 # ---------- BOARDS ----------
 
 @router.get("/boards")
@@ -251,10 +383,11 @@ async def copy_board(board_id: str, body: CopyBoardBody, user=Depends(get_curren
             pos_counter[target_list] = pos_counter.get(target_list, 0) + 1000
             nc = {
                 "id": new_id(), "title": c["title"], "client_name": c.get("client_name", ""),
+                "client_id": c.get("client_id"),
                 "description": c.get("description", ""), "board_id": new_board["id"],
                 "list_id": target_list, "position": float(pos_counter[target_list]),
                 "label_ids": [], "due_date": c.get("due_date"), "start_date": None, "priority": c.get("priority", "none"),
-                "status": "active", "archived": False, "needs_approval": c.get("needs_approval", False),
+                "status": "BARU", "work_status": "BARU", "archived": False, "needs_approval": c.get("needs_approval", False),
                 "created_by": user["id"], "created_by_name": user["name"],
                 "member_ids": [], "division_ids": c.get("division_ids", []),
                 "mirror_board_ids": [], "checklists": [
@@ -262,12 +395,27 @@ async def copy_board(board_id: str, body: CopyBoardBody, user=Depends(get_curren
                     for cl in c.get("checklists", [])
                 ], "watcher_ids": [],
                 "cover_color": None, "cover_attachment_id": None, "custom_fields": c.get("custom_fields", []),
-                "distribution_status": "menunggu", "distribution_updated_at": now_iso(),
+                "distribution_status": "MENUNGGU_DIAMBIL", "distribution_updated_at": now_iso(),
                 "created_at": now_iso(), "updated_at": now_iso(),
                 "completed_at": None, "submitted_by": None, "approved_by": None,
             }
             if nc["list_id"]:
                 await db.work_items.insert_one(nc)
+                for did in nc["division_ids"]:
+                    await db.work_assignments.insert_one({
+                        "id": new_id(),
+                        "work_item_id": nc["id"],
+                        "division_id": did,
+                        "user_id": None,
+                        "assigned_by": user["id"],
+                        "assigned_at": now_iso(),
+                        "claimed_at": None,
+                        "status": "MENUNGGU_DIAMBIL",
+                        "completed_at": None,
+                        "unassigned_reason": None,
+                        "created_at": now_iso(),
+                        "updated_at": now_iso(),
+                    })
     return clean(new_board)
 
 
@@ -395,14 +543,30 @@ async def copy_list(list_id: str, user=Depends(get_current_user)):
         nc["member_ids"] = []
         nc["mirror_board_ids"] = []
         nc["watcher_ids"] = []
-        nc["distribution_status"] = "menunggu"
-        nc["status"] = "active"
+        nc["distribution_status"] = "MENUNGGU_DIAMBIL"
+        nc["status"] = "BARU"
+        nc["work_status"] = "BARU"
         nc["created_by"] = user["id"]
         nc["created_by_name"] = user["name"]
         nc["created_at"] = now_iso()
         nc["updated_at"] = now_iso()
         nc["completed_at"] = None
         await db.work_items.insert_one(nc)
+        for did in nc.get("division_ids", []):
+            await db.work_assignments.insert_one({
+                "id": new_id(),
+                "work_item_id": nc["id"],
+                "division_id": did,
+                "user_id": None,
+                "assigned_by": user["id"],
+                "assigned_at": now_iso(),
+                "claimed_at": None,
+                "status": "MENUNGGU_DIAMBIL",
+                "completed_at": None,
+                "unassigned_reason": None,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            })
     await broadcast_board(src["board_id"])
     return clean(nl)
 
@@ -529,13 +693,14 @@ async def global_activities(limit: int = 50, user=Depends(get_current_user)):
 
 @router.get("/stats")
 async def stats(user=Depends(get_current_user)):
-    active_filter = {"archived": {"$ne": True}, "status": {"$ne": "done"}}
+    active_filter = {"archived": {"$ne": True}, "status": {"$nin": ["done", "SELESAI"]}}
     total_active = await db.work_items.count_documents(active_filter)
     unassigned = await db.work_items.count_documents({**active_filter, "$or": [{"member_ids": {"$size": 0}}, {"member_ids": {"$exists": False}}]})
     in_progress = await db.work_items.count_documents({**active_filter, "member_ids.0": {"$exists": True}})
     overdue = await db.work_items.count_documents({**active_filter, "due_date": {"$ne": None, "$lt": today_str()}})
-    submitted = await db.work_items.count_documents({"archived": {"$ne": True}, "status": "submitted"})
+    submitted = await db.work_items.count_documents({"archived": {"$ne": True}, "status": {"$in": ["submitted", "MENUNGGU"]}})
     done_today = await db.work_items.count_documents({"completed_at": {"$regex": f"^{today_str()}"}})
+    clients_count = await db.clients.count_documents({})
 
     divisions = clean_many(await db.divisions.find({}).sort("name", 1).to_list(100))
     by_division = []
@@ -564,6 +729,8 @@ async def stats(user=Depends(get_current_user)):
         "overdue": overdue,
         "submitted": submitted,
         "done_today": done_today,
+        "clients_count": clients_count,
         "by_division": by_division,
         "by_user": by_user,
     }
+

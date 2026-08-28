@@ -13,7 +13,7 @@ from routes_auth import router as auth_router
 from routes_admin import router as admin_router
 from routes_work import router as work_router
 from cron_jobs import advance_hari_job
-from seed import seed_admin, seed_demo, migrate_stage_requirements, ensure_demo_passwords
+from seed import seed_admin, seed_demo, migrate_stage_requirements, ensure_demo_passwords, migrate_tier0_foundations
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("ali.server")
@@ -73,6 +73,8 @@ app.add_middleware(
     allow_origins=[
         os.environ.get("FRONTEND_URL", "http://localhost:3000"),
         "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -87,6 +89,11 @@ async def startup():
     await db.work_items.create_index("board_id")
     await db.work_items.create_index("list_id")
     await db.work_items.create_index("member_ids")
+    await db.work_items.create_index("client_id")
+    await db.work_assignments.create_index("work_item_id")
+    await db.work_assignments.create_index("division_id")
+    await db.work_assignments.create_index("user_id")
+    await db.clients.create_index("name")
     await db.notifications.create_index("user_id")
     await db.activities.create_index("work_item_id")
     try:
@@ -98,7 +105,8 @@ async def startup():
     await seed_demo()
     await migrate_stage_requirements()
     await ensure_demo_passwords()
-    logger.info("Seeding complete")
+    await migrate_tier0_foundations()
+    logger.info("Seeding and tier 0 foundations migration complete")
 
 
 @app.on_event("shutdown")
