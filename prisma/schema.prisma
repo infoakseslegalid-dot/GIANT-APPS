@@ -1,0 +1,252 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Division {
+  id         String   @id @default(uuid())
+  name       String
+  color      String?
+  key        String   @unique
+  createdAt  DateTime @default(now())
+
+  users      User[]
+  boards     Board[]
+  workItems  WorkItemDivision[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("viewer")
+  divisionId   String?
+  avatarColor  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  division     Division? @relation(fields: [divisionId], references: [id])
+  boardsCreated Board[] @relation("BoardCreator")
+  workItemsCreated WorkItem[] @relation("WorkItemCreator")
+  workItemsSubmitted WorkItem[] @relation("WorkItemSubmitter")
+  workItemsApproved WorkItem[] @relation("WorkItemApprover")
+  activities   Activity[]
+  notifications Notification[]
+  attachments  Attachment[]
+
+  boardMembers BoardMember[]
+  workItemMembers WorkItemMember[]
+}
+
+model Board {
+  id          String   @id @default(uuid())
+  name        String
+  divisionId  String?
+  background  String?
+  isArchived  Boolean  @default(false)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  division    Division? @relation(fields: [divisionId], references: [id])
+  createdBy   User      @relation("BoardCreator", fields: [createdById], references: [id])
+
+  members     BoardMember[]
+  lists       List[]
+  labels      Label[]
+  workItems   WorkItem[]
+  mirroredWorkItems WorkItemMirror[]
+  automationRules AutomationRule[]
+  activities  Activity[]
+  notifications Notification[]
+}
+
+model BoardMember {
+  boardId String
+  userId  String
+  board   Board @relation(fields: [boardId], references: [id])
+  user    User  @relation(fields: [userId], references: [id])
+  @@id([boardId, userId])
+}
+
+model List {
+  id                String   @id @default(uuid())
+  boardId           String
+  name              String
+  color             String?
+  position          Float
+  entryRequirements Json?    // Array of strings
+  createdAt         DateTime @default(now())
+
+  board             Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  workItems         WorkItem[]
+  automationRules   AutomationRule[]
+}
+
+model Label {
+  id        String   @id @default(uuid())
+  boardId   String
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  workItems WorkItemLabel[]
+}
+
+model WorkItem {
+  id             String   @id @default(uuid())
+  title          String
+  clientName     String?
+  description    String?
+  boardId        String
+  listId         String
+  position       Float
+  dueDate        String?  // format YYYY-MM-DD
+  priority       String   @default("none")
+  status         String   @default("active")
+  archived       Boolean  @default(false)
+  needsApproval  Boolean  @default(false)
+  
+  createdById    String
+  createdByName  String?
+  submittedById  String?
+  approvedById   String?
+  
+  hariStage      Int?
+  hariEnteredAt  DateTime?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  checklists     Json?    // Complex JSON structure for checklists
+
+  board          Board    @relation(fields: [boardId], references: [id])
+  list           List     @relation(fields: [listId], references: [id])
+  createdBy      User     @relation("WorkItemCreator", fields: [createdById], references: [id])
+  submittedBy    User?    @relation("WorkItemSubmitter", fields: [submittedById], references: [id])
+  approvedBy     User?    @relation("WorkItemApprover", fields: [approvedById], references: [id])
+
+  labels         WorkItemLabel[]
+  members        WorkItemMember[]
+  divisionIds    WorkItemDivision[]
+  mirrorBoards   WorkItemMirror[]
+  activities     Activity[]
+  notifications  Notification[]
+  attachments    Attachment[]
+}
+
+model WorkItemLabel {
+  workItemId String
+  labelId    String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  label      Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  @@id([workItemId, labelId])
+}
+
+model WorkItemMember {
+  workItemId String
+  userId     String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([workItemId, userId])
+}
+
+model WorkItemDivision {
+  workItemId String
+  divisionId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  division   Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  @@id([workItemId, divisionId])
+}
+
+model WorkItemMirror {
+  workItemId String
+  boardId    String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  board      Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  @@id([workItemId, boardId])
+}
+
+model Activity {
+  id           String   @id @default(uuid())
+  workItemId   String
+  boardId      String?
+  userId       String
+  userName     String?
+  action       String
+  detail       Json?
+  createdAt    DateTime @default(now())
+
+  workItem     WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  board        Board?   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id           String   @id @default(uuid())
+  userId       String
+  type         String
+  title        String
+  body         String
+  workItemId   String?
+  boardId      String?
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workItem     WorkItem? @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  board        Board?   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+}
+
+model AutomationRule {
+  id             String   @id @default(uuid())
+  boardId        String
+  trigger        String
+  triggerListId  String?
+  action         String
+  actionValue    String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  board          Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  triggerList    List?    @relation(fields: [triggerListId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id               String   @id @default(uuid())
+  workItemId       String
+  storagePath      String
+  originalFilename String
+  contentType      String
+  size             Int
+  uploadedById     String
+  uploadedByName   String?
+  isDeleted        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  workItem         WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  uploadedBy       User     @relation(fields: [uploadedById], references: [id])
+}
+
+model LoginAttempt {
+  identifier String   @id
+  count      Int      @default(0)
+  lastAt     DateTime @default(now())
+}
+
+model CronRun {
+  runId String   @id
+  at    DateTime @default(now())
+  job   String
+}
+
+model Setting {
+  key String   @id
+  at  DateTime @default(now())
+}
