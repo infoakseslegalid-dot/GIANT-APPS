@@ -6,7 +6,7 @@ import { WebSocketServer } from 'ws'
 import { app as api } from './src/server/index.ts'
 
 const dev = process.env.NODE_ENV !== 'production'
-const hostname = 'localhost'
+const hostname = process.env.HOSTNAME || '0.0.0.0'
 const port = parseInt(process.env.PORT || '3000', 10)
 
 const app = next({ dev, hostname, port })
@@ -55,7 +55,18 @@ app.prepare().then(() => {
     }
   })
 
-  server.listen(port, () => {
-    console.log(`> Ready on http://${hostname}:${port}`)
+  server.listen(port, '0.0.0.0', () => {
+    const os = require('os');
+    const nets = os.networkInterfaces();
+    let localIp = 'localhost';
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          localIp = net.address;
+        }
+      }
+    }
+
+    console.log(`> Siap melayani!\n> Akses Lokal: http://localhost:${port}\n> Akses Jaringan: http://${localIp}:${port}`)
   })
 })

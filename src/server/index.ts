@@ -12,7 +12,7 @@ const app = new Hono().basePath('/api');
 
 app.use('*', logger());
 app.use('*', cors({
-    origin: ['http://localhost:3000'],
+    origin: (origin) => origin || 'http://localhost:3000',
     credentials: true,
 }));
 
