@@ -1,5 +1,5 @@
-import { formatWorkItem, publicUser } from './deps';
 // @ts-nocheck
+import { formatWorkItem, publicUser } from './deps';
 import {
   Hono } from 'hono'
 import {
@@ -435,15 +435,34 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
   if (board.divisionId) {
     division = await db.division.findUnique({ where: { id: board.divisionId } })
   }
-  
+
   const rawUsers = await db.user.findMany({ where: { isActive: true }, take: 500 })
   const users = rawUsers.map(publicUser)
-  
+
+  // Penanda "kartu mirror": untuk assignment, ambil nama board/list Master Card asalnya.
+  const mcIds = [...new Set(cards.filter((c: any) => c.masterCardId && c.targetDivisionId).map((c: any) => c.masterCardId))]
+  const masters = mcIds.length
+    ? await db.workItem.findMany({ where: { masterCardId: { in: mcIds as string[] }, targetDivisionId: null }, include: { board: true, list: true } })
+    : []
+  const mByMc = new Map(masters.map((m: any) => [m.masterCardId, m]))
+
+  const cardsOut = cards.map((c: any) => {
+    const f = formatWorkItem(c)
+    if (c.masterCardId && c.targetDivisionId) {
+      const m = mByMc.get(c.masterCardId)
+      f.is_assignment = true
+      f.master_item_id = m?.id || null
+      f.master_board_name = m?.board?.name || null
+      f.master_list_name = m?.list?.name || null
+    }
+    return f
+  })
+
   return c.json({
     board,
     lists,
     labels,
-    cards: cards.map(formatWorkItem),
+    cards: cardsOut,
     division,
     users,
     archived_count: archivedCount,
@@ -497,11 +516,15 @@ const UpdateListBody = z.object({
 })
 
 adminRouter.patch('/lists/:list_id', zValidator('json', UpdateListBody), async (c) => {
+  const user = c.get('user')
   const listId = c.req.param('list_id')
   const body = c.req.valid('json')
   const lst = await db.list.findUnique({ where: { id: listId } })
   if (!lst) return c.json({ error: "List tidak ditemukan" }, 404)
-  
+
+  // Ubah syarat masuk list hanya boleh admin (diatur dari Admin Panel).
+  if (body.entryRequirements !== undefined) requireAdmin(user)
+
   const updates: any = {}
   if (body.name !== undefined) updates.name = body.name
   if (body.color !== undefined) updates.color = body.color

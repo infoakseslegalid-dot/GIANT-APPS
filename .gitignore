@@ -39,3 +39,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local file storage & scratch (added by session)
+/local_storage
+/.freebuff
+*.bak
+*.orig
+*.rej
+/patch_*.py
+/CardBack.reference.tsx
+/trello.md
+/trello-card-layout.html
+/cardtrello.md
+/jawaban.md
+/contoh layout.jpeg
+/yg anda bikin.png

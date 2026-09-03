@@ -9,7 +9,7 @@ import { CalendarClock, CheckCircle2, AlertTriangle } from "lucide-react";
 import { api, errMsg, fmtDate } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "../components/common";
-import CardModal from "../components/CardModal";
+import CardModal from "../components/kanban/CardModalWrapper";
 
 const STAGES = [
   { stage: 1, title: "HARI 1", processor: "Admin Draf Input", color: "#0C66E4" },

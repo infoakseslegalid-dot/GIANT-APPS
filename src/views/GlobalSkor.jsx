@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BarChart3, AlertTriangle, Eye } from "lucide-react";
 import { api, fmtDate } from "../lib/api";
 import { Avatar, PriorityFlag } from "../components/common";
-import CardModal from "../components/CardModal";
+import CardModal from "../components/kanban/CardModalWrapper";
 
 const SKOR_COLUMNS = [
   { key: "1", title: "SKOR 1", desc: "Board CS · kata pembuka / pengumpulan awal", color: "#6CC3E0" },

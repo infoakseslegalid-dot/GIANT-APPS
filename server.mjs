@@ -1,3 +1,4 @@
+import os from "os";
 import { createServer } from 'node:http'
 import { parse } from 'node:url'
 import next from 'next'
@@ -56,7 +57,7 @@ app.prepare().then(() => {
   })
 
   server.listen(port, '0.0.0.0', () => {
-    const os = require('os');
+    
     const nets = os.networkInterfaces();
     let localIp = 'localhost';
     for (const name of Object.keys(nets)) {

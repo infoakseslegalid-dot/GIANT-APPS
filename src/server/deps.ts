@@ -223,21 +223,174 @@ export async function getWorkItem(itemId: string) {
     return it;
 }
 
+/** Board divisi + list awal yang valid (board harus punya list). */
+export async function resolveBoardListForDivision(divisionId: string, preferListName?: string | null) {
+    const boards = await db.board.findMany({
+        where: { divisionId, isArchived: false, lists: { some: {} } },
+        include: { lists: { orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
+    });
+    boards.sort((a: any, b: any) => b._count.lists - a._count.lists);
+    const board = boards[0] || null;
+    if (!board) return { board: null, listId: null as string | null };
+    const listId =
+        (preferListName && board.lists.find((l: any) => (l.name || '').trim().toLowerCase() === preferListName.trim().toLowerCase())?.id) ||
+        board.lists[0]?.id ||
+        null;
+    return { board, listId };
+}
+
+/** Spawn Assignment turunan Master Card ke Bank Data sebuah divisi (dipakai otomasi). */
+export async function autoSpawnAssignment(sourceItem: any, divisionKey: string, opts: {
+    titleSuffix?: string; note?: string; stage?: string; carryAttachments?: boolean; actor: any;
+}) {
+    const div = await db.division.findFirst({ where: { key: divisionKey } });
+    if (!div) return null;
+    const { board, listId } = await resolveBoardListForDivision(div.id);
+    if (!board || !listId) return null;
+
+    // pastikan Master Card ada
+    let mcId = sourceItem.masterCardId;
+    if (!mcId) {
+        const mc = await db.masterCard.create({ data: { title: sourceItem.title, client: sourceItem.clientName || null } });
+        await db.workItem.update({ where: { id: sourceItem.id }, data: { masterCardId: mc.id } });
+        mcId = mc.id;
+    }
+    // hindari duplikat: sudah ada assignment tahap yang sama utk master ini di divisi ini & belum selesai?
+    const dup = await db.workItem.findFirst({
+        where: { masterCardId: mcId, targetDivisionId: div.id, workStatus: { notIn: ['COMPLETED', 'CANCELLED'] } },
+    });
+    if (dup) return null;
+
+    const count = await db.workItem.count({ where: { listId } });
+    const title = (sourceItem.masterCard?.title || sourceItem.title) + (opts.titleSuffix || '');
+    const assignment = await db.workItem.create({
+        data: {
+            id: uuidv4(), title, clientName: sourceItem.clientName || null,
+            description: opts.note || '', boardId: board.id, listId, position: (count + 1) * 1000,
+            status: 'active', priority: sourceItem.priority || 'none',
+            createdById: opts.actor.id, createdByName: opts.actor.name,
+            masterCardId: mcId, sourceUserId: opts.actor.id,
+            sourceBoardId: sourceItem.boardId, sourceListId: sourceItem.listId,
+            targetDivisionId: div.id, targetBoardId: board.id, targetListId: listId,
+            distributionStatus: 'AVAILABLE', workStatus: opts.stage ? `WAITING_CLAIM` : 'WAITING_CLAIM',
+            divisionIds: { create: [{ divisionId: div.id }] },
+        },
+    });
+    if (opts.carryAttachments) {
+        const atts = await db.attachment.findMany({ where: { workItemId: sourceItem.id, isDeleted: false } });
+        for (const a of atts) {
+            await db.attachment.create({
+                data: {
+                    workItemId: assignment.id, storagePath: a.storagePath, originalFilename: a.originalFilename,
+                    contentType: a.contentType, size: a.size, uploadedById: a.uploadedById, uploadedByName: a.uploadedByName,
+                },
+            });
+        }
+    }
+    await logActivity(assignment.id, board.id, opts.actor, `Otomatisasi: dibuat dari "${sourceItem.title}"`);
+    const mc = await db.masterCard.findUnique({ where: { id: mcId } });
+    const stake = [...new Set([mc?.ownerUserId, sourceItem.sourceUserId, sourceItem.createdById].filter(Boolean))] as string[];
+    await notify(stake, 'sent', 'Pekerjaan terkirim otomatis', `"${title}" otomatis dikirim ke Bank Data ${div.name}.`, assignment.id, board.id, new Set([opts.actor.id]));
+    return assignment;
+}
+
+/** Set/centang satu item checklist "Progres Legalitas" di Master Card. */
+export async function checkMasterChecklistItem(masterCardId: string, itemText: string, actor: any) {
+    const assignments = await db.workItem.findMany({ where: { masterCardId }, orderBy: { createdAt: 'asc' } });
+    // Master Card "representasi" = assignment paling awal yang tidak punya targetDivisionId (kartu CS asli)
+    const master = assignments.find((a: any) => !a.targetDivisionId) || assignments[0];
+    if (!master) return;
+    let checklists: any[] = [];
+    try { checklists = typeof master.checklists === 'string' ? JSON.parse(master.checklists) : (master.checklists || []); } catch { checklists = []; }
+    if (!Array.isArray(checklists)) checklists = [];
+    let cl = checklists.find((c: any) => c.title === 'Progres Legalitas');
+    if (!cl) {
+        cl = { id: uuidv4(), title: 'Progres Legalitas', items: ['Akta', 'SK Kemenkumham', 'NPWP', 'NIB'].map((t) => ({ id: uuidv4(), text: t, done: false })) };
+        checklists.push(cl);
+    }
+    let it = cl.items.find((i: any) => (i.text || '').toLowerCase() === itemText.toLowerCase());
+    if (!it) { it = { id: uuidv4(), text: itemText, done: false }; cl.items.push(it); }
+    if (!it.done) {
+        it.done = true;
+        await db.workItem.update({ where: { id: master.id }, data: { checklists, updatedAt: new Date() } });
+        await logActivity(master.id, master.boardId, actor, `Otomatisasi: progres "${itemText}" selesai`);
+    }
+}
+
 export async function runAutomation(boardId: string, trigger: string, item: any, actor: any, contextListId: string | null = null) {
     const rules = await db.automationRule.findMany({
         where: { boardId, trigger }
     });
     if (!rules.length) return;
-    
+
     let changed = false;
     const logs: string[] = [];
-    
+
     for (const rule of rules) {
         if (trigger === "card_moved" && rule.triggerListId && rule.triggerListId !== contextListId) continue;
-        
+
         const action = rule.action;
         const value = rule.actionValue;
-        
+
+        // ── Aksi pipeline Bank Data ──────────────────────────────────────
+        if (action === "send_to_division" && value) {
+            let cfg: any = {};
+            try { cfg = JSON.parse(value); } catch { cfg = { division_keys: [value] }; }
+            const keys: string[] = cfg.division_keys || (cfg.division_key ? [cfg.division_key] : []);
+            for (const k of keys) {
+                await autoSpawnAssignment(item, k, {
+                    titleSuffix: cfg.title_suffix || '', note: cfg.note || '', stage: cfg.stage,
+                    carryAttachments: !!cfg.carry_attachments, actor,
+                });
+            }
+            logs.push(`mengirim tugas ke ${keys.join(', ')}`);
+            continue;
+        }
+        if (action === "check_checklist_item" && value && item.masterCardId) {
+            for (const t of String(value).split(',').map((s) => s.trim()).filter(Boolean)) {
+                await checkMasterChecklistItem(item.masterCardId, t, actor);
+            }
+            logs.push(`update progres "${value}"`);
+            continue;
+        }
+        if (action === "move_master_card" && value && item.masterCardId) {
+            const siblings = await db.workItem.findMany({ where: { masterCardId: item.masterCardId }, orderBy: { createdAt: 'asc' } });
+            const master = siblings.find((s: any) => !s.targetDivisionId) || siblings[0];
+            if (master && master.id !== item.id) {
+                const list = await db.list.findFirst({ where: { boardId: master.boardId, name: { equals: value, mode: 'insensitive' } } });
+                if (list && list.id !== master.listId) {
+                    const cnt = await db.workItem.count({ where: { listId: list.id } });
+                    await db.workItem.update({ where: { id: master.id }, data: { listId: list.id, position: (cnt + 1) * 1000, updatedAt: new Date() } });
+                    await logActivity(master.id, master.boardId, actor, `Otomatisasi: dipindahkan ke "${value}"`);
+                }
+            }
+            logs.push(`memindahkan Master Card ke "${value}"`);
+            continue;
+        }
+        if (action === "move_card" && value) {
+            const target = await db.list.findFirst({ where: { OR: [{ id: value }, { boardId: item.boardId, name: value }] } });
+            if (target && target.id !== item.listId) {
+                const cnt = await db.workItem.count({ where: { listId: target.id } });
+                await db.workItem.update({ where: { id: item.id }, data: { listId: target.id, boardId: target.boardId, position: (cnt + 1) * 1000, updatedAt: new Date() } });
+                item.listId = target.id;
+                logs.push(`memindahkan kartu ke "${target.name}"`);
+            }
+            continue;
+        }
+        if (action === "notify" && value) {
+            let cfg: any = {};
+            try { cfg = JSON.parse(value); } catch { cfg = { message: value, to: 'owner' }; }
+            const targets: string[] = [];
+            const mc = item.masterCardId ? await db.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+            if (cfg.to === 'owner' && mc?.ownerUserId) targets.push(mc.ownerUserId);
+            else if (cfg.to === 'source' && item.sourceUserId) targets.push(item.sourceUserId);
+            else if (cfg.to === 'pic' && item.currentPicId) targets.push(item.currentPicId);
+            else if (cfg.to) targets.push(cfg.to);
+            if (targets.length) await notify(targets, 'automation', cfg.title || 'Notifikasi otomatis', (cfg.message || '').replace('{title}', item.title), item.id, boardId, new Set([actor.id]));
+            logs.push('mengirim notifikasi');
+            continue;
+        }
+
         if (action === "add_label" && value) {
             const exists = await db.workItemLabel.findUnique({ where: { workItemId_labelId: { workItemId: item.id, labelId: value } } });
             if (!exists) {
@@ -270,12 +423,9 @@ export async function runAutomation(boardId: string, trigger: string, item: any,
         const updateData: any = {};
         if (item.priority) updateData.priority = item.priority;
         updateData.updatedAt = new Date();
-        
-        await db.workItem.update({
-            where: { id: item.id },
-            data: updateData
-        });
-        
+        await db.workItem.update({ where: { id: item.id }, data: updateData });
+    }
+    if (changed || logs.length) {
         for (const text of logs) {
             await logActivity(item.id, boardId, actor, `Otomatisasi ${text}`);
         }
@@ -297,6 +447,7 @@ export function formatWorkItem(c) {
     ...c,
     list_id: c.listId,
     client_name: c.clientName,
+    start_date: c.startDate,
     due_date: c.dueDate,
     created_by_id: c.createdById,
     created_by_name: c.createdByName,
@@ -316,5 +467,22 @@ export function formatWorkItem(c) {
     label_ids: c.labels ? c.labels.map(l => l.labelId) : [],
     member_ids: c.members ? c.members.map(m => m.userId) : [],
     division_ids: c.divisionIds ? c.divisionIds.map(d => d.divisionId) : [],
+
+    // Bank Data & Distribusi (PRD v1.0)
+    master_card_id: c.masterCardId,
+    source_user_id: c.sourceUserId,
+    source_user_name: c.sourceUser?.name || null,
+    target_division_id: c.targetDivisionId,
+    target_board_id: c.targetBoardId,
+    target_list_id: c.targetListId,
+    current_pic_id: c.currentPicId,
+    current_pic_name: c.currentPic?.name || null,
+    distribution_status: c.distributionStatus,
+    work_status: c.workStatus,
+    claimed_at: c.claimedAt,
+    released_at: c.releasedAt,
+    owner_user_id: c.masterCard?.ownerUserId || null,
+    owner_user_name: c.masterCard?.owner?.name || null,
+    owner_division_id: c.masterCard?.ownerDivisionId || null,
   };
 }

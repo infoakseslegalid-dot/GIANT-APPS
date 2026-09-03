@@ -95,6 +95,18 @@ authApp.get('/me', async (c) => {
     return c.json(publicUser(user));
 });
 
+// Setiap user boleh mengubah profilnya sendiri (nama & warna avatar).
+authApp.patch('/me', async (c) => {
+    const user = await getCurrentUser(c);
+    const body = await c.req.json();
+    const data: any = {};
+    if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
+    if (typeof body.avatar_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.avatar_color)) data.avatarColor = body.avatar_color;
+    if (Object.keys(data).length === 0) return c.json({ error: 'Tidak ada perubahan' }, 400);
+    const updated = await db.user.update({ where: { id: user.id }, data });
+    return c.json(publicUser(updated));
+});
+
 authApp.post('/logout', async (c) => {
     deleteCookie(c, "access_token", { path: "/", sameSite: COOKIE_SAMESITE as any, secure: COOKIE_SECURE });
     deleteCookie(c, "refresh_token", { path: "/", sameSite: COOKIE_SAMESITE as any, secure: COOKIE_SECURE });

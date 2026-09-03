@@ -18,22 +18,51 @@ export function Avatar({ name, color, size = "h-7 w-7 text-xs" }) {
   );
 }
 
-export function LabelChip({ label }) {
+/** Pilih warna teks (gelap/terang) yang kontras di atas warna latar hex. */
+export function textOnColor(hex) {
+  if (!hex || typeof hex !== "string") return "#fff";
+  const h = hex.replace("#", "");
+  if (h.length < 6) return "#fff";
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#172B4D" : "#fff";
+}
+
+export function LabelChip({ label, collapsed = false }) {
+  if (collapsed) {
+    return (
+      <span
+        className="h-2 w-9 rounded-full inline-block"
+        style={{ backgroundColor: label.color }}
+        title={label.name}
+        data-testid="label-chip"
+      />
+    );
+  }
   return (
     <span
-      className="h-2 w-10 rounded-full inline-block"
-      style={{ backgroundColor: label.color }}
+      className="inline-flex h-4 max-w-full items-center truncate rounded-[3px] px-1.5 text-[10px] font-bold uppercase leading-none tracking-wide"
+      style={{ backgroundColor: label.color, color: textOnColor(label.color) }}
       title={label.name}
-    />
+      data-testid="label-chip"
+    >
+      {label.name}
+    </span>
   );
 }
 
 export function DueBadge({ dueDate, status }) {
   if (!dueDate) return null;
   const today = new Date().toISOString().slice(0, 10);
+  const soon = new Date();
+  soon.setDate(soon.getDate() + 2);
+  const soonLimit = soon.toISOString().slice(0, 10);
   const isDone = status === "done";
   const isOverdue = !isDone && dueDate < today;
   const isToday = !isDone && dueDate === today;
+  const isSoon = !isDone && !isOverdue && !isToday && dueDate <= soonLimit;
   let cls = "bg-[#091E420F] text-[#44546F]";
   let text = fmtDate(dueDate);
   if (isDone) {
@@ -45,6 +74,9 @@ export function DueBadge({ dueDate, status }) {
   } else if (isToday) {
     cls = "bg-[#E56910] text-white";
     text = "Hari ini";
+  } else if (isSoon) {
+    cls = "bg-[#F5CD47] text-[#172B4D]";
+    text = `${fmtDate(dueDate)} · Segera`;
   }
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold ${cls}`} data-testid="card-due-badge">

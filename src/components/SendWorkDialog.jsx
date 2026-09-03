@@ -47,10 +47,10 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
     }
     setSending(true);
     try {
-      await api.post(`/work-items/${item.id}/send`, {
-        division_id: divisionId,
-        list_id: listId || null,
-        member_ids: mode === "user" ? memberIds : [],
+      await api.post(`/work-items/${item.id}/send-to-division`, {
+        target_division_id: divisionId,
+        target_list_id: listId || null,
+        assign_to_user_id: mode === "user" && memberIds.length > 0 ? memberIds[0] : null,
         note,
         priority: priority !== "none" ? priority : null,
         due_date: dueDate || null,

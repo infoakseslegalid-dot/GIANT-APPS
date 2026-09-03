@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { PrismaClient } from '@prisma/client'
 import * as bcrypt from 'bcryptjs'
+import { LIST_TEMPLATES, DEFAULT_LIST_COLOR } from '../src/server/bankdata_templates'
 
 const prisma = new PrismaClient()
 
@@ -43,29 +44,15 @@ const USERS = [
   ["Rina", "rina@ali.id", "staff", "desain", "#E774BB"],
 ]
 
-const CS_LISTS = [
-  "KOMPLAIN",
-  "SKOR 1-2 (Pengumpulan Berkas)",
-  "SKOR 3 (Butuh/Revisi Draf)",
-  "SKOR 4 (Proses Notaris)",
-  "SKOR 5 (NPWP, NIB, Yayasan)",
-  "SKOR 6 (Finish/Penyerahan)",
-  "SKOR 7 (Follow Up Kembali)",
-]
-
 const BOARDS: any[] = [
-  ["CS DEDES ALI", "cs", ["Dedes Ali"], "#0079bf", CS_LISTS],
-  ["CS DEVI ALI", "cs", ["Devi Ali"], "#519839", CS_LISTS],
-  ["CS DEWI ALI", "cs", ["Dewi Ali"], "#B04632", CS_LISTS],
-  ["CS JULIA ALI", "cs", ["Julia Ali"], "#89609E", CS_LISTS],
-  ["ADMIN DRAF INPUT", "draf", ["Elis", "Anti"], "#D29034",
-    ["PRATINJAU", "FU NOTARIS", "SIAP KIRIM NOTARIS", "VIA WA/GC ADMIN", "PESAN NAMA", "INPUTAN", "FINISH", "ADMIN"]],
-  ["ADMIN PAJAK", "pajak", ["Amel"], "#4BBF6B",
-    ["LIST SPT TAHUNAN", "LIST PENGURUSAN PAJAK", "DOING", "FINISH", "KONTRAK PAJAK", "EMAIL NOTARIS", "ADMIN"]],
-  ["ADMIN PERIZINAN", "perizinan", ["Andi"], "#CD5A91",
-    ["PERIZINAN LANJUTAN", "PRODUK LAINNYA", "MEREK", "MENUNGGU HASIL VERIFIKASI", "TINDAK LANJUT MEREK", "DONE TODAY", "FINISH", "NOTARIS SOPPENG"]],
-  ["DESAIN & KONTEN", "desain", ["Rina"], "#00AECC",
-    ["DAILY RUTIN", "LIST LOGO/COMPRO", "DOING", "FINISH", "REVISI", "REFERENSI", "AKSES LEGAL INDONESIA & KHAL", "KONTEN LAYANAN", "INFLUENCER", "RE-DESAIN"]],
+  ["CS DEDES ALI", "cs", ["Dedes Ali"], "#0079bf", LIST_TEMPLATES.cs],
+  ["CS DEVI ALI", "cs", ["Devi Ali"], "#519839", LIST_TEMPLATES.cs],
+  ["CS DEWI ALI", "cs", ["Dewi Ali"], "#B04632", LIST_TEMPLATES.cs],
+  ["CS JULIA ALI", "cs", ["Julia Ali"], "#89609E", LIST_TEMPLATES.cs],
+  ["ADMIN DRAF INPUT", "draf", ["Elis", "Anti"], "#D29034", LIST_TEMPLATES.draf],
+  ["ADMIN PAJAK", "pajak", ["Amel"], "#4BBF6B", LIST_TEMPLATES.pajak],
+  ["ADMIN PERIZINAN", "perizinan", ["Andi"], "#CD5A91", LIST_TEMPLATES.perizinan],
+  ["DESAIN & KONTEN", "desain", ["Rina"], "#00AECC", LIST_TEMPLATES.desain],
 ]
 
 const SAMPLE_CARDS: any[] = [
@@ -89,11 +76,14 @@ const SAMPLE_CARDS: any[] = [
   ["DESAIN & KONTEN", "Konten Layanan Pendirian PT", "Internal", 0, [], 2, false, null],
 ]
 
+// dicocokkan dengan substring nama list (syarat masuk list CS)
 const CS_STAGE_REQUIREMENTS: Record<string, string[]> = {
-  "SKOR 3": ["KTP", "NPWP"],
-  "SKOR 4": ["Pembayaran DP/Lunas"],
-  "SKOR 5": ["Konfirmasi Klien"],
-  "SKOR 6": ["Penyerahan"],
+  "SKOR 4": ["KTP", "NPWP", "Pembayaran DP/Lunas"],
+  "SKOR 5 SIAP KIRIM NOTARIS": ["Minuta Akta"],
+  "SKOR 5 (NPWP)": ["SK Kemenkumham"],
+  "SKOR 5 (NIB)": ["NPWP"],
+  "SKOR 6 FINISH": ["NIB"],
+  "SKOR 7": ["Penyerahan"],
 }
 
 async function main() {
@@ -142,7 +132,16 @@ async function main() {
   const labelMap: Record<string, Record<string, string>> = {}
 
   for (const [bname, divKey, members, bg, listNames] of BOARDS) {
-    const board = await prisma.board.create({
+    // idempoten: jangan buat board duplikat kalau namanya sudah ada
+    let board = await prisma.board.findFirst({ where: { name: bname } })
+    if (board) {
+      console.log(`  board "${bname}" sudah ada — dilewati`)
+      boardMap[bname] = board.id
+      listMap[bname] = (await prisma.list.findMany({ where: { boardId: board.id }, orderBy: { position: 'asc' } })).map((l) => l.id)
+      labelMap[bname] = Object.fromEntries((await prisma.label.findMany({ where: { boardId: board.id } })).map((l) => [l.name, l.id]))
+      continue
+    }
+    board = await prisma.board.create({
       data: {
         name: bname,
         divisionId: divMap[divKey],
@@ -159,8 +158,8 @@ async function main() {
     for (let i = 0; i < listNames.length; i++) {
       const lname = listNames[i]
       let reqs: string[] | undefined = undefined
-      for (const [prefix, rs] of Object.entries(CS_STAGE_REQUIREMENTS)) {
-        if (lname.startsWith(prefix)) {
+      for (const [needle, rs] of Object.entries(CS_STAGE_REQUIREMENTS)) {
+        if (lname.includes(needle)) {
           reqs = rs
           break
         }
@@ -171,7 +170,8 @@ async function main() {
           boardId: board.id,
           name: lname,
           position: (i + 1) * 1000,
-          entryRequirements: reqs ? JSON.stringify(reqs) : null
+          color: DEFAULT_LIST_COLOR,
+          entryRequirements: reqs ?? null   // kolom Json — simpan array langsung, JANGAN stringify
         }
       })
       lids.push(list.id)

@@ -12,6 +12,7 @@ const inputCls = "h-9 w-full rounded-lg border border-[#DFE1E6] px-3 text-sm tex
 const btnPrimary = "h-9 px-4 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors active:scale-95";
 const DIV_COLORS = ["#0C66E4", "#E56910", "#22A06B", "#9F8FEF", "#E774BB", "#CA3521", "#F5CD47"];
 const BG_COLORS = ["#0079bf", "#519839", "#D29034", "#B04632", "#89609E", "#CD5A91", "#4BBF6B", "#00AECC"];
+const LIST_COLORS = ["#F1F2F4", "#E9F2FF", "#E3FCEF", "#FFF7D6", "#FFEDEB", "#EAE6FF", "#FCE8F3", "#DFE1E6"];
 
 function UsersTab({ divisions }) {
   const qc = useQueryClient();
@@ -346,6 +347,102 @@ function ActivityTab() {
   );
 }
 
+// ── Alur & Syarat List ──────────────────────────────────────────────
+function ListRow({ list, idx, nextName }) {
+  const qc = useQueryClient();
+  const [reqText, setReqText] = useState((list.entryRequirements || []).join("\n"));
+  const [color, setColor] = useState(list.color || "#F1F2F4");
+  const [dirty, setDirty] = useState(false);
+
+  const save = async () => {
+    const reqs = reqText.split("\n").map((s) => s.trim()).filter(Boolean);
+    try {
+      await api.patch(`/lists/${list.id}`, { color, entryRequirements: reqs });
+      toast.success(`List "${list.name}" disimpan`);
+      setDirty(false);
+      qc.invalidateQueries({ queryKey: ["board-full"] });
+      qc.invalidateQueries({ queryKey: ["board"] });
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-[#DFE1E6] bg-white p-4" data-testid={`flow-list-${list.id}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#F1F2F4] text-xs font-bold text-[#5E6C84]">{idx + 1}</span>
+        <span className="h-4 w-4 rounded shrink-0 border border-[#DFE1E6]" style={{ backgroundColor: color }} />
+        <span className="font-semibold text-[#172B4D]">{list.name}</span>
+      </div>
+
+      <div className="mb-3">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-[#8590A2] mb-1.5">Warna list</p>
+        <div className="flex flex-wrap gap-1.5">
+          {LIST_COLORS.map((c) => (
+            <button key={c} type="button" onClick={() => { setColor(c); setDirty(true); }}
+              className={`h-7 w-7 rounded ${color === c ? "ring-2 ring-[#0C66E4] ring-offset-1" : "border border-[#DFE1E6]"}`}
+              style={{ backgroundColor: c }} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-[#8590A2] mb-1">
+          Syarat pindah kartu KE list ini
+        </p>
+        <p className="text-[11px] text-[#8590A2] mb-1.5">
+          Satu syarat per baris. Kartu tidak bisa dipindah ke <b>{list.name}</b>{nextName ? "" : ""} sebelum item checklist dengan teks berikut tercentang (supervisor bisa paksa).
+        </p>
+        <textarea
+          value={reqText}
+          onChange={(e) => { setReqText(e.target.value); setDirty(true); }}
+          rows={3}
+          placeholder={"mis:\nSK Kemenkumham\nPembayaran DP/Lunas"}
+          className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y font-mono"
+        />
+      </div>
+
+      {dirty && (
+        <button type="button" onClick={save} className={`${btnPrimary} mt-3`}>Simpan</button>
+      )}
+    </div>
+  );
+}
+
+function FlowTab() {
+  const { data: boards } = useQuery({ queryKey: ["boards"], queryFn: () => api.get("/boards").then((r) => r.data) });
+  const [boardId, setBoardId] = useState("");
+  const activeBoardId = boardId || (boards || [])[0]?.id;
+  const { data: full } = useQuery({
+    queryKey: ["board-full", activeBoardId],
+    queryFn: () => api.get(`/boards/${activeBoardId}/full`).then((r) => r.data),
+    enabled: !!activeBoardId,
+  });
+  const lists = (full?.lists || []).slice().sort((a, b) => a.position - b.position);
+
+  return (
+    <div className="space-y-4" data-testid="admin-flow-tab">
+      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5">
+        <h3 className="font-heading font-bold text-[#172B4D] mb-1">Alur & Syarat Pindah List</h3>
+        <p className="text-sm text-[#44546F] mb-3">
+          Pilih board. List dibaca <b>kiri → kanan</b> sesuai urutan. Atur warna & syarat naik ke tiap tahap.
+        </p>
+        <select value={activeBoardId || ""} onChange={(e) => setBoardId(e.target.value)} className={`${inputCls} max-w-sm`} data-testid="flow-board-select">
+          {(boards || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </div>
+
+      {lists.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {lists.map((l, i) => (
+            <ListRow key={l.id} list={l} idx={i} nextName={lists[i + 1]?.name} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel() {
   const { user } = useAuth();
   const { data: divisions } = useQuery({ queryKey: ["divisions"], queryFn: () => api.get("/divisions").then((r) => r.data) });
@@ -371,6 +468,7 @@ export default function AdminPanel() {
           {isAdmin && <TabsTrigger value="users" data-testid="tab-trigger-users">Pengguna</TabsTrigger>}
           {isAdmin && <TabsTrigger value="divisions" data-testid="tab-trigger-divisions">Divisi</TabsTrigger>}
           {isAdmin && <TabsTrigger value="boards" data-testid="tab-trigger-boards">Board</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="flow" data-testid="tab-trigger-flow">Alur & Syarat List</TabsTrigger>}
           <TabsTrigger value="activity" data-testid="tab-trigger-activity">Log Aktivitas</TabsTrigger>
         </TabsList>
         {isAdmin && (
@@ -378,6 +476,7 @@ export default function AdminPanel() {
             <TabsContent value="users" className="mt-4"><UsersTab divisions={divisions} /></TabsContent>
             <TabsContent value="divisions" className="mt-4"><DivisionsTab divisions={divisions} /></TabsContent>
             <TabsContent value="boards" className="mt-4"><BoardsTab divisions={divisions} /></TabsContent>
+            <TabsContent value="flow" className="mt-4"><FlowTab /></TabsContent>
           </>
         )}
         <TabsContent value="activity" className="mt-4"><ActivityTab /></TabsContent>

@@ -7,16 +7,53 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Division {
-  id         String   @id @default(uuid())
-  name       String
-  color      String?
-  key        String   @unique
-  createdAt  DateTime @default(now())
+enum DistributionStatus {
+  AVAILABLE
+  CLAIMED
+  DIRECT_ASSIGNED
+  RELEASED
+}
 
-  users      User[]
-  boards     Board[]
-  workItems  WorkItemDivision[]
+enum AssignmentAction {
+  CLAIM
+  UNCLAIM
+  DIRECT_ASSIGN
+  TAKE_OVER
+  REASSIGN
+}
+
+// Bank Data & Distribusi Pekerjaan (PRD v1.0):
+// Master Card dimiliki oleh CS (Owner). 1 Master Card -> banyak Assignment (WorkItem).
+// Master Card TIDAK diduplikasi saat pekerjaan dikirim ke divisi lain.
+model MasterCard {
+  id              String   @id @default(uuid())
+  title           String
+  client          String?
+  // owner null selama client offline belum di-claim CS (Flow B)
+  ownerUserId     String?
+  ownerDivisionId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  owner         User?      @relation("MasterCardOwner", fields: [ownerUserId], references: [id])
+  ownerDivision Division?  @relation("MasterCardOwnerDivision", fields: [ownerDivisionId], references: [id])
+  assignments   WorkItem[]
+
+  @@index([ownerUserId])
+}
+
+model Division {
+  id        String   @id @default(uuid())
+  name      String
+  color     String?
+  key       String   @unique
+  createdAt DateTime @default(now())
+
+  users            User[]
+  boards           Board[]
+  workItems        WorkItemDivision[]
+  targetWorkItems  WorkItem[]         @relation("TargetDivision")
+  masterCardsOwned MasterCard[]       @relation("MasterCardOwnerDivision")
 }
 
 model User {
@@ -30,17 +67,25 @@ model User {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  division     Division? @relation(fields: [divisionId], references: [id])
-  boardsCreated Board[] @relation("BoardCreator")
-  workItemsCreated WorkItem[] @relation("WorkItemCreator")
-  workItemsSubmitted WorkItem[] @relation("WorkItemSubmitter")
-  workItemsApproved WorkItem[] @relation("WorkItemApprover")
-  activities   Activity[]
-  notifications Notification[]
-  attachments  Attachment[]
+  division           Division?      @relation(fields: [divisionId], references: [id])
+  boardsCreated      Board[]        @relation("BoardCreator")
+  workItemsCreated   WorkItem[]     @relation("WorkItemCreator")
+  workItemsSubmitted WorkItem[]     @relation("WorkItemSubmitter")
+  workItemsApproved  WorkItem[]     @relation("WorkItemApprover")
+  activities         Activity[]
+  comments           Comment[]
+  notifications      Notification[]
+  attachments        Attachment[]
 
-  boardMembers BoardMember[]
+  boardMembers    BoardMember[]
   workItemMembers WorkItemMember[]
+
+  picWorkItems             WorkItem[]                  @relation("CurrentPic")
+  sourcedWorkItems         WorkItem[]                  @relation("WorkItemSource")
+  masterCardsOwned         MasterCard[]                @relation("MasterCardOwner")
+  assignmentHistoryFrom    WorkItemAssignmentHistory[] @relation("AssignmentFrom")
+  assignmentHistoryTo      WorkItemAssignmentHistory[] @relation("AssignmentTo")
+  assignmentHistoryCreated WorkItemAssignmentHistory[] @relation("AssignmentCreated")
 }
 
 model Board {
@@ -52,24 +97,28 @@ model Board {
   createdById String
   createdAt   DateTime @default(now())
 
-  division    Division? @relation(fields: [divisionId], references: [id])
-  createdBy   User      @relation("BoardCreator", fields: [createdById], references: [id])
+  division  Division? @relation(fields: [divisionId], references: [id])
+  createdBy User      @relation("BoardCreator", fields: [createdById], references: [id])
 
-  members     BoardMember[]
-  lists       List[]
-  labels      Label[]
-  workItems   WorkItem[]
+  members           BoardMember[]
+  lists             List[]
+  labels            Label[]
+  workItems         WorkItem[]
   mirroredWorkItems WorkItemMirror[]
-  automationRules AutomationRule[]
-  activities  Activity[]
-  notifications Notification[]
+  automationRules   AutomationRule[]
+  activities        Activity[]
+  notifications     Notification[]
+
+  sourceWorkItems WorkItem[] @relation("SourceBoard")
+  targetWorkItems WorkItem[] @relation("TargetBoard")
 }
 
 model BoardMember {
   boardId String
   userId  String
-  board   Board @relation(fields: [boardId], references: [id])
-  user    User  @relation(fields: [userId], references: [id])
+  board   Board  @relation(fields: [boardId], references: [id])
+  user    User   @relation(fields: [userId], references: [id])
+
   @@id([boardId, userId])
 }
 
@@ -79,12 +128,15 @@ model List {
   name              String
   color             String?
   position          Float
-  entryRequirements Json?    // Array of strings
+  entryRequirements Json? // Array of strings
   createdAt         DateTime @default(now())
 
-  board             Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  workItems         WorkItem[]
-  automationRules   AutomationRule[]
+  board           Board            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  workItems       WorkItem[]
+  automationRules AutomationRule[]
+
+  sourceWorkItems WorkItem[] @relation("SourceList")
+  targetWorkItems WorkItem[] @relation("TargetList")
 }
 
 model Label {
@@ -94,51 +146,80 @@ model Label {
   color     String?
   createdAt DateTime @default(now())
 
-  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  board     Board           @relation(fields: [boardId], references: [id], onDelete: Cascade)
   workItems WorkItemLabel[]
 }
 
 model WorkItem {
-  id             String   @id @default(uuid())
-  title          String
-  clientName     String?
-  description    String?
-  boardId        String
-  listId         String
-  position       Float
-  dueDate        String?  // format YYYY-MM-DD
-  priority       String   @default("none")
-  status         String   @default("active")
-  archived       Boolean  @default(false)
-  needsApproval  Boolean  @default(false)
-  
-  createdById    String
-  createdByName  String?
-  submittedById  String?
-  approvedById   String?
-  
-  hariStage      Int?
-  hariEnteredAt  DateTime?
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now())
-  completedAt    DateTime?
+  id            String  @id @default(uuid())
+  title         String
+  clientName    String?
+  description   String?
+  boardId       String
+  listId        String
+  position      Float
+  startDate     String? // format YYYY-MM-DD
+  dueDate       String? // format YYYY-MM-DD
+  priority      String  @default("none")
+  status        String  @default("active")
+  archived      Boolean @default(false)
+  needsApproval Boolean @default(false)
 
-  checklists     Json?    // Complex JSON structure for checklists
+  createdById   String
+  createdByName String?
+  submittedById String?
+  approvedById  String?
 
-  board          Board    @relation(fields: [boardId], references: [id])
-  list           List     @relation(fields: [listId], references: [id])
-  createdBy      User     @relation("WorkItemCreator", fields: [createdById], references: [id])
-  submittedBy    User?    @relation("WorkItemSubmitter", fields: [submittedById], references: [id])
-  approvedBy     User?    @relation("WorkItemApprover", fields: [approvedById], references: [id])
+  hariStage     Int?
+  hariEnteredAt DateTime?
 
-  labels         WorkItemLabel[]
-  members        WorkItemMember[]
-  divisionIds    WorkItemDivision[]
-  mirrorBoards   WorkItemMirror[]
-  activities     Activity[]
-  notifications  Notification[]
-  attachments    Attachment[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  // Bank Data & Distribution Fields
+  masterCardId       String? // null = kartu biasa / Master Card itu sendiri
+  sourceUserId       String? // user pengirim (Kirim ke Divisi)
+  sourceBoardId      String?
+  sourceListId       String?
+  targetDivisionId   String?
+  targetBoardId      String?
+  targetListId       String?
+  currentPicId       String?
+  distributionStatus DistributionStatus @default(AVAILABLE) // AVAILABLE = menunggu diambil
+  workStatus         String? // progress: WAITING_CLAIM|CLAIMED|IN_PROGRESS|WAITING|REVISION|COMPLETED|CANCELLED
+  claimedAt          DateTime?
+  releasedAt         DateTime?
+
+  checklists Json? // Complex JSON structure for checklists
+
+  board       Board @relation(fields: [boardId], references: [id])
+  list        List  @relation(fields: [listId], references: [id])
+  createdBy   User  @relation("WorkItemCreator", fields: [createdById], references: [id])
+  submittedBy User? @relation("WorkItemSubmitter", fields: [submittedById], references: [id])
+  approvedBy  User? @relation("WorkItemApprover", fields: [approvedById], references: [id])
+
+  labels        WorkItemLabel[]
+  members       WorkItemMember[]
+  divisionIds   WorkItemDivision[]
+  mirrorBoards  WorkItemMirror[]
+  activities    Activity[]
+  comments      Comment[]
+  notifications Notification[]
+  attachments   Attachment[]
+
+  masterCard          MasterCard?                 @relation(fields: [masterCardId], references: [id])
+  sourceUser          User?                       @relation("WorkItemSource", fields: [sourceUserId], references: [id])
+  sourceBoard         Board?                      @relation("SourceBoard", fields: [sourceBoardId], references: [id])
+  sourceList          List?                       @relation("SourceList", fields: [sourceListId], references: [id])
+  targetDivision      Division?                   @relation("TargetDivision", fields: [targetDivisionId], references: [id])
+  targetBoard         Board?                      @relation("TargetBoard", fields: [targetBoardId], references: [id])
+  targetList          List?                       @relation("TargetList", fields: [targetListId], references: [id])
+  currentPic          User?                       @relation("CurrentPic", fields: [currentPicId], references: [id])
+  assignmentHistories WorkItemAssignmentHistory[]
+
+  @@index([masterCardId])
+  @@index([targetDivisionId, distributionStatus])
 }
 
 model WorkItemLabel {
@@ -146,6 +227,7 @@ model WorkItemLabel {
   labelId    String
   workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   label      Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
   @@id([workItemId, labelId])
 }
 
@@ -154,6 +236,7 @@ model WorkItemMember {
   userId     String
   workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@id([workItemId, userId])
 }
 
@@ -162,6 +245,7 @@ model WorkItemDivision {
   divisionId String
   workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   division   Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+
   @@id([workItemId, divisionId])
 }
 
@@ -170,52 +254,69 @@ model WorkItemMirror {
   boardId    String
   workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   board      Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
   @@id([workItemId, boardId])
 }
 
-model Activity {
-  id           String   @id @default(uuid())
-  workItemId   String
-  boardId      String?
-  userId       String
-  userName     String?
-  action       String
-  detail       Json?
-  createdAt    DateTime @default(now())
+model Comment {
+  id            String   @id @default(uuid())
+  workItemId    String
+  createdById   String
+  createdByName String
+  text          String   @db.Text
+  attachmentId  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  workItem     WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
-  board        Board?   @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [userId], references: [id])
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workItemId])
+}
+
+model Activity {
+  id         String   @id @default(uuid())
+  workItemId String
+  boardId    String?
+  userId     String
+  userName   String?
+  action     String
+  detail     Json?
+  createdAt  DateTime @default(now())
+
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  board    Board?   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
 }
 
 model Notification {
-  id           String   @id @default(uuid())
-  userId       String
-  type         String
-  title        String
-  body         String
-  workItemId   String?
-  boardId      String?
-  isRead       Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String
+  type       String
+  title      String
+  body       String
+  workItemId String?
+  boardId    String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workItem     WorkItem? @relation(fields: [workItemId], references: [id], onDelete: Cascade)
-  board        Board?   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  board    Board?    @relation(fields: [boardId], references: [id], onDelete: Cascade)
 }
 
 model AutomationRule {
-  id             String   @id @default(uuid())
-  boardId        String
-  trigger        String
-  triggerListId  String?
-  action         String
-  actionValue    String?
-  createdById    String
-  createdAt      DateTime @default(now())
+  id            String   @id @default(uuid())
+  boardId       String
+  trigger       String
+  triggerListId String?
+  action        String
+  actionValue   String?
+  createdById   String
+  createdAt     DateTime @default(now())
 
-  board          Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  triggerList    List?    @relation(fields: [triggerListId], references: [id], onDelete: Cascade)
+  board       Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  triggerList List? @relation(fields: [triggerListId], references: [id], onDelete: Cascade)
 }
 
 model Attachment {
@@ -230,8 +331,8 @@ model Attachment {
   isDeleted        Boolean  @default(false)
   createdAt        DateTime @default(now())
 
-  workItem         WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
-  uploadedBy       User     @relation(fields: [uploadedById], references: [id])
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
 }
 
 model LoginAttempt {
@@ -249,4 +350,20 @@ model CronRun {
 model Setting {
   key String   @id
   at  DateTime @default(now())
+}
+
+model WorkItemAssignmentHistory {
+  id          String           @id @default(uuid())
+  workItemId  String
+  fromUserId  String?
+  toUserId    String?
+  action      AssignmentAction
+  reason      String?          @db.Text
+  createdById String
+  createdAt   DateTime         @default(now())
+
+  workItem  WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  fromUser  User?    @relation("AssignmentFrom", fields: [fromUserId], references: [id])
+  toUser    User?    @relation("AssignmentTo", fields: [toUserId], references: [id])
+  createdBy User     @relation("AssignmentCreated", fields: [createdById], references: [id])
 }

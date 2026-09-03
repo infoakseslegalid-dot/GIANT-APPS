@@ -6,7 +6,8 @@ export const API = `/api`;
 export const api = axios.create({ baseURL: API, withCredentials: true });
 
 export function errMsg(e) {
-  const d = e?.response?.data?.detail;
+  // route Hono mengembalikan { error }, layer lain { detail }
+  const d = e?.response?.data?.detail ?? e?.response?.data?.error;
   if (!d) return e?.message || "Terjadi kesalahan. Coba lagi.";
   if (typeof d === "string") return d;
   if (Array.isArray(d)) return d.map((x) => (x && typeof x.msg === "string" ? x.msg : JSON.stringify(x))).join(" ");

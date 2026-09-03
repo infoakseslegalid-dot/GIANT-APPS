@@ -11,7 +11,7 @@ import { Zap, Archive, Users, Plus, X, Filter } from "lucide-react";
 import { api, errMsg } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { KanbanColumn, CardTile } from "../components/Kanban";
-import CardModal from "../components/CardModal";
+import CardModal from "../components/kanban/CardModalWrapper";
 import AutomationModal from "../components/AutomationModal";
 import { Avatar } from "../components/common";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";

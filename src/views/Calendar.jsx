@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { api } from "../lib/api";
-import CardModal from "../components/CardModal";
+import CardModal from "../components/kanban/CardModalWrapper";
 
 const DAY_NAMES = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 

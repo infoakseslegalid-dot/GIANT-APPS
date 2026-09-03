@@ -4,7 +4,7 @@ import { Search } from "lucide-react";
 import { api, fmtDate, PRIORITIES } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { StatusBadge, Avatar } from "../components/common";
-import CardModal from "../components/CardModal";
+import CardModal from "../components/kanban/CardModalWrapper";
 
 export default function AllWork() {
   const { user } = useAuth();

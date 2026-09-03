@@ -1,15 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   X, AlignLeft, Tags, Clock, Users, Building2, CheckSquare, Paperclip,
   MessageSquare, Hand, CheckCircle2, Archive, ArchiveRestore, Trash2, Flag, Send, Plus, Download, Activity,
-  Eye, Copy, ChevronUp, ChevronDown, ArrowRightToLine, Link as LinkIcon, Image as ImageIcon, Pencil, CalendarPlus,
+  Eye, Copy, ChevronUp, ChevronDown, ArrowRightToLine, Link as LinkIcon, Image as ImageIcon, Pencil, CalendarPlus, ArrowRight, Tag,
+  Circle, CircleCheck, MoreHorizontal, Zap, Bot, UserPlus, Share2, LayoutTemplate, Frame, SquareCheck, Smile,
+  Type, Bold, Italic, List, FileText, ExternalLink,
 } from "lucide-react";
 import { api, errMsg, PRIORITIES, fmtDateTime, fmtDate, LABEL_COLORS, API } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "./common";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "./ui/dropdown-menu";
 import SendWorkDialog from "./SendWorkDialog";
 
 const EMOJIS = ["👍", "❤️", "😂", "✅"];
@@ -46,6 +51,7 @@ export default function CardModal({ itemId, onClose }) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [comment, setComment] = useState("");
+  const [composing, setComposing] = useState(false);
   const [showActivityDetail, setShowActivityDetail] = useState(true);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState(LABEL_COLORS[0]);
@@ -55,12 +61,20 @@ export default function CardModal({ itemId, onClose }) {
   const [showSend, setShowSend] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [editingComment, setEditingComment] = useState(null);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [desc, setDesc] = useState("");
   const [editText, setEditText] = useState("");
   const [cfName, setCfName] = useState("");
   const [cfValue, setCfValue] = useState("");
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkName, setLinkName] = useState("");
+  // ── Baru ────────────────────────────────────────────────────────────────
+  const [commentFiles, setCommentFiles] = useState([]); // { file, preview?, name }
+  const [replyTo, setReplyTo] = useState(null);         // { id, name }
+  const [activeTab, setActiveTab] = useState("comments"); // comments | powerups | automations
+  const [uploadingComment, setUploadingComment] = useState(false);
+  const commentFileRef = useRef(null);
 
   useEffect(() => {
     const h = (e) => {
@@ -139,18 +153,24 @@ export default function CardModal({ itemId, onClose }) {
   };
 
   const uploadFile = async (e, forComment = false) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     setUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
+    
     try {
-      const r = await api.post(`/work-items/${itemId}/attachments`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      if (forComment) {
-        setPendingAttachment(r.data);
-        toast.success(`"${file.name}" siap dilampirkan ke komentar`);
-      } else {
-        toast.success("Lampiran diunggah");
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fd = new FormData();
+        fd.append("file", file);
+        const r = await api.post(`/work-items/${itemId}/attachments`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        
+        if (forComment && i === files.length - 1) {
+          setPendingAttachment(r.data);
+          toast.success(`"${file.name}" siap dilampirkan ke komentar`);
+        }
+      }
+      if (!forComment) {
+        toast.success(`${files.length} Lampiran diunggah`);
       }
       invalidate();
     } catch (err) {
@@ -188,6 +208,93 @@ export default function CardModal({ itemId, onClose }) {
     run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/reorder`, { ordered_ids: ids }));
   };
 
+  // ── Tipe file yang diizinkan di comment ─────────────────────────────────
+  const OFFICE_ACCEPT = [
+    ".pdf",".doc",".docx",".xls",".xlsx",".ppt",".pptx",
+    ".odt",".ods",".odp",".txt",".csv",".rtf",".zip",".rar",
+  ].join(",");
+  const IMAGE_ACCEPT = "image/*";
+  const MAX_FILES = 10;
+
+  // ── Tambah file ke antrian comment upload ────────────────────────────────
+  const addCommentFiles = (fileList) => {
+    const arr = Array.from(fileList);
+    setCommentFiles((prev) => {
+      const merged = [...prev, ...arr.map((f) => ({
+        file: f,
+        name: f.name,
+        preview: f.type.startsWith("image/") ? URL.createObjectURL(f) : null,
+        ext: f.name.split(".").pop()?.toUpperCase() || "FILE",
+      }))];
+      if (merged.length > MAX_FILES) {
+        toast.warning(`Maksimal ${MAX_FILES} file — ${merged.length - MAX_FILES} file diabaikan`);
+        return merged.slice(0, MAX_FILES);
+      }
+      return merged;
+    });
+    // Reset input supaya file sama bisa dipilih ulang
+    if (commentFileRef.current) commentFileRef.current.value = "";
+  };
+
+  // ── Hapus file dari antrian ──────────────────────────────────────────────
+  const removeCommentFile = (idx) => {
+    setCommentFiles((prev) => {
+      const copy = [...prev];
+      if (copy[idx]?.preview) URL.revokeObjectURL(copy[idx].preview);
+      copy.splice(idx, 1);
+      return copy;
+    });
+  };
+
+  // ── Kirim komentar + file ────────────────────────────────────────────────
+  const submitComment = async () => {
+    if (!comment.trim() && commentFiles.length === 0) return;
+    setUploadingComment(true);
+    try {
+      // Upload semua file dulu, kumpulkan ID attachment
+      const attachmentIds = [];
+      for (const cf of commentFiles) {
+        const fd = new FormData();
+        fd.append("file", cf.file);
+        const r = await api.post(`/work-items/${itemId}/attachments`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        attachmentIds.push(r.data.id);
+      }
+      // Kirim komentar; backend menerima attachment_ids (array)
+      await run(
+        () => api.post(`/work-items/${itemId}/comments`, {
+          text: comment,
+          reply_to_id: replyTo?.id || null,
+          attachment_ids: attachmentIds,
+        }),
+        "Komentar dikirim"
+      );
+      setComment("");
+      setCommentFiles([]);
+      setReplyTo(null);
+      setComposing(false);
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setUploadingComment(false);
+    }
+  };
+
+  // ── Toggle watch ────────────────────────────────────────────────────────
+  const toggleWatch = () =>
+    run(
+      () => api.post(`/work-items/${itemId}/${isWatching ? "unwatch" : "watch"}`),
+      isWatching ? "Berhenti memantau" : "Memantau kartu ini"
+    );
+
+  // ── Add link as attachment ───────────────────────────────────────────────
+  const addLinkAsAttachment = (url) =>
+    run(
+      () => api.post(`/work-items/${itemId}/attachments`, { url }),
+      "Link ditambahkan sebagai lampiran"
+    );
+
   const renderCommentText = (text) =>
     text.split(/(@[\w\.]+)/g).map((part, i) =>
       part.startsWith("@") ? (
@@ -197,572 +304,700 @@ export default function CardModal({ itemId, onClose }) {
       )
     );
 
+  const cardLabels = (board_labels || []).filter((l) => (item.label_ids || []).includes(l.id));
   const feed = [
     ...(comments || []).map((c) => ({ kind: "comment", at: c.created_at, data: c })),
     ...(showActivityDetail ? (activities || []).map((a) => ({ kind: "activity", at: a.created_at, data: a })) : []),
-  ].sort((a, b) => (a.at < b.at ? 1 : -1));
+  ].sort((a, b) => (a.at < b.at ? 1 : -1)); // terbaru di atas
+
+  const isDone = item.status === "done";
+
+  /* Kelas gaya — mengikuti CardBack.reference.tsx / contoh layout.jpeg (palet slate) */
+  const pill =
+    "flex h-8 items-center gap-1.5 rounded bg-slate-100 px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50";
+  const iconBtn =
+    "flex h-8 w-8 items-center justify-center rounded text-slate-600 transition-colors hover:bg-slate-200";
+  const menuItemCls =
+    "flex h-9 w-full cursor-pointer select-none items-center gap-3 rounded px-2 text-sm text-slate-700 outline-none hover:bg-slate-100 focus:bg-slate-100";
+  const sectionEditBtn =
+    "h-8 rounded bg-slate-100 px-3 text-sm font-medium text-slate-700 hover:bg-slate-200";
+
+  const initials = (name) =>
+    (name || "?").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
   return (
+    /* Overlay */
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-8 overflow-y-auto fade-enter"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:p-8 max-sm:p-0 fade-enter"
       onClick={onClose}
       data-testid="card-modal-overlay"
     >
+      {/* Modal shell */}
       <div
-        className="bg-[#f4f5f7] w-full max-w-5xl rounded-xl shadow-2xl relative mb-16 text-[#172B4D] modal-enter overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="card-modal-title"
         onClick={(e) => e.stopPropagation()}
-        data-testid="card-modal"
+        data-testid="card-modal-content"
+        className="flex max-h-[90vh] w-[900px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-lg bg-white text-[#172b4d] shadow-2xl max-sm:h-full max-sm:max-h-full max-sm:w-full max-sm:max-w-full max-sm:rounded-none"
       >
+        {/* Cover */}
         {item.cover_attachment_id && attachmentsById[item.cover_attachment_id] ? (
-          <img src={`${API}/attachments/${item.cover_attachment_id}/download`} alt="Cover" className="w-full h-36 object-cover" data-testid="card-cover-image" />
+          <div
+            className="h-40 w-full shrink-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${API}/attachments/${item.cover_attachment_id}/download)` }}
+          />
         ) : item.cover_color ? (
-          <div className="w-full h-16" style={{ backgroundColor: item.cover_color }} data-testid="card-cover-color" />
+          <div className="h-28 w-full shrink-0" style={{ backgroundColor: item.cover_color }} />
         ) : null}
 
-        <button aria-label="Tutup" data-testid="card-modal-close" onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-full bg-white/70 hover:bg-white text-[#44546F] z-10 transition-colors">
-          <X size={18} />
-        </button>
+        {/* ── HEADER ──────────────────────────────────────────────────── */}
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-2">
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded bg-slate-100 px-2 py-1 text-[12px] font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-200"
+          >
+            {list_name}
+            {item.hari_stage ? ` · HARI ${item.hari_stage}` : ""}
+            <ChevronDown size={12} />
+          </button>
 
-        <div className="px-6 pt-5 pb-4 border-b border-[#DFE1E6]">
-          <input
-            data-testid="card-title-input"
-            defaultValue={item.title}
-            key={item.id + item.title}
-            onBlur={(e) => e.target.value.trim() && e.target.value !== item.title && saveField("title", e.target.value.trim())}
-            className="w-full bg-transparent font-heading text-xl font-bold text-[#172B4D] outline-none rounded px-1 -ml-1 focus:bg-white focus:ring-2 focus:ring-[#0C66E4]"
-          />
-          <p className="text-xs text-[#44546F] mt-1 px-1">
-            di list <span className="font-semibold underline">{list_name}</span> · board <span className="font-semibold">{board_name}</span>
-            {item.hari_stage ? <> · <span className="font-semibold text-[#E56910]">Proses HARI {item.hari_stage}</span></> : null}
-            {(mirror_boards || []).length > 0 && (
-              <> · ter-mirror di {mirror_boards.map((b) => (
-                <span key={b.id} className="inline-flex items-center gap-1 font-semibold text-[#2684FF]" data-testid={`mirrored-at-${b.id}`}>
-                  {b.name}
-                  <button data-testid={`unmirror-${b.id}`} onClick={() => run(() => api.post(`/work-items/${itemId}/unmirror`, { board_id: b.id }), "Mirror dihapus")} className="text-[#CA3521] hover:underline text-[10px]">(hapus)</button>
-                </span>
-              ))}</>
-            )}
-          </p>
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            {!isMember && item.status !== "done" && (
-              <ActionChip testid="claim-button" icon={<Hand size={13} />} label="Ambil Pekerjaan" color="green"
-                onClick={() => run(() => api.post(`/work-items/${itemId}/claim`), "Anda menjadi PIC pekerjaan ini")} />
-            )}
-            {isMember && item.status !== "done" && (
-              <ActionChip testid="release-button" icon={<X size={13} />} label="Lepaskan"
-                onClick={() => {
-                  const reason = window.prompt("Alasan melepas pekerjaan (opsional):") || "";
-                  run(() => api.post(`/work-items/${itemId}/release`, { reason }), "Pekerjaan dilepas & kembali ke Bank Data");
-                }} />
-            )}
-            {item.status === "active" && (
-              <ActionChip testid="submit-done-button" icon={<Send size={13} />} label={item.needs_approval ? "Ajukan Penyelesaian" : "Tandai Selesai"} color="blue"
-                onClick={() => run(() => api.post(`/work-items/${itemId}/submit`), item.needs_approval ? "Diajukan untuk persetujuan" : "Pekerjaan selesai")} />
-            )}
-            {item.status === "submitted" && isSupervisorUp && (
-              <ActionChip testid="approve-button" icon={<CheckCircle2 size={13} />} label="Setujui & Selesaikan" color="green"
-                onClick={() => run(() => api.post(`/work-items/${itemId}/approve`), "Pekerjaan disetujui")} />
-            )}
-            {item.status === "submitted" && !isSupervisorUp && (
-              <span className="text-xs bg-[#F4F0FF] text-[#5E4DB2] rounded-lg px-3 py-1.5 font-semibold" data-testid="waiting-approval-note">
-                Menunggu persetujuan supervisor/admin
-              </span>
-            )}
-            {item.status === "done" && (
-              <ActionChip testid="reopen-button" icon={<ArchiveRestore size={13} />} label="Buka Kembali"
-                onClick={() => run(() => api.post(`/work-items/${itemId}/reopen`), "Pekerjaan dibuka kembali")} />
-            )}
-            <ActionChip testid="send-work-button" icon={<Send size={13} />} label="Kirim / Mirror ke Divisi" color="blue"
-              onClick={() => setShowSend(true)} />
-            <ActionChip testid="watch-button" icon={<Eye size={13} />} label={isWatching ? "Dipantau" : "Pantau"} active={isWatching}
-              onClick={() => run(() => api.post(`/work-items/${itemId}/watch`, { on: !isWatching }), isWatching ? "Berhenti memantau" : "Anda memantau kartu ini")} />
-            <ActionChip testid="copy-link-button" icon={<Copy size={13} />} label="Salin Link" onClick={copyLink} />
-            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#091E420F] text-xs font-semibold cursor-pointer" data-testid="needs-approval-toggle">
-              <input type="checkbox" checked={!!item.needs_approval} onChange={(e) => saveField("needs_approval", e.target.checked)} className="w-3.5 h-3.5 accent-[#0C66E4]" />
-              Butuh approval
+          <div className="flex items-center gap-1">
+            <label title="Sampul" className={`${iconBtn} cursor-pointer ${uploading ? "opacity-50" : ""}`}>
+              <ImageIcon size={16} />
+              <input type="file" accept="image/*" className="hidden" onChange={uploadFile} disabled={uploading} />
             </label>
-            {!item.archived ? (
-              <ActionChip testid="archive-button" icon={<Archive size={13} />} label="Arsipkan"
-                onClick={() => run(() => api.post(`/work-items/${itemId}/archive`), "Diarsipkan")} />
-            ) : (
-              <ActionChip testid="unarchive-button" icon={<ArchiveRestore size={13} />} label="Kembalikan"
-                onClick={() => run(() => api.post(`/work-items/${itemId}/unarchive`), "Dikembalikan")} />
-            )}
-            {isAdmin && (
-              <ActionChip testid="delete-item-button" icon={<Trash2 size={13} />} label="Hapus" color="red"
-                onClick={() => {
-                  if (window.confirm("Hapus pekerjaan ini secara permanen?")) {
-                    run(async () => {
-                      await api.delete(`/work-items/${itemId}`);
-                      onClose();
-                    }, "Pekerjaan dihapus");
-                  }
-                }} />
-            )}
+
+            <button
+              type="button"
+              onClick={toggleWatch}
+              title={isWatching ? "Berhenti memantau kartu ini" : "Watch — aktifkan notifikasi"}
+              className={`flex h-8 w-8 items-center justify-center rounded transition-colors hover:bg-slate-200 ${isWatching ? "text-blue-600" : "text-slate-600"}`}
+            >
+              <Eye size={16} />
+            </button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="More" className={iconBtn}><MoreHorizontal size={16} /></button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={4} className="w-[240px] p-2">
+                {!isMember && !isDone && (
+                  <DropdownMenuItem className={menuItemCls} onSelect={() => run(() => api.post(`/work-items/${itemId}/claim`), "Anda menjadi PIC")}>
+                    <Hand size={16} className="text-slate-600" /> Ambil Pekerjaan
+                  </DropdownMenuItem>
+                )}
+                {isMember && !isDone && (
+                  <DropdownMenuItem
+                    className={menuItemCls}
+                    onSelect={() => {
+                      const reason = window.prompt("Alasan melepas pekerjaan (opsional):") || "";
+                      run(() => api.post(`/work-items/${itemId}/release`, { reason }), "Dilepas");
+                    }}
+                  >
+                    <X size={16} className="text-slate-600" /> Lepaskan
+                  </DropdownMenuItem>
+                )}
+                {item.status === "active" && (
+                  <DropdownMenuItem className={menuItemCls} onSelect={() => run(() => api.post(`/work-items/${itemId}/submit`), "Selesai")}>
+                    <Send size={16} className="text-slate-600" /> Tandai Selesai
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem className={menuItemCls} onSelect={() => toggleMember(user?.id)}>
+                  <UserPlus size={16} className="text-slate-600" /> Join
+                </DropdownMenuItem>
+                <DropdownMenuItem className={menuItemCls} onSelect={() => setShowSend(true)}>
+                  <ArrowRight size={16} className="text-slate-600" /> Move
+                </DropdownMenuItem>
+                <DropdownMenuItem className={menuItemCls} onSelect={copyLink}>
+                  <Copy size={16} className="text-slate-600" /> Copy
+                </DropdownMenuItem>
+                <DropdownMenuItem className={menuItemCls} onSelect={() => toast.info("Belum tersedia")}>
+                  <SquareCheck size={16} className="text-slate-600" /> Create Jira work item
+                </DropdownMenuItem>
+                <DropdownMenuItem className={menuItemCls} onSelect={() => toast.info("Belum tersedia")}>
+                  <Frame size={16} className="text-slate-600" /> Mirror
+                </DropdownMenuItem>
+                <DropdownMenuItem className={menuItemCls} onSelect={() => toast.info("Belum tersedia")}>
+                  <LayoutTemplate size={16} className="text-slate-600" /> Make template
+                </DropdownMenuItem>
+                <DropdownMenuItem className={`${menuItemCls} justify-between`} onSelect={(e) => e.preventDefault()}>
+                  <span className="flex items-center gap-3"><Eye size={16} className="text-slate-600" /> Watch</span>
+                  {isWatching && <CheckCircle2 size={16} className="text-green-600" />}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="my-1 h-px bg-slate-200" />
+                <DropdownMenuItem className={menuItemCls} onSelect={copyLink}>
+                  <Share2 size={16} className="text-slate-600" /> Share
+                </DropdownMenuItem>
+                {!item.archived ? (
+                  <DropdownMenuItem className={menuItemCls} onSelect={() => run(() => api.post(`/work-items/${itemId}/archive`), "Diarsipkan")}>
+                    <Archive size={16} className="text-slate-600" /> Archive
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem className={menuItemCls} onSelect={() => run(() => api.post(`/work-items/${itemId}/unarchive`), "Dikembalikan")}>
+                    <ArchiveRestore size={16} className="text-slate-600" /> Kembalikan ke board
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <DropdownMenuItem
+                    className={`${menuItemCls} text-red-600 hover:bg-red-50 focus:bg-red-50`}
+                    onSelect={() => {
+                      if (window.confirm("Hapus pekerjaan ini secara permanen?")) {
+                        run(async () => { await api.delete(`/work-items/${itemId}`); onClose(); });
+                      }
+                    }}
+                  >
+                    <Trash2 size={16} className="text-red-500" /> Hapus permanen
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <button type="button" onClick={onClose} aria-label="Close" data-testid="card-modal-close" className={`${iconBtn} ml-1`}>
+              <X size={16} />
+            </button>
           </div>
         </div>
 
-        <div className="grid md:grid-cols-5 gap-0">
-          <div className="md:col-span-3 p-6 space-y-6 md:border-r border-[#DFE1E6]">
-            <div>
-              <SectionTitle icon={<Users size={14} />}>PIC / Penanggung Jawab</SectionTitle>
-              <div className="flex flex-wrap items-center gap-2" data-testid="card-pic-list">
-                {members.map((m) => (
-                  <span key={m.id} className="inline-flex items-center gap-1.5 bg-white border border-[#DFE1E6] rounded-full pl-1 pr-3 py-1" data-testid={`card-pic-${m.id}`}>
-                    <Avatar name={m.name} color={m.avatar_color} size="h-6 w-6 text-[10px]" />
-                    <span className="text-xs font-semibold text-[#172B4D]">{m.name}</span>
-                  </span>
-                ))}
-                {members.length === 0 && (
-                  <span className="text-xs bg-[#E3FCEF] text-[#216E4E] border border-[#22A06B] px-2.5 py-1.5 rounded-full font-semibold" data-testid="card-no-pic-label">
-                    Belum ada PIC — terbuka untuk diambil
-                  </span>
-                )}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button data-testid="card-add-member-button" aria-label="Tambah anggota" className="h-7 w-7 rounded-full bg-[#091E420F] hover:bg-[#091E4224] flex items-center justify-center text-[#44546F] transition-colors">
-                      <Plus size={14} />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 bg-white shadow-lg max-h-64 overflow-y-auto minimal-scrollbar" align="start">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Tugaskan PIC</p>
-                    {(users || []).map((u) => (
-                      <button key={u.id} data-testid={`assign-user-${u.id}`} onClick={() => toggleMember(u.id)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left">
-                        <Avatar name={u.name} color={u.avatar_color} size="h-6 w-6 text-[10px]" />
-                        <span className="text-sm flex-1">{u.name}</span>
-                        {(item.member_ids || []).includes(u.id) && <CheckCircle2 size={14} className="text-[#22A06B]" />}
-                      </button>
-                    ))}
-                  </PopoverContent>
-                </Popover>
-              </div>
+        {/* ── BODY: 2 KOLOM SELALU SEJAJAR ──────────────────────────────── */}
+        {/* flex-row tanpa breakpoint — modal fix 768px tidak butuh lg:     */}
+        <div className="flex flex-1 flex-row overflow-hidden">
+          {/* ═══ KOLOM KIRI — flex-1, scroll sendiri ═══ */}
+          <div className="flex-1 overflow-y-auto p-4 minimal-scrollbar border-r border-slate-200">
+            {/* Judul */}
+            <div className="flex items-start gap-3">
+              <button
+                type="button"
+                aria-label="Tandai selesai"
+                title={isDone ? "Selesai" : "Tandai selesai"}
+                onClick={() => { if (item.status === "active") run(() => api.post(`/work-items/${itemId}/submit`), "Selesai"); }}
+                className="mt-1 shrink-0 text-slate-400 hover:text-slate-600"
+              >
+                {isDone ? <CircleCheck size={20} className="text-green-600" /> : <Circle size={20} />}
+              </button>
+              <input
+                id="card-modal-title"
+                data-testid="card-title-input"
+                defaultValue={item.title}
+                key={item.id + item.title}
+                onBlur={(e) => e.target.value.trim() && e.target.value !== item.title && saveField("title", e.target.value.trim())}
+                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                className="min-w-0 flex-1 rounded border-2 border-transparent bg-transparent px-1 text-xl font-semibold leading-tight text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+              />
             </div>
 
-            <div>
-              <SectionTitle icon={<Building2 size={14} />}>Divisi yang Di-assign</SectionTitle>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {(item.division_names || []).map((d) => (
-                  <span key={d.id} className="text-xs font-semibold text-white px-2 py-1 rounded" style={{ backgroundColor: d.color }}>{d.name}</span>
-                ))}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button data-testid="card-add-division-button" aria-label="Tambah divisi" className="h-7 w-7 rounded-full bg-[#091E420F] hover:bg-[#091E4224] flex items-center justify-center text-[#44546F]">
-                      <Plus size={13} />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 bg-white shadow-lg" align="start">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Assign ke Divisi</p>
-                    {(divisions || []).map((d) => (
-                      <button key={d.id} data-testid={`assign-division-${d.id}`} onClick={() => toggleDivision(d.id)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left">
-                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
-                        <span className="text-sm flex-1">{d.name}</span>
-                        {(item.division_ids || []).includes(d.id) && <CheckCircle2 size={14} className="text-[#22A06B]" />}
-                      </button>
-                    ))}
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
+            {/* Quick actions */}
+            <div className="mt-4 flex flex-wrap gap-2 pl-8">
+              <Popover>
+                <PopoverTrigger asChild><button type="button" className={pill}><Plus size={16} /> Add</button></PopoverTrigger>
+                <PopoverContent align="start" className="w-[200px] p-2">
+                  <button onClick={() => run(() => api.post(`/work-items/${itemId}/checklists`, { title: "Checklist" }))} className="flex h-9 w-full items-center gap-3 rounded px-2 text-left text-sm hover:bg-slate-100">
+                    <CheckSquare size={16} className="text-slate-600" /> Daftar periksa
+                  </button>
+                  <label className="flex h-9 w-full cursor-pointer items-center gap-3 rounded px-2 text-left text-sm hover:bg-slate-100">
+                    <Paperclip size={16} className="text-slate-600" />
+                    {uploading ? "Mengunggah..." : "Lampiran"}
+                    <input type="file" multiple className="hidden" onChange={uploadFile} disabled={uploading} />
+                  </label>
+                </PopoverContent>
+              </Popover>
 
-            <div>
-              <SectionTitle icon={<Tags size={14} />}>Label</SectionTitle>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {(board_labels || []).filter((l) => (item.label_ids || []).includes(l.id)).map((l) => (
-                  <span key={l.id} className="text-xs font-semibold text-white px-2 py-1 rounded" style={{ backgroundColor: l.color }}>{l.name}</span>
-                ))}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button data-testid="card-edit-labels-button" aria-label="Edit label" className="h-7 w-7 rounded-full bg-[#091E420F] hover:bg-[#091E4224] flex items-center justify-center text-[#44546F]">
-                      <Plus size={13} />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-72 bg-white shadow-lg" align="start">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Label Board</p>
-                    <div className="max-h-48 overflow-y-auto minimal-scrollbar space-y-1">
-                      {(board_labels || []).map((l) => (
-                        <button key={l.id} data-testid={`toggle-label-${l.id}`} onClick={() => toggleLabel(l.id)} className="w-full flex items-center gap-2">
-                          <span className="flex-1 h-7 rounded text-left text-xs font-semibold text-white px-2 flex items-center hover:opacity-85 transition-opacity" style={{ backgroundColor: l.color }}>
-                            {l.name}
-                          </span>
-                          {(item.label_ids || []).includes(l.id) && <CheckCircle2 size={14} className="text-[#22A06B]" />}
+              <Popover>
+                <PopoverTrigger asChild><button type="button" className={pill}><Clock size={16} /> Dates</button></PopoverTrigger>
+                <PopoverContent align="start" className="w-[240px] p-3">
+                  <p className="mb-2 text-sm font-semibold text-slate-700">Tenggat</p>
+                  <input
+                    type="date"
+                    defaultValue={item.due_date ? String(item.due_date).slice(0, 10) : ""}
+                    onChange={(e) => saveField("due_date", e.target.value || null)}
+                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <button type="button" className={pill} onClick={() => run(() => api.post(`/work-items/${itemId}/checklists`, { title: "Checklist" }))}>
+                <SquareCheck size={16} /> Checklist
+              </button>
+
+              <Popover>
+                <PopoverTrigger asChild><button type="button" className={pill}><Users size={16} /> Members</button></PopoverTrigger>
+                <PopoverContent align="start" className="w-[240px] p-2">
+                  <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Anggota</p>
+                  <div className="max-h-[240px] overflow-y-auto">
+                    {(users || []).map((u) => {
+                      const on = (item.member_ids || []).includes(u.id);
+                      return (
+                        <button key={u.id} onClick={() => toggleMember(u.id)} className="flex w-full items-center gap-2 rounded p-1.5 text-left hover:bg-slate-100">
+                          <Avatar name={u.name} color={u.avatar_color} size="h-7 w-7 text-xs" />
+                          <span className="flex-1 truncate text-sm text-slate-700">{u.name}</span>
+                          {on && <CheckCircle2 size={16} className="text-blue-600" />}
                         </button>
+                      );
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Aksi utama GIANT-APPS (menonjol) */}
+            {((!isMember && !isDone) || item.status === "active" || (isMember && !isDone)) && (
+              <div className="mt-3 flex flex-wrap gap-2 pl-8">
+                {!isMember && !isDone && (
+                  <button onClick={() => run(() => api.post(`/work-items/${itemId}/claim`), "Anda menjadi PIC")} className="flex h-8 items-center gap-1.5 rounded bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700">
+                    <Hand size={15} /> Ambil Pekerjaan
+                  </button>
+                )}
+                {item.status === "active" && (
+                  <button onClick={() => run(() => api.post(`/work-items/${itemId}/submit`), "Selesai")} className="flex h-8 items-center gap-1.5 rounded bg-emerald-600 px-3 text-sm font-semibold text-white hover:bg-emerald-700">
+                    <Send size={15} /> Tandai Selesai
+                  </button>
+                )}
+                {isMember && !isDone && (
+                  <button
+                    onClick={() => {
+                      const reason = window.prompt("Alasan melepas pekerjaan (opsional):") || "";
+                      run(() => api.post(`/work-items/${itemId}/release`, { reason }), "Dilepas");
+                    }}
+                    className={pill}
+                  >
+                    <X size={15} /> Lepaskan
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Labels */}
+            <div className="mt-6 pl-8">
+              <div className="mb-1 text-xs font-semibold text-slate-500">Labels</div>
+              <div className="flex flex-wrap gap-2">
+                {cardLabels.map((l) => (
+                  <span key={l.id} className="flex h-8 items-center rounded px-3 text-sm font-semibold text-white" style={{ backgroundColor: l.color }}>
+                    {l.name}
+                  </span>
+                ))}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" aria-label="Kelola label" className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-600 hover:bg-slate-200">
+                      <Plus size={16} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-[240px] p-2">
+                    <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Labels</p>
+                    {(board_labels || []).map((l) => {
+                      const on = (item.label_ids || []).includes(l.id);
+                      return (
+                        <button key={l.id} onClick={() => toggleLabel(l.id)} className="mb-1 flex w-full items-center gap-2 rounded p-1 text-left hover:bg-slate-100">
+                          <span className="h-8 flex-1 rounded px-3 text-sm font-semibold leading-8 text-white" style={{ backgroundColor: l.color }}>{l.name}</span>
+                          {on && <CheckCircle2 size={16} className="text-blue-600" />}
+                        </button>
+                      );
+                    })}
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            {/* Dates */}
+            {item.due_date && (
+              <div className="mt-4 pl-8">
+                <div className="mb-1 text-xs font-semibold text-slate-500">Dates</div>
+                <span className="flex h-8 w-fit items-center gap-1.5 rounded bg-slate-100 px-3 text-sm font-medium text-slate-700">
+                  {fmtDate(item.due_date)}
+                  <ChevronDown size={12} />
+                </span>
+              </div>
+            )}
+
+            {/* Description */}
+            <div className="mt-6">
+              <div className="flex items-center gap-3">
+                <AlignLeft size={20} className="shrink-0 text-slate-600" />
+                <h3 className="flex-1 font-semibold text-slate-900">Description</h3>
+                {item.description && !editingDesc && (
+                  <button onClick={() => { setDesc(item.description); setEditingDesc(true); }} className={sectionEditBtn}>Edit</button>
+                )}
+              </div>
+              <div className="mt-2 pl-8">
+                {editingDesc ? (
+                  <div>
+                    <textarea
+                      autoFocus
+                      value={desc}
+                      onChange={(e) => setDesc(e.target.value)}
+                      placeholder="Tambahkan deskripsi yang lebih detail..."
+                      className="min-h-[140px] w-full resize-y rounded border-2 border-blue-600 p-2 text-sm outline-none"
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={() => { saveField("description", desc.trim()); setEditingDesc(false); }} className="h-8 rounded bg-blue-700 px-3 text-sm font-medium text-white hover:bg-blue-800">Save</button>
+                      <button onClick={() => setEditingDesc(false)} className="h-8 rounded px-3 text-sm text-slate-700 hover:bg-slate-100">Cancel</button>
+                    </div>
+                  </div>
+                ) : item.description ? (
+                  <div className="text-sm leading-relaxed text-slate-800 [&_p]:mb-2">
+                    {item.description.split("\n").map((l, i) => <p key={i} className="min-h-[1em]">{renderCommentText(l)}</p>)}
+                  </div>
+                ) : (
+                  <button onClick={() => { setDesc(""); setEditingDesc(true); }} className="flex min-h-[56px] w-full items-center rounded bg-slate-100 p-3 text-left text-sm text-slate-500 hover:bg-slate-200">
+                    Tambahkan deskripsi yang lebih detail...
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Attachments */}
+            {attachments.length > 0 && (
+              <div className="mt-6">
+                <div className="flex items-center gap-3">
+                  <Paperclip size={20} className="shrink-0 text-slate-600" />
+                  <h3 className="flex-1 font-semibold text-slate-900">Attachments</h3>
+                  <label className={`${sectionEditBtn} cursor-pointer leading-8`}>
+                    Add
+                    <input type="file" multiple className="hidden" onChange={uploadFile} disabled={uploading} />
+                  </label>
+                </div>
+                <div className="mt-2 pl-8">
+                  <div className="mb-1 text-xs font-semibold text-slate-500">Files</div>
+                  <ul className="space-y-1">
+                    {attachments.map((a) => {
+                      const isImg = a.content_type?.startsWith("image/");
+                      return (
+                        <li key={a.id} className="flex items-center gap-3 rounded p-1 hover:bg-slate-100">
+                          <div className="flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-100 bg-cover bg-center text-[10px] font-semibold text-slate-600" style={isImg ? { backgroundImage: `url(${API}/attachments/${a.id}/download)` } : {}}>
+                            {!isImg && (a.original_filename?.split(".").pop()?.toUpperCase() || "FILE")}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <a href={a.content_type === "link" ? a.external_url : `${API}/attachments/${a.id}/download`} target="_blank" rel="noreferrer" className="block truncate text-sm font-semibold text-slate-900 hover:underline">
+                              {a.original_filename || "File"}
+                            </a>
+                            <p className="text-xs text-slate-500">{a.size ? `${(a.size / 1024).toFixed(0)} KB` : "Link"} · {a.uploaded_by_name}</p>
+                          </div>
+                          {isImg && (
+                            <button onClick={() => saveField("cover_attachment_id", item.cover_attachment_id === a.id ? null : a.id)} title={item.cover_attachment_id === a.id ? "Hapus cover" : "Jadikan cover"} className="flex h-7 w-7 items-center justify-center rounded text-slate-600 hover:bg-slate-200">
+                              <ImageIcon size={15} />
+                            </button>
+                          )}
+                          <button onClick={() => run(() => api.delete(`/attachments/${a.id}`))} title="Hapus lampiran" className="flex h-7 w-7 items-center justify-center rounded text-slate-600 hover:bg-slate-200">
+                            <Trash2 size={15} />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Checklists */}
+            {(item.checklists || []).map((cl) => {
+              const total = cl.items.length;
+              const done = cl.items.filter((i) => i.done).length;
+              const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+              return (
+                <div key={cl.id} className="mt-6">
+                  <div className="flex items-center gap-3">
+                    <CheckSquare size={20} className="shrink-0 text-slate-600" />
+                    <div className="flex-1 font-semibold text-slate-900">
+                      <ChecklistTitle cl={cl} onRename={(t) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}`, { title: t }))} />
+                    </div>
+                    <button onClick={() => run(() => api.delete(`/work-items/${itemId}/checklists/${cl.id}`))} className={sectionEditBtn}>Hapus</button>
+                  </div>
+                  <div className="mt-2 pl-8">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="w-8 text-right text-xs text-slate-500">{pct}%</span>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div className={`h-full ${pct === 100 ? "bg-green-600" : "bg-blue-600"}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {cl.items.map((sub) => (
+                        <div key={sub.id} className="group -ml-1 flex items-start gap-2 rounded p-1 hover:bg-slate-100">
+                          <input
+                            type="checkbox"
+                            checked={sub.done}
+                            onChange={(e) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`, { done: e.target.checked }))}
+                            className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded-sm accent-blue-600"
+                          />
+                          <span className={`flex-1 text-sm ${sub.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{sub.text}</span>
+                          <button onClick={() => run(() => api.delete(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`))} className="rounded p-1 text-slate-500 opacity-0 hover:bg-slate-200 group-hover:opacity-100">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       ))}
                     </div>
-                    <div className="border-t mt-3 pt-3">
-                      <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Label Baru</p>
-                      <input data-testid="new-label-name-input" value={newLabelName} onChange={(e) => setNewLabelName(e.target.value)} placeholder="Nama label"
-                        className="w-full h-8 rounded border border-[#DFE1E6] px-2 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {LABEL_COLORS.map((c) => (
-                          <button key={c} aria-label={`Warna ${c}`} data-testid={`label-color-${c.replace("#", "")}`} onClick={() => setNewLabelColor(c)}
-                            className={`w-6 h-6 rounded ${newLabelColor === c ? "ring-2 ring-offset-1 ring-[#172B4D]" : ""}`} style={{ backgroundColor: c }} />
-                        ))}
-                      </div>
-                      <button data-testid="create-label-button"
-                        onClick={() => {
-                          if (!newLabelName.trim()) return;
-                          run(async () => {
-                            const r = await api.post(`/boards/${item.board_id}/labels`, { name: newLabelName.trim(), color: newLabelColor });
-                            await api.patch(`/work-items/${itemId}`, { label_ids: [...(item.label_ids || []), r.data.id] });
-                          }, "Label dibuat");
-                          setNewLabelName("");
-                        }}
-                        className="mt-2 w-full h-8 rounded bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors">
-                        Buat Label
-                      </button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-4">
-              <div>
-                <SectionTitle icon={<CalendarPlus size={14} />}>Mulai</SectionTitle>
-                <input data-testid="card-start-date-input" type="date" value={item.start_date || ""}
-                  onChange={(e) => saveField("start_date", e.target.value || null)}
-                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-              </div>
-              <div>
-                <SectionTitle icon={<Clock size={14} />}>Tenggat</SectionTitle>
-                <input data-testid="card-due-date-input" type="date" value={item.due_date || ""}
-                  onChange={(e) => saveField("due_date", e.target.value || null)}
-                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-              </div>
-              <div>
-                <SectionTitle icon={<Flag size={14} />}>Prioritas</SectionTitle>
-                <select data-testid="card-priority-select" value={item.priority || "none"} onChange={(e) => saveField("priority", e.target.value)}
-                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]">
-                  {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <SectionTitle icon={<Building2 size={14} />}>Nama Klien</SectionTitle>
-                <input data-testid="card-client-input" key={"c" + item.id} defaultValue={item.client_name || ""}
-                  onBlur={(e) => e.target.value !== item.client_name && saveField("client_name", e.target.value.trim())}
-                  placeholder="mis: PT ABC"
-                  className="h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-              </div>
-            </div>
-
-            <div>
-              <SectionTitle icon={<AlignLeft size={14} />}>Deskripsi</SectionTitle>
-              <textarea data-testid="card-description-input" key={"d" + item.id} defaultValue={item.description || ""}
-                onBlur={(e) => e.target.value !== item.description && saveField("description", e.target.value)}
-                placeholder="Tambahkan deskripsi yang lebih detail..." rows={4}
-                className="w-full rounded-lg border border-[#DFE1E6] bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y" />
-            </div>
-
-            <div>
-              <SectionTitle icon={<AlignLeft size={14} />}>Custom Fields</SectionTitle>
-              <div className="space-y-1.5" data-testid="custom-fields-list">
-                {(item.custom_fields || []).map((f) => (
-                  <div key={f.id} className="flex items-center gap-2 bg-white rounded-lg border border-[#DFE1E6] px-3 py-1.5 group" data-testid={`cf-row-${f.id}`}>
-                    <span className="text-[11px] font-bold uppercase tracking-wide text-[#8590A2] w-32 shrink-0 truncate">{f.name}</span>
-                    <span className="text-sm text-[#172B4D] flex-1">{f.value || "—"}</span>
-                    <button aria-label="Hapus field" data-testid={`cf-delete-${f.id}`} onClick={() => removeCustomField(f.id)} className="opacity-0 group-hover:opacity-100 text-[#CA3521] p-0.5">
-                      <X size={13} />
-                    </button>
+                    <AddChecklistItem testid={cl.id} onAdd={(t) => run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/items`, { text: t }))} />
                   </div>
-                ))}
-              </div>
-              <div className="flex gap-2 mt-2">
-                <input data-testid="cf-name-input" value={cfName} onChange={(e) => setCfName(e.target.value)} placeholder="Nama field (mis: No. HP)"
-                  className="h-8 w-40 rounded border border-[#DFE1E6] px-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-                <input data-testid="cf-value-input" value={cfValue} onChange={(e) => setCfValue(e.target.value)} placeholder="Nilai (mis: 0812xxxx)"
-                  className="h-8 flex-1 rounded border border-[#DFE1E6] px-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-                <button data-testid="cf-add-button" onClick={addCustomField} className="h-8 px-3 rounded bg-[#091E420F] hover:bg-[#091E4224] text-xs font-semibold transition-colors">
-                  Tambah
-                </button>
-              </div>
-            </div>
+                </div>
+              );
+            })}
 
-            <div>
-              <SectionTitle icon={<CheckSquare size={14} />}>Checklist {clTotal > 0 && `· ${progress}%`}</SectionTitle>
-              {clTotal > 0 && (
-                <div className="h-2 rounded-full bg-[#DFE1E6] mb-3 overflow-hidden" data-testid="checklist-progress-bar">
-                  <div className={`h-full rounded-full transition-all ${progress === 100 ? "bg-[#22A06B]" : "bg-[#0C66E4]"}`} style={{ width: `${progress}%` }} />
-                </div>
-              )}
-              {(item.checklists || []).map((cl) => (
-                <div key={cl.id} className="mb-4" data-testid={`checklist-${cl.id}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <ChecklistTitle cl={cl} onRename={(t) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}`, { title: t }))} />
-                    <button data-testid={`delete-checklist-${cl.id}`} onClick={() => run(() => api.delete(`/work-items/${itemId}/checklists/${cl.id}`))} className="text-xs text-[#CA3521] hover:underline">
-                      Hapus
-                    </button>
-                  </div>
-                  {cl.items.map((sub) => (
-                    <div key={sub.id} className="flex items-center gap-1.5 py-1 group" data-testid={`checklist-item-${sub.id}`}>
-                      <input type="checkbox" data-testid={`checklist-toggle-${sub.id}`} checked={sub.done}
-                        onChange={(e) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`, { done: e.target.checked }))}
-                        className="w-4 h-4 accent-[#0C66E4] cursor-pointer shrink-0" />
-                      <span className={`text-sm flex-1 min-w-0 break-words ${sub.done ? "line-through text-[#8590A2]" : ""}`}>
-                        {sub.text}
-                        {sub.assignee_id && usersById[sub.assignee_id] && (
-                          <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-[#0C66E4] bg-[#E9F2FF] rounded-full px-1.5 py-0.5 align-middle">
-                            {usersById[sub.assignee_id].name}
-                          </span>
-                        )}
-                        {sub.due_date && (
-                          <span className="ml-1 text-[10px] font-semibold text-[#E56910] align-middle">· {fmtDate(sub.due_date)}</span>
-                        )}
-                      </span>
-                      <select
-                        data-testid={`cl-item-assignee-${sub.id}`}
-                        value={sub.assignee_id || ""}
-                        onChange={(e) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`, { assignee_id: e.target.value }))}
-                        className="h-6 w-24 rounded border border-[#DFE1E6] px-1 text-[10px] bg-white outline-none opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
-                      >
-                        <option value="">PIC...</option>
-                        {(users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                      <input
-                        type="date"
-                        data-testid={`cl-item-due-${sub.id}`}
-                        value={sub.due_date || ""}
-                        onChange={(e) => run(() => api.patch(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`, { due_date: e.target.value }))}
-                        className="h-6 w-[7.5rem] rounded border border-[#DFE1E6] px-1 text-[10px] bg-white outline-none opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
-                      />
-                      <button aria-label="Naik" data-testid={`cl-item-up-${sub.id}`} onClick={() => reorderItem(cl, sub.id, -1)} className="opacity-0 group-hover:opacity-100 text-[#44546F] p-0.5 shrink-0"><ChevronUp size={13} /></button>
-                      <button aria-label="Turun" data-testid={`cl-item-down-${sub.id}`} onClick={() => reorderItem(cl, sub.id, 1)} className="opacity-0 group-hover:opacity-100 text-[#44546F] p-0.5 shrink-0"><ChevronDown size={13} /></button>
-                      <button aria-label="Jadikan kartu" title="Jadikan kartu" data-testid={`cl-item-convert-${sub.id}`}
-                        onClick={() => run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}/convert`), "Item dijadikan kartu baru")}
-                        className="opacity-0 group-hover:opacity-100 text-[#0C66E4] p-0.5 shrink-0"><ArrowRightToLine size={13} /></button>
-                      <button aria-label="Hapus item" data-testid={`checklist-item-delete-${sub.id}`}
-                        onClick={() => run(() => api.delete(`/work-items/${itemId}/checklists/${cl.id}/items/${sub.id}`))}
-                        className="opacity-0 group-hover:opacity-100 text-[#CA3521] p-0.5 shrink-0"><X size={13} /></button>
-                    </div>
-                  ))}
-                  <AddChecklistItem testid={cl.id} onAdd={(text) => run(() => api.post(`/work-items/${itemId}/checklists/${cl.id}/items`, { text }))} />
-                </div>
-              ))}
-              {addingChecklist ? (
-                <div className="flex items-center gap-2 mt-2">
-                  <input data-testid="new-checklist-title-input" autoFocus value={newChecklistTitle} onChange={(e) => setNewChecklistTitle(e.target.value)} placeholder="Judul checklist"
-                    className="h-9 flex-1 rounded-lg border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-                  <button data-testid="create-checklist-button"
-                    onClick={() => {
-                      if (!newChecklistTitle.trim()) return;
-                      run(() => api.post(`/work-items/${itemId}/checklists`, { title: newChecklistTitle.trim() }), "Checklist dibuat");
-                      setNewChecklistTitle("");
-                      setAddingChecklist(false);
-                    }}
-                    className="h-9 px-3 rounded-lg bg-[#0c66e4] text-white text-sm font-semibold">
-                    Tambah
-                  </button>
-                  <button aria-label="Batal" onClick={() => setAddingChecklist(false)} className="p-1.5 text-[#44546F]"><X size={16} /></button>
-                </div>
-              ) : (
-                <button data-testid="add-checklist-button" onClick={() => setAddingChecklist(true)} className="text-sm text-[#0C66E4] hover:underline font-medium">
-                  + Tambah checklist
-                </button>
-              )}
-            </div>
-
-            <div>
-              <SectionTitle icon={<Paperclip size={14} />}>Lampiran</SectionTitle>
-              <div className="space-y-2">
-                {(attachments || []).map((a) => {
-                  const isImage = (a.content_type || "").startsWith("image/");
-                  const href = a.content_type === "link" ? a.external_url : `${API}/attachments/${a.id}/download`;
-                  return (
-                    <div key={a.id} className="flex items-center gap-3 bg-white rounded-lg border border-[#DFE1E6] px-3 py-2" data-testid={`attachment-${a.id}`}>
-                      {a.content_type === "link" ? <LinkIcon size={14} className="text-[#0C66E4] shrink-0" /> : <Paperclip size={14} className="text-[#44546F] shrink-0" />}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{a.original_filename}</p>
-                        <p className="text-[11px] text-[#8590A2]">{a.uploaded_by_name}{a.size ? ` · ${(a.size / 1024).toFixed(0)} KB` : ""} · {fmtDateTime(a.created_at)}</p>
-                      </div>
-                      {isImage && (
-                        <button data-testid={`attachment-cover-${a.id}`}
-                          onClick={() => saveField("cover_attachment_id", item.cover_attachment_id === a.id ? null : a.id)}
-                          className={`p-1.5 rounded text-[11px] font-semibold flex items-center gap-1 ${item.cover_attachment_id === a.id ? "bg-[#E9F2FF] text-[#0C66E4]" : "hover:bg-[#F1F2F4] text-[#44546F]"}`}>
-                          <ImageIcon size={13} /> {item.cover_attachment_id === a.id ? "Cover ✓" : "Jadikan Cover"}
-                        </button>
-                      )}
-                      <a data-testid={`attachment-download-${a.id}`} href={href} target="_blank" rel="noreferrer"
-                        className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#0C66E4]" aria-label="Buka">
-                        <Download size={15} />
-                      </a>
-                      {(a.uploaded_by === user?.id || isAdmin) && (
-                        <button aria-label="Hapus lampiran" data-testid={`attachment-delete-${a.id}`} onClick={() => run(() => api.delete(`/attachments/${a.id}`))} className="p-1.5 rounded hover:bg-[#FFECE8] text-[#CA3521]">
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-                <div className="flex flex-wrap items-center gap-2">
-                  <label data-testid="attachment-upload-label"
-                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#091E420F] hover:bg-[#091E4224] text-sm font-medium cursor-pointer transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
-                    <Paperclip size={14} /> {uploading ? "Mengunggah..." : "Unggah lampiran"}
-                    <input data-testid="attachment-upload-input" type="file" className="hidden" onChange={(e) => uploadFile(e)} disabled={uploading} />
-                  </label>
-                  <button data-testid="link-attachment-open" onClick={() => setShowLinkForm(!showLinkForm)}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#091E420F] hover:bg-[#091E4224] text-sm font-medium transition-colors">
-                    <LinkIcon size={14} /> Tambah tautan
-                  </button>
-                  {(item.cover_color || item.cover_attachment_id) && (
-                    <button data-testid="cover-clear-button" onClick={() => run(() => api.patch(`/work-items/${itemId}`, { cover_color: null, cover_attachment_id: null }))}
-                      className="text-xs text-[#CA3521] hover:underline">
-                      Hapus cover
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap" data-testid="cover-color-palette">
-                  <span className="text-[11px] text-[#8590A2] font-semibold">Cover warna:</span>
-                  {LABEL_COLORS.slice(0, 8).map((c) => (
-                    <button key={c} aria-label={`Cover ${c}`} data-testid={`cover-color-${c.replace("#", "")}`} onClick={() => run(() => api.patch(`/work-items/${itemId}`, { cover_color: c, cover_attachment_id: null }))}
-                      className={`w-6 h-5 rounded ${item.cover_color === c ? "ring-2 ring-offset-1 ring-[#172B4D]" : ""}`} style={{ backgroundColor: c }} />
+            {/* Anggota */}
+            {members.length > 0 && (
+              <div className="mt-6 pl-8">
+                <div className="mb-1 text-xs font-semibold text-slate-500">Anggota</div>
+                <div className="flex flex-wrap gap-2">
+                  {members.map((m) => (
+                    <div key={m.id} title={m.name}><Avatar name={m.name} color={m.avatar_color} size="h-8 w-8 text-xs" /></div>
                   ))}
                 </div>
-                {showLinkForm && (
-                  <div className="flex gap-2 items-center bg-white rounded-lg border border-[#DFE1E6] p-2" data-testid="link-attachment-form">
-                    <input data-testid="link-name-input" value={linkName} onChange={(e) => setLinkName(e.target.value)} placeholder="Nama tautan"
-                      className="h-8 w-36 rounded border border-[#DFE1E6] px-2 text-xs outline-none" />
-                    <input data-testid="link-url-input" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://..."
-                      className="h-8 flex-1 rounded border border-[#DFE1E6] px-2 text-xs outline-none" />
-                    <button data-testid="link-attachment-submit"
-                      onClick={() => {
-                        if (!linkUrl.trim()) return;
-                        run(() => api.post(`/work-items/${itemId}/attachments/link`, { url: linkUrl.trim(), name: linkName.trim() || linkUrl.trim() }), "Tautan ditambahkan");
-                        setLinkUrl(""); setLinkName(""); setShowLinkForm(false);
-                      }}
-                      className="h-8 px-3 rounded bg-[#0c66e4] text-white text-xs font-semibold">
-                      Simpan
-                    </button>
-                  </div>
-                )}
               </div>
-            </div>
+            )}
           </div>
 
-          <div className="md:col-span-2 p-6 bg-white/60 md:rounded-r-xl flex flex-col" data-testid="card-activity-rail">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-[#44546F]">
-                <MessageSquare size={14} />
-                <h3 className="text-xs font-bold uppercase tracking-wider">Komentar & Aktivitas</h3>
-              </div>
-              <label className="flex items-center gap-1.5 text-[11px] text-[#44546F] cursor-pointer">
-                <input type="checkbox" data-testid="toggle-activity-details" checked={showActivityDetail} onChange={(e) => setShowActivityDetail(e.target.checked)} className="w-3.5 h-3.5 accent-[#0C66E4]" />
-                Detail aktivitas
-              </label>
+          {/* ═══ KOLOM KANAN — w-[380px] shrink-0, scroll sendiri ═══ */}
+          <div className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-white">
+            <div className="sticky top-0 z-[1] flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
+              <MessageSquare size={18} className="text-slate-600" />
+              <h3 className="flex-1 font-semibold text-slate-900">Comments and activity</h3>
+              <button onClick={() => setShowActivityDetail(!showActivityDetail)} className="h-8 rounded bg-slate-100 px-3 text-xs font-medium text-slate-700 hover:bg-slate-200">
+                {showActivityDetail ? "Hide details" : "Show details"}
+              </button>
             </div>
-            <div className="flex gap-2 mb-4">
-              <Avatar name={user?.name} color={user?.avatar_color} size="h-8 w-8 text-xs" />
-              <div className="flex-1">
-                <textarea data-testid="comment-input" value={comment} onChange={(e) => setComment(e.target.value)}
-                  placeholder="Tulis komentar... gunakan @nama untuk mention" rows={2}
-                  className="w-full rounded-lg border border-[#DFE1E6] bg-white p-2.5 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none" />
-                {pendingAttachment && (
-                  <div className="flex items-center gap-2 mt-1 text-xs bg-[#E9F2FF] text-[#0C66E4] rounded px-2 py-1" data-testid="comment-pending-attachment">
-                    <Paperclip size={11} /> {pendingAttachment.original_filename}
-                    <button aria-label="Hapus lampiran komentar" onClick={() => setPendingAttachment(null)} className="ml-auto"><X size={11} /></button>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 mt-1.5">
-                  <button data-testid="comment-submit-button" disabled={!comment.trim()}
-                    onClick={() => {
-                      run(() => api.post(`/work-items/${itemId}/comments`, { text: comment, attachment_id: pendingAttachment?.id || null }), "Komentar ditambahkan");
-                      setComment("");
-                      setPendingAttachment(null);
-                    }}
-                    className="h-8 px-3 rounded bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold disabled:opacity-40 transition-colors active:scale-95">
-                    Kirim
-                  </button>
-                  <label data-testid="comment-attachment-button" className={`p-1.5 rounded hover:bg-[#091E420F] text-[#44546F] cursor-pointer transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`} aria-label="Lampirkan file">
-                    <Paperclip size={15} />
-                    <input type="file" className="hidden" onChange={(e) => uploadFile(e, true)} disabled={uploading} />
-                  </label>
+
+            {/* ── Composer komentar ─────────────────────────────────────── */}
+            <div className="shrink-0 px-4 pb-3 pt-3">
+              {/* Reply-to indicator */}
+              {replyTo && (
+                <div className="mb-2 flex items-center gap-2 rounded bg-blue-50 px-3 py-1.5 text-xs text-blue-700">
+                  <span className="flex-1 truncate">Membalas <strong>{replyTo.name}</strong></span>
+                  <button type="button" onClick={() => setReplyTo(null)} className="text-blue-400 hover:text-blue-700"><X size={12} /></button>
                 </div>
-              </div>
+              )}
+
+              {!composing ? (
+                /* Placeholder bar */
+                <div
+                  onClick={() => setComposing(true)}
+                  className="flex min-h-[40px] cursor-text items-center rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-500 shadow-sm hover:border-slate-400"
+                >
+                  Write a comment...
+                </div>
+              ) : (
+                <>
+                  {/* Input box */}
+                  <div className="overflow-hidden rounded-lg border-2 border-blue-600 bg-white shadow-sm">
+                    {/* Toolbar */}
+                    <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 px-2 py-1.5">
+                      <span className="flex h-7 items-center gap-0.5 rounded px-1.5 text-slate-500 text-xs"><Type size={14} /><ChevronDown size={11} /></span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 cursor-pointer"><Bold size={14} /></span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 cursor-pointer"><Italic size={14} /></span>
+                      <span className="mx-1 h-4 w-px bg-slate-200" />
+                      <span className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 cursor-pointer"><List size={14} /></span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 cursor-pointer"><LinkIcon size={14} /></span>
+                      <span className="flex-1" />
+                      {/* Upload Gambar */}
+                      <label title={`Upload gambar (maks ${MAX_FILES} file)`} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-slate-500 hover:bg-slate-100">
+                        <ImageIcon size={14} />
+                        <input
+                          ref={null}
+                          type="file"
+                          accept={IMAGE_ACCEPT}
+                          multiple
+                          className="hidden"
+                          onChange={(e) => { addCommentFiles(e.target.files); e.target.value = ""; }}
+                        />
+                      </label>
+                      {/* Upload Dokumen Office */}
+                      <label title={`Upload file (PDF, DOCX, XLSX, dll — maks ${MAX_FILES} file)`} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-slate-500 hover:bg-slate-100">
+                        <Paperclip size={14} />
+                        <input
+                          ref={commentFileRef}
+                          type="file"
+                          accept={OFFICE_ACCEPT}
+                          multiple
+                          className="hidden"
+                          onChange={(e) => { addCommentFiles(e.target.files); e.target.value = ""; }}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Textarea */}
+                    <textarea
+                      autoFocus
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submitComment();
+                      }}
+                      placeholder="Write a comment... (Ctrl+Enter untuk kirim)"
+                      className="min-h-[72px] w-full resize-none px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                    />
+
+                    {/* Preview file yang akan diupload */}
+                    {commentFiles.length > 0 && (
+                      <div className="flex flex-wrap gap-2 border-t border-slate-200 px-3 py-2">
+                        {commentFiles.map((cf, idx) => (
+                          <div key={idx} className="relative group flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 max-w-[160px]">
+                            {cf.preview ? (
+                              <img src={cf.preview} alt={cf.name} className="h-8 w-8 rounded object-cover shrink-0" />
+                            ) : (
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-200 text-[9px] font-bold text-slate-600">{cf.ext}</div>
+                            )}
+                            <span className="truncate flex-1">{cf.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeCommentFile(idx)}
+                              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-300 text-slate-600 hover:bg-red-100 hover:text-red-600"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        ))}
+                        <span className="self-center text-xs text-slate-400">{commentFiles.length}/{MAX_FILES}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={(!comment.trim() && commentFiles.length === 0) || uploadingComment}
+                      onClick={submitComment}
+                      className="h-8 rounded bg-slate-100 px-4 text-sm font-medium text-slate-500 disabled:cursor-not-allowed enabled:bg-blue-700 enabled:text-white enabled:hover:bg-blue-800 transition-colors"
+                    >
+                      {uploadingComment ? "Mengirim..." : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setComment(""); setCommentFiles([]); setReplyTo(null); setComposing(false); }}
+                      className="h-8 rounded px-3 text-sm text-slate-700 hover:bg-slate-100"
+                    >
+                      Cancel
+                    </button>
+                    {commentFiles.length > 0 && (
+                      <span className="ml-auto text-xs text-slate-400">{commentFiles.length} file terpilih</span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
-            <div className="space-y-3 flex-1 overflow-y-auto minimal-scrollbar max-h-[520px]" data-testid="card-feed">
-              {feed.length === 0 && <p className="text-sm text-[#8590A2]">Belum ada komentar atau aktivitas.</p>}
-              {feed.map((entry) =>
-                entry.kind === "comment" ? (
-                  <div key={"c" + entry.data.id} className="flex gap-2" data-testid={`comment-${entry.data.id}`}>
-                    <Avatar name={entry.data.user_name} color={entry.data.avatar_color} size="h-7 w-7 text-[10px]" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-[#44546F]">
-                        <span className="font-semibold text-[#172B4D]">{entry.data.user_name}</span> · {fmtDateTime(entry.data.created_at)}
-                        {entry.data.edited_at && <span className="text-[10px] text-[#8590A2]"> (diedit)</span>}
+
+            {/* Feed */}
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4 minimal-scrollbar">
+              {feed.length === 0 && <p className="py-4 text-center text-sm text-slate-400">Belum ada komentar.</p>}
+              {feed.map((entry, i) => {
+                if (entry.kind === "activity") {
+                  const a = entry.data;
+                  return (
+                    <div key={`a-${a.id || i}`} className="flex gap-2">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                        <Activity size={14} />
+                      </div>
+                      <p className="min-w-0 flex-1 pt-1 text-xs text-slate-500">
+                        <span className="font-semibold text-slate-700">{a.user_name}</span> {a.action}
+                        <span className="ml-1 text-slate-400">· {fmtDateTime(entry.at)}</span>
                       </p>
-                      {editingComment === entry.data.id ? (
+                    </div>
+                  );
+                }
+                const c = entry.data;
+                const own = c.created_by_id === user?.id;
+                const canDelete = own || isAdmin;
+                const bg = usersById[c.created_by_id]?.avatar_color || "#0C66E4";
+                const hasLink = /https?:\/\//i.test(c.text || "");
+                const att = c.attachment_id ? attachmentsById[c.attachment_id] : null;
+                return (
+                  <div key={`c-${c.id}`} className="flex gap-2">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ backgroundColor: bg }}>
+                      {initials(c.created_by_name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-2">
+                        <span className="text-sm font-semibold text-slate-900">{c.created_by_name}</span>
+                        <span className="text-xs text-blue-700">{fmtDateTime(c.created_at)}</span>
+                        {c.updated_at && c.updated_at !== c.created_at && <span className="text-xs italic text-slate-400">(edited)</span>}
+                      </div>
+
+                      {editingComment === c.id ? (
                         <div className="mt-1">
-                          <textarea data-testid={`comment-edit-input-${entry.data.id}`} value={editText} onChange={(e) => setEditText(e.target.value)} rows={2}
-                            className="w-full rounded-lg border border-[#0C66E4] bg-white p-2 text-sm outline-none resize-none" />
-                          <div className="flex gap-1.5 mt-1">
-                            <button data-testid={`comment-edit-save-${entry.data.id}`}
-                              onClick={() => {
-                                run(() => api.patch(`/comments/${entry.data.id}`, { text: editText }), "Komentar diperbarui");
-                                setEditingComment(null);
-                              }}
-                              className="h-7 px-2.5 rounded bg-[#0c66e4] text-white text-xs font-semibold">Simpan</button>
-                            <button onClick={() => setEditingComment(null)} className="h-7 px-2.5 rounded bg-[#091E420F] text-xs font-semibold">Batal</button>
+                          <textarea
+                            autoFocus
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            className="min-h-[72px] w-full resize-none rounded border-2 border-blue-600 p-2 text-sm outline-none"
+                          />
+                          <div className="mt-1 flex gap-2">
+                            <button onClick={() => { run(() => api.patch(`/comments/${c.id}`, { text: editText }), "Komentar diperbarui"); setEditingComment(null); }} className="h-8 rounded bg-blue-700 px-3 text-sm font-medium text-white hover:bg-blue-800">Save</button>
+                            <button onClick={() => setEditingComment(null)} className="h-8 rounded px-3 text-sm text-slate-700 hover:bg-slate-100">Cancel</button>
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-white rounded-lg border border-[#DFE1E6] px-3 py-2 mt-1 text-sm leading-relaxed break-words">
-                          {renderCommentText(entry.data.text)}
-                          {entry.data.attachment_id && attachmentsById[entry.data.attachment_id] && (
-                            <a
-                              data-testid={`comment-attachment-${entry.data.id}`}
-                              href={attachmentsById[entry.data.attachment_id].content_type === "link" ? attachmentsById[entry.data.attachment_id].external_url : `${API}/attachments/${entry.data.attachment_id}/download`}
-                              target="_blank" rel="noreferrer"
-                              className="flex items-center gap-1.5 mt-1.5 text-xs text-[#0C66E4] bg-[#E9F2FF] rounded px-2 py-1 hover:underline w-fit"
-                            >
-                              <Paperclip size={11} /> {attachmentsById[entry.data.attachment_id].original_filename}
+                        <>
+                          <div className="mt-1 whitespace-pre-wrap rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
+                            {(c.text || "").split("\n").map((l, j) => <p key={j}>{renderCommentText(l)}</p>)}
+                          </div>
+                          {att && (
+                            <a href={`${API}/attachments/${att.id}/download`} target="_blank" rel="noreferrer" className="mt-1 block text-xs font-medium text-blue-600 hover:underline">
+                              {att.original_filename || "Lampiran"}
                             </a>
                           )}
-                        </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <button type="button" title="Tambah reaksi emoji" onClick={() => toast.info("Emoji reaction belum tersedia")} className="hover:text-slate-700"><Smile size={14} /></button>
+                            <button
+                              type="button"
+                              className="underline hover:text-slate-700"
+                              onClick={() => {
+                                setReplyTo({ id: c.id, name: c.created_by_name });
+                                setComposing(true);
+                                // scroll ke composer
+                                setTimeout(() => document.querySelector("textarea[placeholder*='comment']")?.focus(), 50);
+                              }}
+                            >Reply</button>
+                            {own && <button type="button" onClick={() => { setEditingComment(c.id); setEditText(c.text || ""); }} className="underline hover:text-slate-700">Edit</button>}
+                            {hasLink && (
+                              <button
+                                type="button"
+                                className="underline hover:text-slate-700"
+                                onClick={() => {
+                                  const url = (c.text || "").match(/https?:\/\/[^\s]+/)?.[0];
+                                  if (url) addLinkAsAttachment(url);
+                                  else toast.warning("Tidak ditemukan URL dalam komentar");
+                                }}
+                              >Add link as attachment</button>
+                            )}
+                            {canDelete && (
+                              <button type="button" onClick={() => { if (window.confirm("Hapus komentar ini?")) run(() => api.delete(`/comments/${c.id}`)); }} className="underline hover:text-red-600">Delete</button>
+                            )}
+                          </div>
+                        </>
                       )}
-                      <div className="flex items-center gap-1 mt-1">
-                        {EMOJIS.map((em) => {
-                          const count = (entry.data.reactions?.[em] || []).length;
-                          const mine = (entry.data.reactions?.[em] || []).includes(user?.id);
-                          return (
-                            <button key={em} data-testid={`comment-react-${entry.data.id}-${em}`}
-                              onClick={() => run(() => api.post(`/comments/${entry.data.id}/react`, { emoji: em }))}
-                              className={`text-xs px-1.5 py-0.5 rounded-full border transition-colors ${mine ? "bg-[#E9F2FF] border-[#0C66E4]" : "border-transparent hover:bg-[#F1F2F4]"}`}>
-                              {em}{count > 0 && <span className="ml-0.5 text-[10px] font-bold text-[#44546F]">{count}</span>}
-                            </button>
-                          );
-                        })}
-                        {entry.data.user_id === user?.id && editingComment !== entry.data.id && (
-                          <button aria-label="Edit komentar" data-testid={`comment-edit-${entry.data.id}`}
-                            onClick={() => { setEditingComment(entry.data.id); setEditText(entry.data.text); }}
-                            className="p-1 text-[#44546F] opacity-50 hover:opacity-100">
-                            <Pencil size={11} />
-                          </button>
-                        )}
-                      </div>
                     </div>
-                    {(entry.data.user_id === user?.id || isAdmin) && (
-                      <button aria-label="Hapus komentar" data-testid={`comment-delete-${entry.data.id}`} onClick={() => run(() => api.delete(`/comments/${entry.data.id}`))} className="self-start p-1 text-[#CA3521] opacity-60 hover:opacity-100">
-                        <Trash2 size={13} />
-                      </button>
-                    )}
                   </div>
-                ) : (
-                  <div key={"a" + entry.data.id} className="flex gap-2 items-start" data-testid={`activity-${entry.data.id}`}>
-                    <div className="w-6 h-6 rounded-full bg-[#091E420F] flex items-center justify-center shrink-0 mt-0.5">
-                      <Activity size={11} className="text-[#44546F]" />
-                    </div>
-                    <p className="text-xs text-[#44546F]">
-                      <span className="font-semibold text-[#172B4D]">{entry.data.user_name}</span> {entry.data.action}
-                      <span className="block text-[10px] text-[#8590A2]">{fmtDateTime(entry.data.created_at)}</span>
-                    </p>
-                  </div>
-                )
-              )}
+                );
+              })}
             </div>
           </div>
         </div>
-        {showSend && <SendWorkDialog item={item} onClose={() => setShowSend(false)} onDone={invalidate} />}
+
+        {/* ── BOTTOM BAR ─────────────────────────────────────────────── */}
+        <div className="flex h-12 shrink-0 items-center justify-center gap-6 border-t border-slate-200 bg-white text-sm font-medium transition-colors">
+          <button
+            type="button"
+            onClick={() => setActiveTab("powerups")}
+            className={`flex items-center gap-1.5 rounded px-3 py-1.5 ${activeTab === "powerups" ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            <Zap size={16} /> Power-ups
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("automations")}
+            className={`flex items-center gap-1.5 rounded px-3 py-1.5 ${activeTab === "automations" ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            <Bot size={16} /> Automations
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("comments")}
+            className={`flex items-center gap-1.5 rounded px-3 py-1.5 ${activeTab === "comments" ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            <MessageSquare size={16} /> Comments
+          </button>
+        </div>
       </div>
+
+      {showSend && (
+        <SendWorkDialog item={item} onClose={() => setShowSend(false)} onDone={() => { setShowSend(false); invalidate(); }} />
+      )}
     </div>
   );
 }

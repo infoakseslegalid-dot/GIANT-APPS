@@ -18,8 +18,9 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
     id: card.id,
     data: { type: "card", card },
   });
+  const [labelsCollapsed, setLabelsCollapsed] = useState(false);
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: isDragging ? `${CSS.Transform.toString(transform)} rotate(3deg)` : CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
   };
@@ -37,12 +38,12 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
       {...listeners}
       onClick={onClick}
       data-testid={`card-tile-${card.id}`}
-      className="bg-white rounded-lg shadow-sm hover:bg-gray-50 border-b border-gray-300 cursor-pointer group flex flex-col relative overflow-hidden"
+      className="bg-white rounded-lg shadow-sm hover:shadow-lg hover:-translate-y-px border border-transparent hover:border-[#0C66E4]/30 transition-all duration-150 cursor-pointer group flex flex-col relative overflow-hidden"
     >
       {card.cover_attachment_id ? (
-        <img src={`${API}/attachments/${card.cover_attachment_id}/download`} alt="" className="w-full h-20 object-cover" />
+        <img src={`${API}/attachments/${card.cover_attachment_id}/download`} alt="" className="w-full h-28 object-cover" />
       ) : card.cover_color ? (
-        <div className="w-full h-5" style={{ backgroundColor: card.cover_color }} />
+        <div className="w-full h-8" style={{ backgroundColor: card.cover_color }} />
       ) : null}
       <div className="p-3 flex flex-col gap-2">
         <button
@@ -53,10 +54,23 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
         >
           <Pencil size={12} />
         </button>
+        {card.is_assignment && card.master_board_name && (
+          <span
+            className="inline-flex w-fit items-center gap-1 rounded border border-[#DFE1E6] bg-[#F4F5F7] px-1.5 py-0.5 text-[10px] font-medium text-[#5E6C84]"
+            title={`Mirror dari ${card.master_board_name}${card.master_list_name ? " / " + card.master_list_name : ""}`}
+          >
+            <Link2 size={11} className="text-[#2684FF]" />
+            {card.master_board_name}{card.master_list_name ? ` / ${card.master_list_name}` : ""}
+          </span>
+        )}
         {cardLabels.length > 0 && (
-          <div className="flex flex-wrap gap-1">
+          <div
+            className="flex flex-wrap gap-1"
+            onClick={(e) => { e.stopPropagation(); setLabelsCollapsed((v) => !v); }}
+            title={labelsCollapsed ? "Klik untuk tampilkan nama label" : "Klik untuk ciutkan label"}
+          >
             {cardLabels.map((l) => (
-              <LabelChip key={l.id} label={l} />
+              <LabelChip key={l.id} label={l} collapsed={labelsCollapsed} />
             ))}
           </div>
         )}
@@ -115,7 +129,6 @@ export function AddCardComposer({ onAdd, testidPrefix }) {
     onAdd(title.trim(), client.trim());
     setTitle("");
     setClient("");
-    setOpen(false);
   };
 
   if (!open) {
@@ -219,9 +232,9 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ ...style, backgroundColor: list.color || "#f1f2f4" }}
       data-testid={`list-column-${list.id}`}
-      className="w-72 shrink-0 bg-[#f1f2f4] rounded-xl flex flex-col max-h-full shadow-sm"
+      className="w-72 shrink-0 rounded-xl flex flex-col max-h-full shadow-sm"
     >
       <div className="p-3 pb-2 flex justify-between items-center shrink-0 cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
         {editing ? (

@@ -1,5 +1,5 @@
-import { getCurrentUser } from './deps';
 // @ts-nocheck
+import { getCurrentUser } from './deps';
 import { HTTPException } from 'hono/http-exception';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';

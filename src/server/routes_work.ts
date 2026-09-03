@@ -1,8 +1,9 @@
-import { formatWorkItem } from './deps';
 // @ts-nocheck
+import { formatWorkItem, canViewBoard, runAutomation as realRunAutomation } from './deps';
 import {  Hono } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
+import { putObject, getObject } from './storage';
 
 const prisma = new PrismaClient();
 const router = new Hono();
@@ -29,13 +30,50 @@ async function notify(userIds: string[], type: string, title: string, body: stri
   });
 }
 async function broadcastItem(item: any) { /* Socket broadcast */ }
-async function runAutomation(boardId: string, event: string, item: any, user: any, listId?: string) { /* ... */ }
+// runAutomation asli di-import dari ./deps (realRunAutomation) — jalankan aman, jgn ganggu response.
+async function runAutomation(boardId: string, event: string, item: any, user: any, listId?: string) {
+  try {
+    const full = await prisma.workItem.findUnique({ where: { id: item.id }, include: { masterCard: true } });
+    await realRunAutomation(boardId, event, full || item, user, listId ?? null);
+  } catch (e) {
+    console.error('[automation]', event, e);
+  }
+}
 
-function canViewBoard(user: any, board: any) { return true; /* Implement logic */ }
+// canViewBoard di-import dari ./deps — admin, atau member board, atau se-divisi.
+// Board yang dilempar ke sini WAJIB di-include { members: true }.
 function requireSupervisor(user: any) { if (!SUPERVISOR_ROLES.includes(user.role)) throw new Error('Forbidden'); }
 
+/**
+ * Saat card pindah board, label lama (milik board asal) tidak berlaku di board tujuan.
+ * Cocokkan berdasarkan NAMA label (case-insensitive) → remap ke label board tujuan;
+ * label yang tak punya padanan di-drop dan namanya dikembalikan supaya FE bisa
+ * meminta user assign ulang.
+ */
+async function remapLabelsForBoard(item: any, targetBoardId: string) {
+  const oldLabelIds: string[] = (item.labels || []).map((l: any) => l.labelId);
+  if (!oldLabelIds.length) return { labelUpdate: undefined as any, droppedLabels: [] as string[], remappedCount: 0 };
+  const [oldLabels, targetLabels] = await Promise.all([
+    prisma.label.findMany({ where: { id: { in: oldLabelIds } } }),
+    prisma.label.findMany({ where: { boardId: targetBoardId } }),
+  ]);
+  const byName = new Map(targetLabels.map((l: any) => [(l.name || '').trim().toLowerCase(), l.id]));
+  const keep: string[] = [];
+  const droppedLabels: string[] = [];
+  for (const ol of oldLabels) {
+    const match = byName.get((ol.name || '').trim().toLowerCase());
+    if (match) keep.push(match);
+    else droppedLabels.push(ol.name);
+  }
+  return {
+    labelUpdate: { deleteMany: {}, create: keep.map((labelId) => ({ labelId })) },
+    droppedLabels,
+    remappedCount: keep.length,
+  };
+}
+
 async function getWorkItem(id: string) {
-  const item = await prisma.workItem.findUnique({ where: { id }, include: { members: true, divisionIds: true, labels: true, mirrorBoards: true } });
+  const item = await prisma.workItem.findUnique({ where: { id }, include: { members: true, divisionIds: true, labels: true, mirrorBoards: true, currentPic: true, sourceUser: true, masterCard: { include: { owner: true } } } });
   if (!item) throw new Error('Not found');
   return item;
 }
@@ -48,7 +86,7 @@ async function getItemChecked(id: string, user: any) {
 
 function doneChecklistTexts(item: any) {
   const done: string[] = [];
-  const checklists = (item.checklists as any[]) || [];
+  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   for (const cl of checklists) {
     for (const it of cl.items || []) {
       if (it.done) done.push((it.text || '').toLowerCase());
@@ -56,17 +94,26 @@ function doneChecklistTexts(item: any) {
   }
   return done;
 }
-function unmetRequirements(item: any, required: string[]) {
+/** entryRequirements bisa tersimpan sebagai array ATAU string JSON — normalkan. */
+function asReqArray(v: any): string[] {
+  if (Array.isArray(v)) return v.filter((x) => typeof x === 'string');
+  if (typeof v === 'string') {
+    try { const p = JSON.parse(v); return Array.isArray(p) ? p.filter((x) => typeof x === 'string') : []; }
+    catch { return v.trim() ? [v] : []; }
+  }
+  return [];
+}
+function unmetRequirements(item: any, required: any) {
   const done = doneChecklistTexts(item);
-  return (required || []).filter(req => {
+  return asReqArray(required).filter((req) => {
     const r = req.trim().toLowerCase();
-    return r && !done.some(t => t.includes(r));
+    return r && !done.some((t) => t.includes(r));
   });
 }
 async function ensureRequirementChecklist(item: any, lst: any) {
-  const reqs = (lst.entryRequirements as string[]) || [];
+  const reqs = asReqArray(lst.entryRequirements);
   if (!reqs.length) return;
-  const checklists = (item.checklists as any[]) || [];
+  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   const title = `Syarat ${lst.name}`;
   let target = checklists.find((c: any) => c.title === title);
   let changed = false;
@@ -136,23 +183,61 @@ router.get('/work-items/:item_id', async (c) => {
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
-  const comments: any[] = []; // prisma.comment.findMany if schema has it (schema missing Comment, mock for now)
-  const attachments = await prisma.attachment.findMany({ where: { workItemId: itemId, isDeleted: false } });
-  const activities = await prisma.activity.findMany({ where: { workItemId: itemId }, orderBy: { createdAt: 'desc' }, take: 60 });
+
+  // Feed di-scope ke GRUP Master Card (master + semua assignment).
+  const ids = await groupItemIds(item);
+  const origins = await originMap(ids);
+  const tag = (wid: string) => (wid === itemId ? null : origins[wid] || null);
+
+  const comments = (await prisma.comment.findMany({ where: { workItemId: { in: ids } }, orderBy: { createdAt: 'desc' } }))
+    .map((c) => ({ id: c.id, work_item_id: c.workItemId, created_by_id: c.createdById, created_by_name: c.createdByName, text: c.text, attachment_id: c.attachmentId, created_at: c.createdAt, updated_at: c.updatedAt, origin: tag(c.workItemId) }));
+  const attachments = (await prisma.attachment.findMany({ where: { workItemId: { in: ids }, isDeleted: false } }))
+    .map((a) => ({ id: a.id, work_item_id: a.workItemId, original_filename: a.originalFilename, content_type: a.contentType, size: a.size, uploaded_by_name: a.uploadedByName, uploaded_by_id: a.uploadedById, created_at: a.createdAt, external_url: a.storagePath, origin: tag(a.workItemId) }));
+  const activities = (await prisma.activity.findMany({ where: { workItemId: { in: ids } }, orderBy: { createdAt: 'desc' }, take: 120 }))
+    .map((a: any) => ({ ...a, origin: tag(a.workItemId) }));
+
   const boardLabels = await prisma.label.findMany({ where: { boardId: item.boardId } });
   const lst = await prisma.list.findUnique({ where: { id: item.listId } });
   const board = await prisma.board.findUnique({ where: { id: item.boardId } });
-  return c.json({ item: formatWorkItem(item), comments, attachments, activities, board_labels: boardLabels, list_name: lst?.name, board_name: board?.name, mirror_boards: [] });
+
+  // Ringkasan assignment saudara (untuk panel di Master Card).
+  const siblings = item.masterCardId
+    ? (await prisma.workItem.findMany({
+        where: { masterCardId: item.masterCardId, targetDivisionId: { not: null } },
+        include: { targetDivision: true, currentPic: true, list: true },
+        orderBy: { createdAt: 'asc' },
+      })).map((s: any) => ({
+        id: s.id, title: s.title, division_name: s.targetDivision?.name || null,
+        division_key: s.targetDivision?.key || null, pic_name: s.currentPic?.name || null,
+        distribution_status: s.distributionStatus, work_status: s.workStatus,
+        list_name: s.list?.name || null, updated_at: s.updatedAt,
+      }))
+    : [];
+
+  return c.json({
+    item: formatWorkItem(item),
+    comments, attachments, activities,
+    board_labels: boardLabels, list_name: lst?.name, board_name: board?.name,
+    mirror_boards: [],
+    assignments: siblings,
+    master: await masterInfo(item),
+    is_assignment: !!(item.masterCardId && item.targetDivisionId),
+    mentionable_users: await mentionableUsers(item),
+    can_edit: await canEditItem(user, item),
+    can_comment: await canCommentItem(user, item),
+  });
 });
 
 router.patch('/work-items/:item_id', async (c) => {
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
+  const denied = await editDenied(c, user, item);
+  if (denied) return denied;
   const body = await c.req.json();
   const updates: any = {};
   
-  const fieldMap: any = { title: 'title', client_name: 'clientName', description: 'description', due_date: 'dueDate', needs_approval: 'needsApproval' };
+  const fieldMap: any = { title: 'title', client_name: 'clientName', description: 'description', start_date: 'startDate', due_date: 'dueDate', needs_approval: 'needsApproval' };
   for (const [sField, cField] of Object.entries(fieldMap)) {
     if (body[sField] !== undefined) updates[cField as string] = body[sField];
   }
@@ -190,12 +275,24 @@ router.post('/work-items/:item_id/move', async (c) => {
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
+  const denied = await editDenied(c, user, item);
+  if (denied) return denied;
   const targetList = await prisma.list.findUnique({ where: { id: body.list_id } });
   if (!targetList) return c.json({ error: 'List tujuan tidak ditemukan' }, 404);
-  const targetBoard = await prisma.board.findUnique({ where: { id: targetList.boardId } });
-  if (!targetBoard || !canViewBoard(user, targetBoard)) return c.json({ error: 'Tidak memiliki akses' }, 403);
-  
-  const reqs = (targetList.entryRequirements as string[]) || [];
+  const targetBoard = await prisma.board.findUnique({
+    where: { id: targetList.boardId },
+    include: { members: true },
+  });
+  if (!targetBoard) return c.json({ error: 'Board tujuan tidak ditemukan' }, 404);
+
+  const isCrossBoard = targetBoard.id !== item.boardId;
+  // Hak akses: hanya boleh memindahkan ke board yang bisa diakses user
+  // (admin, member board tujuan, atau satu divisi). Berlaku untuk pindah antar-board.
+  if (isCrossBoard && !canViewBoard(user, targetBoard)) {
+    return c.json({ error: 'Anda tidak punya akses ke board tujuan' }, 403);
+  }
+
+  const reqs = asReqArray(targetList.entryRequirements);
   if (reqs.length && targetList.id !== item.listId) {
     const missing = unmetRequirements(item, reqs);
     if (missing.length) {
@@ -228,32 +325,345 @@ router.post('/work-items/:item_id/move', async (c) => {
     }
   }
   
+  // Pindah antar-board: checklist (kolom JSON), attachment & comment (relasi workItemId)
+  // otomatis ikut karena row-nya sama. Yang perlu ditangani hanya label (board-scoped).
+  let droppedLabels: string[] = [];
+  let labelUpdate: any;
+  if (isCrossBoard) {
+    const res = await remapLabelsForBoard(item, targetBoard.id);
+    labelUpdate = res.labelUpdate;
+    droppedLabels = res.droppedLabels;
+  }
+
   const updated = await prisma.workItem.update({
     where: { id: itemId },
-    data: { listId: body.list_id, boardId: targetBoard.id, position: body.position, hariStage, hariEnteredAt, updatedAt: new Date() }
+    data: {
+      listId: body.list_id,
+      boardId: targetBoard.id,
+      position: body.position,
+      hariStage,
+      hariEnteredAt,
+      updatedAt: new Date(),
+      ...(labelUpdate ? { labels: labelUpdate } : {}),
+    },
   });
-  
+
   await ensureRequirementChecklist(updated, targetList);
   await runAutomation(targetBoard.id, 'card_moved', updated, user, body.list_id);
+  if (isCrossBoard) {
+    await logActivity(
+      itemId,
+      targetBoard.id,
+      user,
+      `memindahkan "${item.title}" ke board ${targetBoard.name}${droppedLabels.length ? ` (label dilepas: ${droppedLabels.join(', ')})` : ''}`,
+    );
+  }
   await broadcastItem(updated);
-  return c.json({ ok: true });
+  return c.json({
+    ok: true,
+    board_id: targetBoard.id,
+    list_id: body.list_id,
+    cross_board: isCrossBoard,
+    dropped_labels: droppedLabels,
+    needs_label_reassign: droppedLabels.length > 0,
+  });
 });
+
+// ── Bank Data helpers (PRD v1.0) ────────────────────────────────────────
+const TAKEOVER_ROLES = ['super_admin', 'admin', 'supervisor'];
+
+/**
+ * Tentukan Owner Master Card untuk sebuah kartu:
+ *  1. Pembuat kartu, bila dia anggota divisi CS.
+ *  2. Selain itu, bila kartu berada di board milik divisi CS → anggota board tsb yang CS.
+ *  3. Kalau tetap tidak ketemu → owner null (client offline), ownerDivisionId dari board.
+ */
+async function resolveOwner(tx: any, item: any) {
+  const csDiv = await tx.division.findFirst({ where: { key: 'cs' } });
+  const csId = csDiv?.id || null;
+  const creator = item.createdById ? await tx.user.findUnique({ where: { id: item.createdById } }) : null;
+  if (creator?.divisionId && creator.divisionId === csId) {
+    return { ownerUserId: creator.id, ownerDivisionId: csId };
+  }
+  const board = await tx.board.findUnique({
+    where: { id: item.boardId },
+    include: { members: { include: { user: true } } },
+  });
+  if (board?.divisionId === csId) {
+    const csMember = board.members.find((m: any) => m.user?.divisionId === csId);
+    return { ownerUserId: csMember?.userId || null, ownerDivisionId: csId };
+  }
+  return { ownerUserId: null, ownerDivisionId: board?.divisionId || creator?.divisionId || null };
+}
+
+const MASTER_CHECKLIST_TITLE = 'Progres Legalitas';
+const MASTER_CHECKLIST_ITEMS = ['Akta', 'SK Kemenkumham', 'NPWP', 'NIB'];
+
+/** Tempelkan checklist "Progres Legalitas" ke kartu master bila belum ada. */
+async function ensureProgressChecklist(tx: any, item: any) {
+  let cls: any[] = [];
+  try { cls = typeof item.checklists === 'string' ? JSON.parse(item.checklists) : (item.checklists || []); } catch { cls = []; }
+  if (!Array.isArray(cls)) cls = [];
+  if (cls.some((c: any) => c.title === MASTER_CHECKLIST_TITLE)) return;
+  cls.push({
+    id: newId(),
+    title: MASTER_CHECKLIST_TITLE,
+    items: MASTER_CHECKLIST_ITEMS.map((t) => ({ id: newId(), text: t, done: false })),
+  });
+  await tx.workItem.update({ where: { id: item.id }, data: { checklists: cls } });
+}
+
+/** Pastikan item punya Master Card induk + checklist progres. */
+async function ensureMasterCard(tx: any, item: any): Promise<string> {
+  if (item.masterCardId) {
+    await ensureProgressChecklist(tx, item);
+    return item.masterCardId;
+  }
+  const owner = await resolveOwner(tx, item);
+  const mc = await tx.masterCard.create({
+    data: { title: item.title, client: item.clientName || null, ...owner },
+  });
+  await tx.workItem.update({ where: { id: item.id }, data: { masterCardId: mc.id } });
+  await ensureProgressChecklist(tx, { ...item, checklists: item.checklists });
+  return mc.id;
+}
+
+/** id user yang wajib dinotifikasi saat status distribusi berubah (owner + pengirim). */
+function stakeholderIds(item: any, mc: any): string[] {
+  return [...new Set([mc?.ownerUserId, item.sourceUserId, item.createdById].filter(Boolean))] as string[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// GRUP MASTER CARD — feed komentar/lampiran/aktivitas dibagikan ke satu grup
+// (Master Card + semua Assignment turunannya). Post dari kartu mana pun,
+// semua di grup melihatnya, ditandai asalnya.
+// ─────────────────────────────────────────────────────────────────────────
+async function groupItemIds(item: any): Promise<string[]> {
+  if (!item.masterCardId) return [item.id];
+  const rows = await prisma.workItem.findMany({ where: { masterCardId: item.masterCardId }, select: { id: true } });
+  const ids = rows.map((r) => r.id);
+  return ids.length ? ids : [item.id];
+}
+
+async function originMap(ids: string[]): Promise<Record<string, any>> {
+  const rows = await prisma.workItem.findMany({
+    where: { id: { in: ids } },
+    include: { board: { include: { division: true } }, targetDivision: true, currentPic: true },
+  });
+  const m: Record<string, any> = {};
+  for (const r of rows) {
+    const div = r.targetDivision || r.board?.division;
+    m[r.id] = {
+      work_item_id: r.id,
+      is_master: !r.targetDivisionId,
+      division_key: div?.key || null,
+      label: r.targetDivisionId ? (div?.name || r.board?.name || 'Assignment') : 'Master Card',
+      pic_name: r.currentPic?.name || null,
+    };
+  }
+  return m;
+}
+
+/** Info Master Card untuk assignment (penanda "kartu mirror" + asal board/list). */
+async function masterInfo(item: any) {
+  if (!item.masterCardId || !item.targetDivisionId) return null;
+  const m = await prisma.workItem.findFirst({
+    where: { masterCardId: item.masterCardId, targetDivisionId: null },
+    include: { board: true, list: true },
+  });
+  if (!m) return null;
+  return { id: m.id, title: m.title, board_id: m.boardId, board_name: m.board?.name || null, list_name: m.list?.name || null };
+}
+
+/** User yang relevan untuk di-mention (punya akses ke kartu ini). */
+async function mentionableUsers(item: any): Promise<any[]> {
+  const set = new Map<string, any>();
+  const add = (u: any) => { if (u) set.set(u.id, { id: u.id, name: u.name, avatar_color: u.avatarColor }); };
+  (await prisma.user.findMany({ where: { role: { in: TAKEOVER_ROLES }, isActive: true } })).forEach(add);
+  if (item.targetDivisionId) (await prisma.user.findMany({ where: { divisionId: item.targetDivisionId, isActive: true } })).forEach(add);
+  const bd = await prisma.board.findUnique({
+    where: { id: item.boardId },
+    include: { members: { include: { user: true } }, division: { include: { users: true } } },
+  });
+  bd?.members?.forEach((m: any) => add(m.user));
+  bd?.division?.users?.forEach(add);
+  if (item.masterCardId) {
+    const mc = await prisma.masterCard.findUnique({ where: { id: item.masterCardId }, include: { owner: true } });
+    add(mc?.owner);
+  }
+  const gIds = await groupItemIds(item);
+  (await prisma.workItemMember.findMany({ where: { workItemId: { in: gIds } }, include: { user: true } })).forEach((m: any) => add(m.user));
+  return [...set.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** id user yang perlu dinotifikasi saat ada komentar/lampiran di grup ini. */
+async function groupNotifyIds(item: any): Promise<string[]> {
+  const ids = await groupItemIds(item);
+  const rows = await prisma.workItem.findMany({ where: { id: { in: ids } }, select: { currentPicId: true, sourceUserId: true, createdById: true } });
+  const set = new Set<string>();
+  for (const r of rows) [r.currentPicId, r.sourceUserId, r.createdById].forEach((x) => x && set.add(x));
+  if (item.masterCardId) {
+    const mc = await prisma.masterCard.findUnique({ where: { id: item.masterCardId } });
+    if (mc?.ownerUserId) set.add(mc.ownerUserId);
+  }
+  return [...set];
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// HAK AKSES
+//  - canEditItem  : ubah field / list / checklist / selesai.
+//    → admin/supervisor · PIC · anggota divisi tujuan (kolaboratif) · member board.
+//  - canCommentItem: komentar & lampiran di feed grup.
+//    → siapa saja yang bisa "lihat": canEdit ∪ Owner Master Card ∪ pembuat kartu.
+// ─────────────────────────────────────────────────────────────────────────
+async function canEditItem(user: any, item: any): Promise<boolean> {
+  if (TAKEOVER_ROLES.includes(user.role)) return true;
+  if (item.currentPicId === user.id) return true;
+  if (item.targetDivisionId && user.divisionId && item.targetDivisionId === user.divisionId) return true;
+  const board = await prisma.board.findUnique({ where: { id: item.boardId }, include: { members: true } });
+  if (board?.divisionId && user.divisionId && board.divisionId === user.divisionId) return true;
+  if (board?.members?.some((m: any) => m.userId === user.id)) return true;
+  return false;
+}
+
+async function canCommentItem(user: any, item: any): Promise<boolean> {
+  if (await canEditItem(user, item)) return true;
+  if (item.createdById === user.id) return true;
+  if (item.masterCardId) {
+    const mc = await prisma.masterCard.findUnique({ where: { id: item.masterCardId } });
+    if (mc?.ownerUserId === user.id) return true;
+  }
+  return false;
+}
+
+/** Return response 403 kalau tidak boleh edit, atau null kalau boleh. */
+async function editDenied(c: any, user: any, item: any) {
+  if (await canEditItem(user, item)) return null;
+  return c.json({ error: 'Hanya PIC / anggota divisi terkait yang dapat mengubah kartu ini.' }, 403);
+}
+async function commentDenied(c: any, user: any, item: any) {
+  if (await canCommentItem(user, item)) return null;
+  return c.json({ error: 'Anda tidak punya akses ke kartu ini.' }, 403);
+}
+
+/**
+ * Cari board divisi + list awal yang VALID (board harus punya list).
+ * DB bisa punya beberapa board dgn nama sama / board kosong sisa re-seed —
+ * jadi jangan asal ambil yang pertama. Prioritas: board yg punya paling banyak list.
+ */
+async function resolveDivisionBoardList(tx: any, divisionId: string, preferBoardId?: string, preferListId?: string) {
+  let board: any = null;
+  if (preferBoardId) {
+    board = await tx.board.findFirst({ where: { id: preferBoardId, isArchived: false }, include: { lists: { orderBy: { position: 'asc' } } } });
+    if (board && board.lists.length === 0) board = null;
+  }
+  if (!board) {
+    const candidates = await tx.board.findMany({
+      where: { divisionId, isArchived: false, lists: { some: {} } },
+      include: { lists: { orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
+    });
+    candidates.sort((a: any, b: any) => b._count.lists - a._count.lists);
+    board = candidates[0] || null;
+  }
+  if (!board) return { board: null, listId: null };
+  const listId =
+    (preferListId && board.lists.find((l: any) => l.id === preferListId)?.id) ||
+    board.lists[0]?.id ||
+    null;
+  return { board, listId };
+}
+
+/** Board milik seorang user (Board User / Board pribadi) yang punya list. */
+async function resolveDivisionBoardListByCreator(tx: any, userId: string) {
+  const candidates = await tx.board.findMany({
+    where: { createdById: userId, isArchived: false, lists: { some: {} } },
+    include: { lists: { orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
+  });
+  candidates.sort((a: any, b: any) => b._count.lists - a._count.lists);
+  const board = candidates[0] || null;
+  return { board, listId: board?.lists[0]?.id || null };
+}
 
 router.post('/work-items/:item_id/claim', async (c) => {
   const user = c.get('user');
   const itemId = c.req.param('item_id');
+  const body = await c.req.json().catch(() => ({}));
   const item = await getItemChecked(itemId, user);
-  const existing = item.members.find((m: any) => m.userId === user.id);
-  if (existing) return c.json({ error: 'Sudah menjadi PIC' }, 400);
-  
-  await prisma.workItem.update({
-    where: { id: itemId },
-    data: { members: { create: { userId: user.id } }, updatedAt: new Date() }
+  if (item.currentPicId === user.id) return c.json({ error: 'Anda sudah menjadi PIC' }, 400);
+
+  // Board tujuan PIC — harus board yang punya list
+  let userBoardId = body.board_id;
+  let userListId = body.list_id;
+  if (!userBoardId || !userListId) {
+    const pb = await resolveDivisionBoardListByCreator(prisma, user.id);
+    if (pb.board) { userBoardId = userBoardId || pb.board.id; userListId = userListId || pb.listId; }
+  }
+
+  // Flow B: Assignment masuk Bank Data Customer Service & belum ada Owner
+  const csDiv = await prisma.division.findFirst({ where: { key: 'cs' } });
+  const isCsBankData = !!(csDiv && item.targetDivisionId === csDiv.id);
+
+  const claimedAt = new Date();
+  let picName = '';
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Klaim ATOMIC — hanya lolos bila masih AVAILABLE & belum ada PIC (§7.4 / §12)
+    const upd = await tx.workItem.updateMany({
+      where: { id: itemId, currentPicId: null, distributionStatus: 'AVAILABLE', archived: false },
+      data: {
+        currentPicId: user.id,
+        distributionStatus: 'CLAIMED',
+        workStatus: 'CLAIMED',
+        claimedAt,
+        releasedAt: null,
+        ...(userBoardId ? { boardId: userBoardId } : {}),
+        ...(userListId ? { listId: userListId } : {}),
+        updatedAt: new Date(),
+      },
+    });
+    if (upd.count === 0) return { ok: false as const };
+
+    await tx.workItemMember.upsert({
+      where: { workItemId_userId: { workItemId: itemId, userId: user.id } },
+      create: { workItemId: itemId, userId: user.id },
+      update: {},
+    });
+    await tx.workItemAssignmentHistory.create({
+      data: { id: newId(), workItemId: itemId, toUserId: user.id, action: 'CLAIM', createdById: user.id },
+    });
+
+    const mcId = await ensureMasterCard(tx, item);
+    let mc = await tx.masterCard.findUnique({ where: { id: mcId } });
+
+    // Flow B — CS yang claim menjadi Owner Master Card
+    if (isCsBankData && mc && !mc.ownerUserId) {
+      mc = await tx.masterCard.update({
+        where: { id: mcId },
+        data: { ownerUserId: user.id, ownerDivisionId: user.divisionId || csDiv!.id },
+      });
+    }
+    return { ok: true as const, mc };
   });
-  await logActivity(itemId, item.boardId, user, `mengambil pekerjaan "${item.title}"`);
-  await notify([item.createdById], 'claimed', 'Pekerjaan diambil', `${user.name} mengambil pekerjaan "${item.title}"`, itemId, item.boardId, new Set([user.id]));
+
+  if (!result.ok) {
+    const fresh = await prisma.workItem.findUnique({ where: { id: itemId }, include: { currentPic: true } });
+    picName = fresh?.currentPic?.name || 'orang lain';
+    return c.json({ error: `Pekerjaan ini baru saja diambil oleh ${picName}.` }, 409);
+  }
+
+  const mc = result.mc;
+  await logActivity(itemId, item.targetDivisionId ? (item.targetBoardId || item.boardId) : item.boardId, user, `mengambil pekerjaan "${item.title}"`);
+  await notify(
+    stakeholderIds(item, mc),
+    'claimed',
+    'Pekerjaan diambil',
+    `${user.name} telah mengambil pekerjaan "${item.title}".`,
+    itemId,
+    item.boardId,
+    new Set([user.id]),
+  );
   await broadcastItem(await getWorkItem(itemId));
-  return c.json({ ok: true });
+  return c.json({ ok: true, flow: isCsBankData ? 'B' : 'A' });
 });
 
 router.post('/work-items/:item_id/release', async (c) => {
@@ -261,14 +671,128 @@ router.post('/work-items/:item_id/release', async (c) => {
   const itemId = c.req.param('item_id');
   const body = await c.req.json().catch(() => ({}));
   const item = await getItemChecked(itemId, user);
-  
-  await prisma.workItem.update({
-    where: { id: itemId },
-    data: { members: { deleteMany: { userId: user.id } }, updatedAt: new Date() }
+
+  const isPic = item.currentPicId === user.id;
+  if (!isPic && !TAKEOVER_ROLES.includes(user.role)) {
+    return c.json({ error: 'Hanya PIC atau supervisor yang dapat melepaskan pekerjaan ini' }, 403);
+  }
+
+  const releasedAt = new Date();
+  const mc = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.workItem.update({
+      where: { id: itemId },
+      data: {
+        currentPicId: null,
+        distributionStatus: 'AVAILABLE',
+        workStatus: 'WAITING_CLAIM',
+        releasedAt,
+        updatedAt: new Date(),
+        ...(item.targetBoardId ? { boardId: item.targetBoardId } : {}),
+        ...(item.targetListId ? { listId: item.targetListId } : {}),
+        members: item.currentPicId ? { deleteMany: { userId: item.currentPicId } } : undefined,
+      },
+    });
+    await tx.workItemAssignmentHistory.create({
+      data: {
+        id: newId(),
+        workItemId: itemId,
+        fromUserId: item.currentPicId || user.id,
+        action: 'UNCLAIM',
+        reason: body.reason || null,
+        createdById: user.id,
+      },
+    });
   });
+
   const reason = body.reason ? ` — Alasan: ${body.reason}` : '';
-  await logActivity(itemId, item.boardId, user, `melepas pekerjaan "${item.title}"${reason}`);
-  await notify([item.createdById], 'released', 'Pekerjaan dilepaskan', `${user.name} melepaskan "${item.title}"${reason}`, itemId, item.boardId, new Set([user.id]));
+  await logActivity(itemId, item.targetBoardId || item.boardId, user, `melepaskan pekerjaan "${item.title}"${reason}`);
+  await notify(
+    stakeholderIds(item, mc),
+    'released',
+    'Pekerjaan dilepaskan',
+    `${user.name} telah melepaskan pekerjaan "${item.title}"${reason}`,
+    itemId,
+    item.boardId,
+    new Set([user.id]),
+  );
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json({ ok: true });
+});
+
+// Ambil Alih (§7.5) — supervisor mengganti PIC lama ke PIC baru secara langsung
+router.post('/work-items/:item_id/takeover', async (c) => {
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const body = await c.req.json().catch(() => ({}));
+  if (!TAKEOVER_ROLES.includes(user.role)) {
+    return c.json({ error: 'Hanya supervisor/admin yang dapat melakukan Ambil Alih' }, 403);
+  }
+  const newPicId = body.pic_user_id || user.id;
+  const item = await getItemChecked(itemId, user);
+  const oldPicId = item.currentPicId || null;
+  if (oldPicId === newPicId) return c.json({ error: 'PIC baru sama dengan PIC saat ini' }, 400);
+
+  const newPic = await prisma.user.findUnique({ where: { id: newPicId } });
+  if (!newPic) return c.json({ error: 'User PIC baru tidak ditemukan' }, 404);
+  const oldPic = oldPicId ? await prisma.user.findUnique({ where: { id: oldPicId } }) : null;
+  const mc = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+
+  let picBoardId = body.board_id;
+  let picListId = body.list_id;
+  if (!picBoardId || !picListId) {
+    const pb = await resolveDivisionBoardListByCreator(prisma, newPicId);
+    if (pb.board) { picBoardId = picBoardId || pb.board.id; picListId = picListId || pb.listId; }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.workItem.update({
+      where: { id: itemId },
+      data: {
+        currentPicId: newPicId,
+        distributionStatus: 'CLAIMED',
+        workStatus: 'CLAIMED',
+        claimedAt: new Date(),
+        updatedAt: new Date(),
+        ...(picBoardId ? { boardId: picBoardId } : {}),
+        ...(picListId ? { listId: picListId } : {}),
+      },
+    });
+    if (oldPicId) await tx.workItemMember.deleteMany({ where: { workItemId: itemId, userId: oldPicId } });
+    await tx.workItemMember.upsert({
+      where: { workItemId_userId: { workItemId: itemId, userId: newPicId } },
+      create: { workItemId: itemId, userId: newPicId },
+      update: {},
+    });
+    await tx.workItemAssignmentHistory.create({
+      data: {
+        id: newId(),
+        workItemId: itemId,
+        fromUserId: oldPicId,
+        toUserId: newPicId,
+        action: 'TAKE_OVER',
+        reason: body.reason || null,
+        createdById: user.id,
+      },
+    });
+  });
+
+  await logActivity(
+    itemId,
+    picBoardId || item.boardId,
+    user,
+    `mengambil alih "${item.title}" dari ${oldPic?.name || '—'} ke ${newPic.name}`,
+  );
+  await notify(
+    [...new Set([...stakeholderIds(item, mc), oldPicId, newPicId].filter(Boolean))] as string[],
+    'takeover',
+    'Pekerjaan dialihkan',
+    `Pekerjaan "${item.title}" telah dialihkan dari ${oldPic?.name || '—'} ke ${newPic.name}.`,
+    itemId,
+    item.boardId,
+    new Set([user.id]),
+  );
   await broadcastItem(await getWorkItem(itemId));
   return c.json({ ok: true });
 });
@@ -308,6 +832,7 @@ router.post('/work-items/:item_id/submit', async (c) => {
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
   if (item.status === 'done') return c.json({ error: 'Sudah selesai' }, 400);
   
   if (item.needsApproval) {
@@ -340,6 +865,7 @@ router.post('/work-items/:item_id/reopen', async (c) => {
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
   await prisma.workItem.update({ where: { id: itemId }, data: { status: 'active', completedAt: null, approvedById: null, updatedAt: new Date() } });
   await logActivity(itemId, item.boardId, user, `membuka kembali pekerjaan "${item.title}"`);
   const updated = await getWorkItem(itemId);
@@ -367,12 +893,123 @@ router.post('/work-items/:item_id/unarchive', async (c) => {
   return c.json({ ok: true });
 });
 
+
+/**
+ * Kirim ke Divisi (§7.1 / §34): Master Card TIDAK dipindah/diduplikasi.
+ * Untuk tiap divisi tujuan dibuat satu WorkItem baru = Assignment, anak dari Master Card
+ * sumber. Item sumber tetap di board CS sebagai representasi Master Card.
+ * body: { target_division_id | target_division_ids[], target_list_id?, assign_to_user_id?,
+ *         title?, description?, note?, priority?, due_date? }
+ */
+router.post('/work-items/:item_id/send-to-division', async (c) => {
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const body = await c.req.json();
+  const item = await getItemChecked(itemId, user);
+
+  // Hanya Owner Master Card, pembuat kartu, atau admin/supervisor yang boleh mengirim.
+  const mcSend = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+  const isOwnerOrCreator = item.createdById === user.id || mcSend?.ownerUserId === user.id;
+  if (!TAKEOVER_ROLES.includes(user.role) && !isOwnerOrCreator) {
+    return c.json({ error: 'Hanya pemilik kartu (CS) atau supervisor yang dapat mengirim pekerjaan.' }, 403);
+  }
+
+  const targetDivIds: string[] = body.target_division_ids?.length
+    ? body.target_division_ids
+    : (body.target_division_id ? [body.target_division_id] : []);
+  if (!targetDivIds.length) return c.json({ error: 'Divisi tujuan diperlukan' }, 400);
+
+  const direct = !!body.assign_to_user_id;
+  const title = (body.title || item.title).trim();
+  const description = body.description ?? body.note ?? item.description ?? '';
+  const priority = PRIORITIES.includes(body.priority) ? body.priority : (item.priority || 'none');
+  const dueDate = body.due_date ?? item.dueDate ?? null;
+
+  const created: { id: string; division: string }[] = [];
+  let mcId = '';
+
+  await prisma.$transaction(async (tx) => {
+    mcId = await ensureMasterCard(tx, item);
+    // sumber ditandai sebagai Master Card yang sedang punya assignment berjalan
+    await tx.workItem.update({ where: { id: item.id }, data: { workStatus: item.workStatus || 'IN_PROGRESS', updatedAt: new Date() } });
+
+    for (const divId of targetDivIds) {
+      const single = targetDivIds.length === 1;
+      const resolved = await resolveDivisionBoardList(
+        tx,
+        divId,
+        single ? body.target_board_id : undefined,
+        single ? body.target_list_id : undefined,
+      );
+      if (!resolved.board || !resolved.listId) throw new Error('Divisi tujuan belum punya board/list yang valid');
+      const targetBoardId = resolved.board.id;
+      let listId = resolved.listId;
+
+      // Direct assignment → langsung ke board PIC
+      let boardId = targetBoardId;
+      if (direct) {
+        const pb = await resolveDivisionBoardListByCreator(tx, body.assign_to_user_id);
+        if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
+      }
+
+      const count = await tx.workItem.count({ where: { listId } });
+      const assignment = await tx.workItem.create({
+        data: {
+          id: newId(),
+          title,
+          clientName: item.clientName || null,
+          description,
+          boardId,
+          listId,
+          position: (count + 1) * 1000,
+          priority,
+          dueDate,
+          status: 'active',
+          createdById: user.id,
+          createdByName: user.name,
+          masterCardId: mcId,
+          sourceUserId: user.id,
+          sourceBoardId: item.boardId,
+          sourceListId: item.listId,
+          targetDivisionId: divId,
+          targetBoardId,
+          targetListId: listId,
+          distributionStatus: direct ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
+          workStatus: direct ? 'CLAIMED' : 'WAITING_CLAIM',
+          currentPicId: direct ? body.assign_to_user_id : null,
+          claimedAt: direct ? new Date() : null,
+          divisionIds: { create: [{ divisionId: divId }] },
+          ...(direct ? { members: { create: [{ userId: body.assign_to_user_id }] } } : {}),
+        },
+      });
+      if (direct) {
+        await tx.workItemAssignmentHistory.create({
+          data: { id: newId(), workItemId: assignment.id, toUserId: body.assign_to_user_id, action: 'DIRECT_ASSIGN', createdById: user.id },
+        });
+      }
+      const div = await tx.division.findUnique({ where: { id: divId } });
+      created.push({ id: assignment.id, division: div?.name || divId });
+    }
+  });
+
+  for (const a of created) {
+    await logActivity(a.id, null, user, `mengirim pekerjaan "${title}" ke Bank Data ${a.division}`);
+    await notify([user.id], 'sent', 'Pekerjaan terkirim', `Pekerjaan "${title}" berhasil dikirim ke Bank Data ${a.division}.`, a.id, null);
+    if (direct && body.assign_to_user_id) {
+      await notify([body.assign_to_user_id], 'assigned', 'Anda ditugaskan', `${user.name} menugaskan Anda pada "${title}".`, a.id, null, new Set([user.id]));
+    }
+  }
+  await logActivity(item.id, item.boardId, user, `membuat ${created.length} assignment dari "${item.title}"`);
+  await broadcastItem(await getWorkItem(item.id));
+  return c.json({ ok: true, master_card_id: mcId, assignment_ids: created.map((x) => x.id) });
+});
+
 router.post('/work-items/:item_id/mirror', async (c) => {
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
-  const target = await prisma.board.findUnique({ where: { id: body.board_id } });
+  const target = await prisma.board.findUnique({ where: { id: body.board_id }, include: { members: true } });
   if (!target || !canViewBoard(user, target)) return c.json({ error: 'Tidak ada akses' }, 403);
   
   if (item.boardId === body.board_id || item.mirrorBoards.some((m: any) => m.boardId === body.board_id)) {
@@ -408,7 +1045,8 @@ router.post('/work-items/:item_id/checklists', async (c) => {
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
-  const checklists = (item.checklists as any[]) || [];
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
+  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   checklists.push({ id: newId(), title: body.title.trim(), items: [] });
   
   await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
@@ -422,6 +1060,7 @@ router.delete('/work-items/:item_id/checklists/:cl_id', async (c) => {
   const itemId = c.req.param('item_id');
   const clId = c.req.param('cl_id');
   const item = await getItemChecked(itemId, user);
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
   const checklists = ((item.checklists as any[]) || []).filter((c: any) => c.id !== clId);
   
   await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
@@ -435,7 +1074,8 @@ router.post('/work-items/:item_id/checklists/:cl_id/items', async (c) => {
   const clId = c.req.param('cl_id');
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
-  const checklists = (item.checklists as any[]) || [];
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
+  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   const cl = checklists.find((c: any) => c.id === clId);
   if (cl) cl.items.push({ id: newId(), text: body.text.trim(), done: false });
   
@@ -451,7 +1091,8 @@ router.post('/work-items/:item_id/checklists/:cl_id/reorder', async (c) => {
   const clId = c.req.param('cl_id');
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
-  const checklists = (item.checklists as any[]) || [];
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
+  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   const cl = checklists.find((c: any) => c.id === clId);
   if (cl && body.ordered_ids) {
     const map = new Map(cl.items.map((i: any) => [i.id, i]));
@@ -469,7 +1110,8 @@ router.patch('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) =
   const subId = c.req.param('sub_id');
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
-  const checklists = (item.checklists as any[]) || [];
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
+  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   const cl = checklists.find((c: any) => c.id === clId);
   if (cl) {
     const sub = cl.items.find((i: any) => i.id === subId);
@@ -491,7 +1133,7 @@ router.delete('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) 
   const clId = c.req.param('cl_id');
   const subId = c.req.param('sub_id');
   const item = await getItemChecked(itemId, user);
-  const checklists = (item.checklists as any[]) || [];
+  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   const cl = checklists.find((c: any) => c.id === clId);
   if (cl) cl.items = cl.items.filter((i: any) => i.id !== subId);
   
@@ -562,7 +1204,7 @@ router.post('/work-items/:item_id/hari', async (c) => {
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
   const item = await getWorkItem(itemId);
-  const board = await prisma.board.findUnique({ where: { id: item.boardId } });
+  const board = await prisma.board.findUnique({ where: { id: item.boardId }, include: { members: true } });
   if (!board || (!canViewBoard(user, board) && !(await canAccessHari(user)))) return c.json({ error: 'Akses ditolak' }, 403);
   if (!item.hariStage) return c.json({ error: 'Tidak dalam HARI 1-7' }, 400);
   
@@ -599,3 +1241,319 @@ router.post('/work-items/:item_id/hari', async (c) => {
 });
 
 export default router;
+
+router.post('/work-items/:item_id/comments', async (c) => {
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const body = await c.req.json();
+  const item = await getItemChecked(itemId, user);
+  { const _d = await commentDenied(c, user, item); if (_d) return _d; }
+  
+  const comment = await prisma.comment.create({
+    data: {
+      workItemId: itemId,
+      createdById: user.id,
+      createdByName: user.name,
+      text: body.text.trim(),
+      attachmentId: body.attachment_id || null,
+    }
+  });
+  
+  await logActivity(itemId, item.boardId, user, "menambahkan komentar");
+  const snippet = body.text.replace(/<[^>]+>/g, '').trim().slice(0, 90);
+  const mentionIds: string[] = Array.isArray(body.mention_user_ids) ? body.mention_user_ids.filter(Boolean) : [];
+  const mentionSet = new Set(mentionIds);
+
+  if (mentionIds.length) {
+    await notify(mentionIds, 'mention', 'Anda disebut', `${user.name} menyebut Anda di "${item.title}": ${snippet}`, itemId, item.boardId, new Set([user.id]));
+  }
+  // Notif komentar ke sisa grup Master Card (Owner + semua PIC + pembuat), kecuali penulis & yang sudah di-mention.
+  const gIds = (await groupNotifyIds(item)).filter((id) => !mentionSet.has(id));
+  await notify(gIds, 'comment', 'Komentar baru', `${user.name} di "${item.title}": ${snippet}`, itemId, item.boardId, new Set([user.id]));
+  await broadcastItem(await getWorkItem(itemId));
+
+  return c.json({ ok: true });
+});
+
+router.patch('/comments/:comment_id', async (c) => {
+  const user = c.get('user');
+  const commentId = c.req.param('comment_id');
+  const body = await c.req.json();
+  
+  const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+  if (!comment) return c.json({ error: "Komentar tidak ditemukan" }, 404);
+  if (comment.createdById !== user.id && user.role !== "super_admin") return c.json({ error: "Tidak ada akses" }, 403);
+  
+  await prisma.comment.update({
+    where: { id: commentId },
+    data: { text: body.text.trim() }
+  });
+  
+  const item = await getWorkItem(comment.workItemId);
+  await broadcastItem(item);
+  return c.json({ ok: true });
+});
+
+router.delete('/comments/:comment_id', async (c) => {
+  const user = c.get('user');
+  const commentId = c.req.param('comment_id');
+  
+  const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+  if (!comment) return c.json({ error: "Komentar tidak ditemukan" }, 404);
+  if (comment.createdById !== user.id && user.role !== "super_admin") return c.json({ error: "Tidak ada akses" }, 403);
+  
+  await prisma.comment.delete({ where: { id: commentId } });
+  
+  const item = await getWorkItem(comment.workItemId);
+  await broadcastItem(item);
+  return c.json({ ok: true });
+});
+
+
+router.post('/work-items/:item_id/attachments', async (c) => {
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const item = await getItemChecked(itemId, user);
+  { const _d = await commentDenied(c, user, item); if (_d) return _d; }
+  
+  const body = await c.req.parseBody();
+  const file = body['file'] as File;
+  if (!file) return c.json({ error: "No file uploaded" }, 400);
+  
+  const originalFilename = file.name || "unnamed";
+  const contentType = file.type || "application/octet-stream";
+  const size = file.size;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  
+  const storagePath = `${itemId}/${uuidv4()}_${originalFilename}`;
+  await putObject(storagePath, buffer, contentType);
+  
+  const att = await prisma.attachment.create({
+    data: {
+      workItemId: itemId,
+      originalFilename,
+      contentType,
+      size,
+      storagePath,
+      uploadedById: user.id,
+      uploadedByName: user.name,
+    }
+  });
+  
+  await logActivity(itemId, item.boardId, user, `mengunggah lampiran "${originalFilename}"`);
+  await runAutomation(item.boardId, 'attachment_uploaded', item, user, item.listId);
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json({ id: att.id, work_item_id: att.workItemId, original_filename: att.originalFilename, content_type: att.contentType, size: att.size, uploaded_by_name: att.uploadedByName, uploaded_by_id: att.uploadedById, created_at: att.createdAt, external_url: att.storagePath });
+});
+
+router.post('/work-items/:item_id/attachments/link', async (c) => {
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const item = await getItemChecked(itemId, user);
+  const body = await c.req.json();
+  
+  const att = await prisma.attachment.create({
+    data: {
+      workItemId: itemId,
+      originalFilename: body.name || body.url,
+      contentType: "link",
+      storagePath: body.url,
+      uploadedById: user.id,
+      uploadedByName: user.name,
+    }
+  });
+  
+  await logActivity(itemId, item.boardId, user, `menambahkan tautan "${att.originalFilename}"`);
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json({ id: att.id, work_item_id: att.workItemId, original_filename: att.originalFilename, content_type: att.contentType, size: att.size, uploaded_by_name: att.uploadedByName, uploaded_by_id: att.uploadedById, created_at: att.createdAt, external_url: att.storagePath });
+});
+
+router.get('/attachments/:id/download', async (c) => {
+  const id = c.req.param('id');
+  const att = await prisma.attachment.findUnique({ where: { id } });
+  if (!att || att.isDeleted || !att.storagePath) return c.text("Not found", 404);
+  
+  try {
+    const { data, contentType } = await getObject(att.storagePath);
+    return new Response(data, {
+      headers: {
+        "Content-Type": att.contentType || contentType,
+        "Content-Disposition": `inline; filename="${att.originalFilename}"`
+      }
+    });
+  } catch (e: any) {
+    return c.text("Failed to download", 500);
+  }
+});
+
+router.delete('/attachments/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const att = await prisma.attachment.findUnique({ where: { id } });
+  if (!att) return c.json({ error: "Not found" }, 404);
+  
+  if (att.uploadedById !== user.id && user.role !== "super_admin") return c.json({ error: "Forbidden" }, 403);
+  
+  await prisma.attachment.update({ where: { id }, data: { isDeleted: true } });
+  
+  const item = await getWorkItem(att.workItemId);
+  await logActivity(att.workItemId, item.boardId, user, `menghapus lampiran "${att.originalFilename}"`);
+  await broadcastItem(item);
+  return c.json({ ok: true });
+});
+
+/**
+ * Flow B (§7.2) — Client offline: buat pekerjaan baru langsung ke Bank Data suatu divisi.
+ * Master Card dibuat TANPA owner; owner ditetapkan saat CS meng-claim (di /claim).
+ * body: { title*, client_name?, note?, target_division_id*, target_list_id?, priority?, due_date?, assign_to_user_id? }
+ */
+router.post('/bank-data/intake', async (c) => {
+  const user = c.get('user');
+  const body = await c.req.json();
+  if (!body.title?.trim()) return c.json({ error: 'Judul pekerjaan wajib diisi' }, 400);
+  if (!body.target_division_id) return c.json({ error: 'Divisi tujuan diperlukan' }, 400);
+
+  const direct = !!body.assign_to_user_id;
+  const priority = PRIORITIES.includes(body.priority) ? body.priority : 'none';
+
+  let result: any = {};
+  await prisma.$transaction(async (tx) => {
+    const resolved = await resolveDivisionBoardList(tx, body.target_division_id, body.target_board_id, body.target_list_id);
+    if (!resolved.board || !resolved.listId) throw new Error('Divisi tujuan belum punya board/list yang valid');
+    const targetBoard = resolved.board;
+    let listId = resolved.listId;
+
+    const mc = await tx.masterCard.create({
+      data: { title: body.title.trim(), client: body.client_name?.trim() || null, ownerUserId: null, ownerDivisionId: null },
+    });
+
+    let boardId = targetBoard.id;
+    if (direct) {
+      const pb = await resolveDivisionBoardListByCreator(tx, body.assign_to_user_id);
+      if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
+    }
+
+    const count = await tx.workItem.count({ where: { listId } });
+    const assignment = await tx.workItem.create({
+      data: {
+        id: newId(),
+        title: body.title.trim(),
+        clientName: body.client_name?.trim() || null,
+        description: body.note?.trim() || '',
+        boardId,
+        listId,
+        position: (count + 1) * 1000,
+        priority,
+        dueDate: body.due_date || null,
+        status: 'active',
+        createdById: user.id,
+        createdByName: user.name,
+        masterCardId: mc.id,
+        sourceUserId: user.id,
+        targetDivisionId: body.target_division_id,
+        targetBoardId: targetBoard.id,
+        targetListId: listId,
+        distributionStatus: direct ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
+        workStatus: direct ? 'CLAIMED' : 'WAITING_CLAIM',
+        currentPicId: direct ? body.assign_to_user_id : null,
+        claimedAt: direct ? new Date() : null,
+        divisionIds: { create: [{ divisionId: body.target_division_id }] },
+        ...(direct ? { members: { create: [{ userId: body.assign_to_user_id }] } } : {}),
+      },
+    });
+    if (direct) {
+      await tx.workItemAssignmentHistory.create({
+        data: { id: newId(), workItemId: assignment.id, toUserId: body.assign_to_user_id, action: 'DIRECT_ASSIGN', createdById: user.id },
+      });
+    }
+    result = { assignment_id: assignment.id, master_card_id: mc.id };
+  });
+
+  const div = await prisma.division.findUnique({ where: { id: body.target_division_id } });
+  await logActivity(result.assignment_id, null, user, `input pekerjaan client offline "${body.title.trim()}" ke Bank Data ${div?.name || ''}`);
+  await notify([user.id], 'sent', 'Pekerjaan terkirim', `Pekerjaan "${body.title.trim()}" berhasil masuk Bank Data ${div?.name || ''}.`, result.assignment_id, null);
+  if (direct && body.assign_to_user_id) {
+    await notify([body.assign_to_user_id], 'assigned', 'Anda ditugaskan', `${user.name} menugaskan Anda pada "${body.title.trim()}".`, result.assignment_id, null, new Set([user.id]));
+  }
+  await broadcastItem(await getWorkItem(result.assignment_id));
+  return c.json({ ok: true, ...result });
+});
+
+// Ringkasan jumlah pekerjaan MENUNGGU per divisi (untuk badge sidebar/tab) — §9.3
+router.get('/bank-data/summary', async (c) => {
+  const divisions = await prisma.division.findMany({ orderBy: { name: 'asc' } });
+  const grouped = await prisma.workItem.groupBy({
+    by: ['targetDivisionId'],
+    where: { archived: false, masterCardId: { not: null }, distributionStatus: 'AVAILABLE' },
+    _count: { _all: true },
+  });
+  const waitingBy: Record<string, number> = {};
+  for (const g of grouped) if (g.targetDivisionId) waitingBy[g.targetDivisionId] = g._count._all;
+  return c.json(
+    divisions.map((d: any) => ({
+      division_id: d.id,
+      name: d.name,
+      key: d.key,
+      color: d.color,
+      waiting: waitingBy[d.id] || 0,
+    })),
+  );
+});
+
+router.get('/bank-data/:division_id', async (c) => {
+  const user = c.get('user');
+  const divisionId = c.req.param('division_id');
+  
+  const division = await prisma.division.findUnique({ where: { id: divisionId } });
+  if (!division) return c.json({ error: 'Divisi tidak ditemukan' }, 404);
+
+  const boards = await prisma.board.findMany({
+    where: { divisionId: divisionId, isArchived: false },
+    include: { lists: { orderBy: { position: 'asc' } } }
+  });
+
+  const items = await prisma.workItem.findMany({
+    where: {
+      targetDivisionId: divisionId,
+      archived: false,
+      masterCardId: { not: null }, // hanya Assignment (bukan kartu biasa)
+    },
+    orderBy: [{ distributionStatus: 'asc' }, { createdAt: 'asc' }],
+    include: {
+      board: true,
+      list: true,
+      currentPic: true,
+      members: true,
+      sourceUser: true,
+      masterCard: { include: { owner: true } },
+    },
+  });
+
+  const usersInDiv = await prisma.user.findMany({ where: { divisionId: divisionId, isActive: true } });
+  const workload = usersInDiv.map((u: any) => {
+    const mine = items.filter((i: any) => i.currentPicId === u.id && i.workStatus !== 'COMPLETED' && i.status !== 'done');
+    const by_list: Record<string, number> = {};
+    for (const i of mine) {
+      const name = i.list?.name || 'Tanpa List';
+      by_list[name] = (by_list[name] || 0) + 1;
+    }
+    return {
+      user: { id: u.id, name: u.name, avatar_color: u.avatarColor },
+      total: mine.length,
+      claimed: mine.length,
+      available_in_bank: items.filter((i: any) => !i.currentPicId).length,
+      by_list,
+    };
+  });
+
+  return c.json({
+    division,
+    boards,
+    workload,
+    items: items.map((i: any) => ({
+      ...formatWorkItem(i),
+      board_name: i.board?.name,
+      list_name: i.list?.name,
+    })),
+  });
+});

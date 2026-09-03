@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Briefcase, CheckCircle2, Send, Clock } from "lucide-react";
 import { api, fmtDate } from "../lib/api";
 import { StatusBadge, PriorityFlag } from "../components/common";
-import CardModal from "../components/CardModal";
+import CardModal from "../components/kanban/CardModalWrapper";
 
 export default function MyWork() {
   const [openItem, setOpenItem] = useState(null);
