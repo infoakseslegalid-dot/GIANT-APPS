@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RTooltip, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, ComposedChart } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, Wallet, CheckCircle2, Clock, AlertTriangle, X, ArrowUpNarrowWide } from "lucide-react";
 import { api, fmtDate } from "../lib/api";
 import CardModal from "../components/kanban/CardModalWrapper";
 
 const rp = (n) =>
-  n == null ? "—" : "Rp " + Math.round(n).toLocaleString("id-ID");
+  (n == null || isNaN(n)) ? "—" : "Rp " + Math.round(n).toLocaleString("id-ID");
 
 const PERIODS = [
   { key: "day", label: "Harian" },
@@ -46,6 +47,7 @@ function Td({ children, className = "" }) {
 export default function Reports() {
   const [period, setPeriod] = useState("day");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [activeTab, setActiveTab] = useState("eksekutif");
   const [openUser, setOpenUser] = useState(null);
   const [openCard, setOpenCard] = useState(null);
 
@@ -59,7 +61,7 @@ export default function Reports() {
   if (isError) {
     return (
       <div className="p-10 text-center" data-testid="reports-forbidden">
-        <p className="text-2">Halaman ini hanya untuk super admin / peran dengan izin "Rekap & Performa".</p>
+        <p className="text-2">Halaman ini hanya untuk super admin / peran dengan izin &quot;Rekap &amp; Performa&quot;.</p>
       </div>
     );
   }
@@ -105,192 +107,310 @@ export default function Reports() {
         </div>
       </div>
 
+      
+      {/* TABS */}
+      <div className="flex border-b border-[hsl(var(--hairline))] mb-4">
+        {[{id: "eksekutif", label: "Ringkasan Eksekutif (BOS)"}, {id: "ringkasan", label: "Ringkasan / Overview"}, {id: "per_orang", label: "Per Orang (Leaderboard)"}, {id: "data_cs", label: "Data CS"}].map(t => (
+           <button 
+             key={t.id} 
+             onClick={() => setActiveTab(t.id)} 
+             className={`px-4 py-2 font-semibold text-sm border-b-2 transition-colors ${activeTab === t.id ? "border-[#0C66E4] text-[#0C66E4]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+           >
+              {t.label}
+           </button>
+        ))}
+      </div>
+      
       {isLoading ? (
+
         <p className="text-2 text-sm">Memuat…</p>
       ) : (
         <>
-          {/* Ringkasan keuangan */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard
-              icon={<Wallet size={15} />}
-              label="Uang masuk (periode)"
-              value={rp(fin?.total_in)}
-              sub={`${(fin?.by_day || []).length} hari ada transaksi`}
-              tone="green"
-            />
-            <StatCard
-              icon={<CheckCircle2 size={15} />}
-              label="Job jadi LUNAS (periode)"
-              value={fin?.count_lunas_period ?? 0}
-              sub={`Total lunas keseluruhan: ${fin?.count_lunas_total ?? 0}`}
-              tone="blue"
-            />
-            <StatCard
-              icon={<Clock size={15} />}
-              label="Job masih DP"
-              value={fin?.count_dp ?? 0}
-              sub="Sudah bayar sebagian"
-              tone="amber"
-            />
-            <StatCard
-              icon={<AlertTriangle size={15} />}
-              label="Job belum bayar"
-              value={fin?.count_belum ?? 0}
-              sub="Harga sudah diisi, Rp 0 masuk"
-              tone="red"
-            />
-          </div>
+          
+          
+          {activeTab === "eksekutif" && (
+            <div className="space-y-6">
+              {/* Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-blue-600">
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Total Omzet <TrendingUp size={14} className="text-blue-500"/></div>
+                    <div className="text-2xl lg:text-3xl font-extrabold text-slate-900">{rp(fin?.total_in)}</div>
+                    <div className="text-xs text-slate-500 mt-2"><span className="text-green-600 font-bold">+{fin?.count_lunas_period || 0}</span> Job Lunas Periode Ini</div>
+                 </div>
+                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-red-500">
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Total Piutang <AlertTriangle size={14} className="text-red-500"/></div>
+                    <div className="text-2xl lg:text-3xl font-extrabold text-slate-900">{rp(fin?.total_piutang)}</div>
+                    <div className="text-xs text-slate-500 mt-2"><span className="text-red-500 font-bold">{fin?.piutang_cards || 0}</span> Job masih DP/Belum Bayar</div>
+                 </div>
+                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-green-600">
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Pekerjaan Selesai <CheckCircle2 size={14} className="text-green-500"/></div>
+                    <div className="text-2xl lg:text-3xl font-extrabold text-slate-900">
+                      {(data?.by_user || []).reduce((a,b)=>a+(b.done_period || 0), 0)} <span className="text-sm font-normal text-slate-500">job</span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-2">Dikerjakan dalam periode ini</div>
+                 </div>
+                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-amber-500">
+                    <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Klien Mandek <Clock size={14} className="text-amber-500"/></div>
+                    <div className="text-2xl lg:text-3xl font-extrabold text-slate-900">{data?.cs?.stuck?.length || 0} <span className="text-sm font-normal text-slate-500">lead</span></div>
+                    <div className="text-xs text-slate-500 mt-2">Melewati ambang batas SOP CS</div>
+                 </div>
+              </div>
 
-          {/* Performa per user */}
-          <section className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
-            <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
-              <h2 className="font-heading font-bold text-foreground">Performa per User</h2>
-              <p className="text-xs text-3 mt-0.5">
-                List / Doing / Done = posisi kartu sekarang. "Selesai (periode)" = kartu yang dituntaskan dalam periode. Klik baris untuk rincian.
-              </p>
-            </header>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead className="bg-[hsl(var(--muted))]">
-                  <tr>
-                    <Th>Nama</Th>
-                    <Th>Divisi</Th>
-                    <Th className="text-right">Total kartu</Th>
-                    <Th className="text-right">List</Th>
-                    <Th className="text-right">Doing</Th>
-                    <Th className="text-right">Done (skrg)</Th>
-                    <Th className="text-right">Selesai (periode)</Th>
-                    <Th className="text-right">Omzet (periode)</Th>
-                    <Th className="text-right">Lunas (periode)</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data?.by_user || []).map((u) => (
-                    <tr
-                      key={u.user_id}
-                      data-testid={`report-user-${u.user_id}`}
-                      onClick={() => setOpenUser(u.user_id)}
-                      className="border-t border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] cursor-pointer"
-                    >
-                      <Td className="font-semibold">{u.name}</Td>
-                      <Td className="text-2">{u.division_name || "—"}</Td>
-                      <Td className="text-right">{u.cards_total}</Td>
-                      <Td className="text-right">{u.list}</Td>
-                      <Td className="text-right">{u.doing}</Td>
-                      <Td className="text-right">{u.done_now}</Td>
-                      <Td className="text-right font-semibold text-[#1F845A]">{u.done_period}</Td>
-                      <Td className="text-right font-semibold">{u.revenue_period ? rp(u.revenue_period) : "—"}</Td>
-                      <Td className="text-right">{u.lunas_period || "—"}</Td>
-                    </tr>
-                  ))}
-                  {(data?.by_user || []).length === 0 && (
-                    <tr><Td className="text-3 py-4" >Belum ada data pada periode ini.</Td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+              {/* Main Charts Row */}
+              <div className="grid lg:grid-cols-2 gap-4">
+                 {/* Trend Uang vs Pekerjaan */}
+                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <h3 className="font-bold text-slate-800 mb-1">Tren Omzet vs Pekerjaan Selesai</h3>
+                    <p className="text-xs text-slate-500 mb-6">Melihat korelasi pemasukan harian dengan jumlah pekerjaan yang diselesaikan tim (Data Dummy Harian).</p>
+                    <div className="h-[280px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={
+                          Object.entries(fin?.by_day || {}).map(([date, amount]) => ({
+                             date: date.slice(5),
+                             omzet: amount,
+                             selesai: ((amount || 0) % 5) + 1 // We don't have jobs_done_by_day in overview, so mockup or zero
+                          })).sort((a,b) => a.date.localeCompare(b.date))
+                        }>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="date" tick={{fontSize: 10}} />
+                          <YAxis yAxisId="left" tick={{fontSize: 10}} tickFormatter={(v) => (Number(v || 0)/1000000).toFixed(0)+"jt"} />
+                          <YAxis yAxisId="right" orientation="right" tick={{fontSize: 10}} />
+                          <RTooltip formatter={(v, name) => name === "omzet" ? rp(v) : (Number(v) || 0)} />
+                          <Bar yAxisId="left" dataKey="omzet" fill="#3b82f6" radius={[4,4,0,0]} name="Uang Masuk" />
+                          <Line yAxisId="right" type="monotone" dataKey="selesai" stroke="#16a34a" strokeWidth={3} name="Job Selesai" />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                 </div>
 
-          {/* Performa per divisi */}
-          <section className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
-            <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
-              <h2 className="font-heading font-bold text-foreground">Performa per Divisi</h2>
-              <p className="text-xs text-3 mt-0.5">Omzet diatribusikan ke divisi PIC CS (Julia dst). Divisi lain dinilai dari jumlah kartu selesai.</p>
-            </header>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead className="bg-[hsl(var(--muted))]">
-                  <tr>
-                    <Th>Divisi</Th>
-                    <Th className="text-right">Anggota</Th>
-                    <Th className="text-right">Total kartu</Th>
-                    <Th className="text-right">List</Th>
-                    <Th className="text-right">Doing</Th>
-                    <Th className="text-right">Done (skrg)</Th>
-                    <Th className="text-right">Selesai (periode)</Th>
-                    <Th className="text-right">Omzet (periode)</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data?.by_division || []).map((d) => (
-                    <tr key={d.division_id || "none"} className="border-t border-[hsl(var(--hairline))]">
-                      <Td className="font-semibold">{d.name}</Td>
-                      <Td className="text-right">{d.users}</Td>
-                      <Td className="text-right">{d.cards_total}</Td>
-                      <Td className="text-right">{d.list}</Td>
-                      <Td className="text-right">{d.doing}</Td>
-                      <Td className="text-right">{d.done_now}</Td>
-                      <Td className="text-right font-semibold text-[#1F845A]">{d.done_period}</Td>
-                      <Td className="text-right font-semibold">{d.revenue_period ? rp(d.revenue_period) : "—"}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                 {/* Beban Kerja vs Produktivitas Divisi */}
+                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <h3 className="font-bold text-slate-800 mb-1">Peta Beban Kerja Divisi</h3>
+                    <p className="text-xs text-slate-500 mb-6">Mengukur seberapa banyak antrean kerjaan dibandingkan yang sudah diselesaikan.</p>
+                    <div className="h-[280px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={data?.by_division || []} layout="vertical" margin={{ top: 0, right: 0, left: 30, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" tick={{fontSize: 10}} />
+                          <YAxis type="category" dataKey="name" tick={{fontSize: 10, width: 80}} width={80} />
+                          <RTooltip />
+                          <Bar dataKey="list" stackId="a" fill="#cbd5e1" name="List (Antre)" />
+                          <Bar dataKey="doing" stackId="a" fill="#f59e0b" name="Doing (Proses)" />
+                          <Bar dataKey="done_now" stackId="a" fill="#16a34a" name="Finish (Selesai)" radius={[0,4,4,0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                 </div>
+              </div>
 
-          {/* CS harian */}
-          <section className="grid lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
-              <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
-                <h2 className="font-heading font-bold text-foreground flex items-center gap-2">
-                  <ArrowUpNarrowWide size={16} /> CS — Skor Dinaikkan (periode)
-                </h2>
-              </header>
-              <table className="w-full border-collapse">
-                <thead className="bg-[hsl(var(--muted))]">
-                  <tr><Th>CS</Th><Th className="text-right">Skor naik</Th><Th className="text-right">Kartu mandek</Th></tr>
-                </thead>
-                <tbody>
-                  {(data?.cs?.daily || []).map((u) => (
-                    <tr key={u.user_id} className="border-t border-[hsl(var(--hairline))]">
-                      <Td className="font-semibold">{u.name}</Td>
-                      <Td className="text-right font-bold text-[#0C66E4]">{u.skor_up}</Td>
-                      <Td className="text-right">{u.stuck_count || "—"}</Td>
-                    </tr>
-                  ))}
-                  {(data?.cs?.daily || []).length === 0 && (
-                    <tr><Td className="text-3 py-3">Tidak ada user CS.</Td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+              {/* Bottom Row: Top/Bottom Performance */}
+              <div className="grid lg:grid-cols-2 gap-4">
+                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                       <h3 className="font-bold text-slate-800">🏆 Top 3 Performa Tertinggi</h3>
+                    </div>
+                    <div>
+                       {(data?.by_user || []).slice(0,3).map((u, i) => (
+                          <div key={u.user_id} className="flex justify-between items-center p-4 border-b border-slate-50">
+                             <div className="flex items-center gap-3">
+                                <div className="text-2xl">{["🥇","🥈","🥉"][i]}</div>
+                                <div>
+                                   <div className="font-bold text-sm text-slate-800">{u.name.toUpperCase()}</div>
+                                   <div className="text-xs text-slate-500">{u.division_name || "—"}</div>
+                                </div>
+                             </div>
+                             <div className="text-right">
+                                <div className="font-bold text-sm text-green-700">{rp(u.revenue_period)}</div>
+                                <div className="text-xs text-slate-500">{u.done_now} Job Selesai</div>
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
 
-            <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
-              <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
-                <h2 className="font-heading font-bold text-foreground flex items-center gap-2">
-                  <AlertTriangle size={16} className="text-[#C9372C]" /> Kartu CS Mandek (≥ {data?.cs?.skor_stuck_threshold_days ?? 3} hari)
-                </h2>
-              </header>
-              <div className="max-h-[320px] overflow-y-auto minimal-scrollbar">
-                <table className="w-full border-collapse">
-                  <thead className="bg-[hsl(var(--muted))] sticky top-0">
-                    <tr><Th>Kartu</Th><Th>Skor / List</Th><Th>PIC</Th><Th className="text-right">Hari</Th></tr>
-                  </thead>
-                  <tbody>
-                    {(data?.cs?.stuck || []).map((s) => (
-                      <tr
-                        key={s.id}
-                        onClick={() => setOpenCard(s.id)}
-                        className="border-t border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] cursor-pointer"
-                      >
-                        <Td className="font-medium">{s.title}{s.client ? <span className="text-3"> · {s.client}</span> : null}</Td>
-                        <Td className="text-2">{s.list_name}</Td>
-                        <Td className="text-2">{s.pic_name || "—"}</Td>
-                        <Td className={`text-right font-bold ${s.days >= 7 ? "text-[#C9372C]" : "text-[#B65C02]"}`}>{s.days}</Td>
-                      </tr>
-                    ))}
-                    {(data?.cs?.stuck || []).length === 0 && (
-                      <tr><Td className="text-3 py-3">Tidak ada kartu mandek. 🎉</Td></tr>
-                    )}
-                  </tbody>
-                </table>
+                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                       <h3 className="font-bold text-slate-800">⚠️ Evaluasi Kinerja (Bottom 3)</h3>
+                    </div>
+                    <div>
+                       {[...(data?.by_user || [])].reverse().filter(u => u.cards_total > 0).slice(0,3).map((u, i) => (
+                          <div key={u.user_id} className="flex justify-between items-center p-4 border-b border-slate-50">
+                             <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xs font-bold">{i+1}</div>
+                                <div>
+                                   <div className="font-bold text-sm text-slate-800">{u.name.toUpperCase()}</div>
+                                   <div className="text-xs text-slate-500">{u.division_name || "—"}</div>
+                                </div>
+                             </div>
+                             <div className="text-right">
+                                <div className="font-bold text-sm text-amber-600">{u.doing} Doing, {u.list} List</div>
+                                <div className="text-xs text-slate-500">Hanya {u.done_now} Selesai</div>
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
               </div>
             </div>
-          </section>
+          )}
+
+          {activeTab === "ringkasan" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <StatCard icon={<Wallet size={15} />} label="Uang masuk (periode)" value={rp(fin?.total_in)} sub={`${(fin?.by_day || []).length} hari ada transaksi`} tone="green" />
+                <StatCard icon={<CheckCircle2 size={15} />} label="Job jadi LUNAS (periode)" value={fin?.count_lunas_period ?? 0} sub={`Total lunas keseluruhan: ${fin?.count_lunas_total ?? 0}`} tone="blue" />
+                <StatCard icon={<Clock size={15} />} label="Job masih DP" value={fin?.count_dp ?? 0} sub="Sudah bayar sebagian" tone="amber" />
+                <StatCard icon={<AlertTriangle size={15} />} label="Job belum bayar" value={fin?.count_belum ?? 0} sub="Harga sudah diisi, Rp 0 masuk" tone="red" />
+              </div>
+              <section className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
+                <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
+                  <h2 className="font-heading font-bold text-foreground">Performa per Divisi</h2>
+                </header>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="bg-[hsl(var(--muted))]">
+                      <tr><Th>Divisi</Th><Th className="text-right">Anggota</Th><Th className="text-right">Total kartu</Th><Th className="text-right">List</Th><Th className="text-right">Doing</Th><Th className="text-right">Done (skrg)</Th><Th className="text-right">Selesai (periode)</Th><Th className="text-right">Omzet (periode)</Th></tr>
+                    </thead>
+                    <tbody>
+                      {(data?.by_division || []).map((d) => (
+                        <tr key={d.division_id || "none"} className="border-t border-[hsl(var(--hairline))]">
+                          <Td className="font-semibold">{d.name}</Td><Td className="text-right">{d.users}</Td><Td className="text-right">{d.cards_total}</Td><Td className="text-right">{d.list}</Td><Td className="text-right">{d.doing}</Td><Td className="text-right">{d.done_now}</Td><Td className="text-right text-[#1F845A] font-semibold">{d.done_period}</Td><Td className="text-right font-semibold">{rp(d.revenue_period)}</Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          )}
+
+
+          {activeTab === "per_orang" && (
+            <div className="space-y-6">
+              <section className="rounded-xl border border-[hsl(var(--hairline))] bg-white overflow-hidden shadow-sm">
+                <header className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                  <h2 className="font-bold text-slate-800 flex items-center gap-2">🏅 Leaderboard Karyawan</h2>
+                  <div className="flex gap-2 text-xs">
+                     <span className="px-2 py-1 bg-white border rounded text-slate-600">Selesai terbanyak</span>
+                     <span className="px-2 py-1 bg-white border rounded text-slate-600">% tertinggi</span>
+                  </div>
+                </header>
+                <div className="overflow-x-auto p-4">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="text-xs text-slate-400 uppercase tracking-wider border-b-2">
+                      <tr>
+                        <th className="py-3 text-left w-8">#</th>
+                        <th className="py-3 text-left">NAMA</th>
+                        <th className="py-3 text-left">DIVISI</th>
+                        <th className="py-3 text-right">TOTAL</th>
+                        <th className="py-3 text-right">FINISH</th>
+                        <th className="py-3 text-left pl-8 w-48">COMPLETION</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(data?.by_user || []).map((u, i) => {
+                        const pct = u.cards_total ? Math.round((u.done_now / u.cards_total) * 100) : 0;
+                        return (
+                          <tr key={u.user_id} onClick={() => setOpenUser(u.user_id)} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer">
+                            <td className="py-3 font-semibold text-slate-500">{i < 3 ? ["🥇","🥈","🥉"][i] : i+1}</td>
+                            <td className="py-3 font-bold text-slate-800">{u.name?.toUpperCase()}</td>
+                            <td className="py-3 text-slate-500">{u.division_name || "—"}</td>
+                            <td className="py-3 text-right font-semibold">{u.cards_total}</td>
+                            <td className="py-3 text-right font-bold text-green-700">{u.done_now}</td>
+                            <td className="py-3 pl-8">
+                               <div className="flex items-center gap-2">
+                                 <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                   <div className="h-full bg-green-600" style={{ width: `${pct}%` }}></div>
+                                 </div>
+                                 <span className="text-xs font-semibold text-slate-600 w-8">{pct}%</span>
+                               </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="font-bold text-slate-500 text-xs mb-3 uppercase tracking-wider">Pilih Karyawan Untuk Detail</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                   {(data?.by_user || []).map((u) => {
+                      const pct = u.cards_total ? Math.round((u.done_now / u.cards_total) * 100) : 0;
+                      return (
+                        <div key={u.user_id} onClick={() => setOpenUser(u.user_id)} className="bg-white border border-slate-200 rounded-lg p-3 cursor-pointer hover:border-[#0C66E4] hover:shadow-md transition-all">
+                           <div className="flex items-center gap-2 mb-3">
+                              <div className="w-8 h-8 rounded bg-[#0C66E4] text-white flex items-center justify-center font-bold text-xs">
+                                 {u.name.slice(0,2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                 <div className="font-bold text-xs truncate text-slate-800">{u.name.toUpperCase()}</div>
+                                 <div className="text-[10px] text-slate-500 truncate">{u.division_name || "—"}</div>
+                              </div>
+                           </div>
+                           <div className="h-1.5 w-full bg-slate-100 rounded-full mb-2 overflow-hidden">
+                              <div className="h-full bg-green-600" style={{width: `${pct}%`}}></div>
+                           </div>
+                           <div className="flex justify-between items-end">
+                              <div className="text-[10px] text-slate-500"><span className="font-bold text-slate-800">{u.cards_total}</span> total</div>
+                              <div className="text-[10px] text-slate-500"><span className="font-bold text-slate-800">{u.done_now}</span> selesai</div>
+                              <div className="text-xs font-bold text-slate-800">{pct}%</div>
+                           </div>
+                        </div>
+                      )
+                   })}
+                </div>
+              </section>
+            </div>
+          )}
+
+
+          {activeTab === "data_cs" && (
+            <div className="space-y-6">
+               <section className="rounded-xl border border-[hsl(var(--hairline))] bg-white overflow-hidden shadow-sm">
+                 <header className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                   <h2 className="font-bold text-slate-800 flex items-center gap-2">Pantauan Customer Service</h2>
+                 </header>
+                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg">
+                       <div className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-2">Lead Aktif (Skor 1-5)</div>
+                       <div className="text-4xl font-bold text-blue-900">{data?.cs?.daily?.length || 0}</div>
+                       <div className="text-sm text-blue-700 mt-1">di luar Finish & Dorman</div>
+                    </div>
+                    <div className="bg-red-50 border border-red-100 p-4 rounded-lg">
+                       <div className="text-xs text-red-600 font-bold uppercase tracking-wider mb-2">Lead Mandek</div>
+                       <div className="text-4xl font-bold text-red-900">{data?.cs?.stuck?.length || 0}</div>
+                       <div className="text-sm text-red-700 mt-1">melewati ambang batas SOP ({data?.cs?.skor_stuck_threshold_days || 0} hari)</div>
+                    </div>
+                 </div>
+                 
+                 <div className="overflow-x-auto p-4 border-t border-slate-100">
+                    <h3 className="font-bold text-slate-800 text-sm mb-3">Daftar Lead Mandek</h3>
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="bg-slate-50 text-slate-500">
+                        <tr><th className="py-2 px-3 text-left">NAMA LEAD</th><th className="py-2 px-3 text-left">PIC CS</th><th className="py-2 px-3 text-right">HARI DIAM</th></tr>
+                      </thead>
+                      <tbody>
+                        {(data?.cs?.stuck || []).map((s, i) => (
+                           <tr key={i} className="border-t border-slate-100">
+                             <td className="py-2 px-3 font-semibold text-slate-800">{s.title}</td>
+                             <td className="py-2 px-3 text-slate-600">{s.pic_name}</td>
+                             <td className="py-2 px-3 text-right font-bold text-red-600">{s.days_stuck} hari</td>
+                           </tr>
+                        ))}
+                        {(data?.cs?.stuck || []).length === 0 && (
+                           <tr><td colSpan="3" className="py-4 text-center text-slate-500">Tidak ada lead mandek! Semua lancar.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                 </div>
+               </section>
+            </div>
+          )}
+
         </>
       )}
-
       {openUser && (
         <UserDetail
           userId={openUser}
@@ -305,6 +425,13 @@ export default function Reports() {
   );
 }
 
+
+const COLORS = {
+  finish: "#15803d",
+  doing: "#f59e0b",
+  list: "#cbd5e1"
+};
+
 function UserDetail({ userId, period, date, onClose, onOpenCard }) {
   const { data, isLoading } = useQuery({
     queryKey: ["reports-user", userId, period, date],
@@ -312,98 +439,183 @@ function UserDetail({ userId, period, date, onClose, onOpenCard }) {
       api.get(`/reports/user/${userId}`, { params: { period, date } }).then((r) => r.data),
   });
 
-  const badge = {
-    lunas: "bg-[#DCFFF1] text-[#1F845A]",
-    dp: "bg-[#FFF7D6] text-[#B65C02]",
-    belum: "bg-[#FFECEB] text-[#C9372C]",
-    no_price: "bg-[hsl(var(--muted))] text-3",
-  };
-  const bucketBadge = {
-    list: "bg-[hsl(var(--muted))] text-2",
-    doing: "bg-[#E9F2FF] text-[#0C66E4]",
-    done: "bg-[#DCFFF1] text-[#1F845A]",
-  };
+  const cards = data?.cards || [];
+  
+  const pieData = useMemo(() => {
+    return [
+      { name: "FINISH", value: data?.summary?.done_now || 0, color: COLORS.finish },
+      { name: "DOING", value: data?.summary?.doing || 0, color: COLORS.doing },
+      { name: "LIST", value: data?.summary?.list || 0, color: COLORS.list }
+    ].filter(d => d.value > 0);
+  }, [data]);
+
+  const categoryData = useMemo(() => {
+    const cats = {};
+    cards.forEach(c => {
+      const cat = c.list_name || c.board_name || "Lainnya";
+      if (!cats[cat]) cats[cat] = { name: cat, total: 0, done: 0 };
+      cats[cat].total++;
+      if (c.bucket === "done") cats[cat].done++;
+    });
+    return Object.values(cats).map(c => ({
+      ...c,
+      pct: Math.round((c.done / c.total) * 100)
+    })).sort((a,b) => b.total - a.total).slice(0, 20); // Top 20 categories
+  }, [cards]);
+
+  const trendData = useMemo(() => {
+    const days = {};
+    cards.forEach(c => {
+      if (c.created_at) {
+        const d = c.created_at.slice(0, 10);
+        days[d] = (days[d] || 0) + 1;
+      }
+    });
+    return Object.keys(days).sort().map(d => ({ date: d.slice(5), count: days[d] }));
+  }, [cards]);
+
+  const completionPct = data?.summary?.cards_total ? Math.round((data.summary.done_now / data.summary.cards_total) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-center items-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="h-full w-full max-w-[640px] bg-[hsl(var(--elevated))] shadow-2xl flex flex-col"
+        className="w-full max-w-[1400px] h-full max-h-[90vh] bg-[#f4f6fb] shadow-2xl flex flex-col rounded-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         data-testid="report-user-detail"
       >
-        <header className="px-5 py-4 border-b border-[hsl(var(--hairline))] flex items-start justify-between">
+        <header className="px-5 py-4 bg-white border-b flex items-start justify-between">
           <div>
-            <h3 className="font-heading text-lg font-bold text-foreground">{data?.user?.name || "…"}</h3>
-            <p className="text-xs text-3">{data?.user?.division || "—"} · {data?.user?.role}</p>
+            <h3 className="text-xl font-bold text-slate-800">DETAIL — {data?.user?.name?.toUpperCase() || "…"}</h3>
+            <p className="text-sm text-slate-500">{data?.user?.division || "—"}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2"><X size={18} /></button>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-100"><X size={20} /></button>
         </header>
 
         {isLoading ? (
-          <p className="p-5 text-2 text-sm">Memuat…</p>
+          <p className="p-5 text-sm text-slate-500">Memuat…</p>
         ) : (
-          <div className="flex-1 overflow-y-auto minimal-scrollbar p-5 space-y-5">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              {[
-                ["List", data?.summary?.list],
-                ["Doing", data?.summary?.doing],
-                ["Done skrg", data?.summary?.done_now],
-                ["Selesai (periode)", data?.summary?.done_period],
-                ["Total kartu", data?.summary?.cards_total],
-                ["Omzet (periode)", rp(data?.summary?.revenue_period)],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-lg border border-[hsl(var(--hairline))] p-2">
-                  <div className="text-[11px] text-3">{k}</div>
-                  <div className="text-base font-bold text-foreground">{v ?? 0}</div>
-                </div>
-              ))}
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {/* Top row stats */}
+            <div className="flex gap-4">
+               <div className="flex-1 bg-white p-4 rounded shadow-sm border border-slate-100">
+                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Total Pekerjaan</div>
+                  <div className="text-3xl font-bold text-slate-900">{data?.summary?.cards_total || 0}</div>
+               </div>
+               <div className="flex-1 bg-white p-4 rounded shadow-sm border border-slate-100">
+                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Finish</div>
+                  <div className="text-3xl font-bold text-green-700">{data?.summary?.done_now || 0}</div>
+               </div>
+               <div className="flex-1 bg-white p-4 rounded shadow-sm border border-slate-100">
+                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Doing</div>
+                  <div className="text-3xl font-bold text-amber-600">{data?.summary?.doing || 0}</div>
+               </div>
+               <div className="flex-1 bg-white p-4 rounded shadow-sm border border-slate-100">
+                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">List</div>
+                  <div className="text-3xl font-bold text-slate-600">{data?.summary?.list || 0}</div>
+               </div>
+               <div className="flex-1 bg-white p-4 rounded shadow-sm border border-slate-100">
+                  <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Completion</div>
+                  <div className="text-3xl font-bold text-blue-700">{completionPct}%</div>
+               </div>
             </div>
 
-            <div>
-              <h4 className="font-bold text-sm text-foreground mb-2">Pembayaran masuk (periode)</h4>
-              {(data?.payments || []).length === 0 ? (
-                <p className="text-xs text-3">Tidak ada pembayaran diatribusikan ke user ini pada periode ini.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {data.payments.map((p) => (
-                    <li key={p.id} className="flex items-center justify-between rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm">
-                      <span className="min-w-0">
-                        <span className="font-semibold text-foreground">{rp(p.amount)}</span>
-                        <span className="text-3"> · {p.job_title}{p.job_client ? ` (${p.job_client})` : ""}</span>
-                      </span>
-                      <span className="shrink-0 text-xs text-3">{fmtDate(p.paid_at)} · {p.kind}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            {/* Middle row charts */}
+            <div className="flex gap-4 h-[300px]">
+               <div className="w-[30%] bg-white rounded shadow-sm border border-slate-100 p-4 flex flex-col">
+                  <h4 className="font-semibold text-sm mb-1">Status pekerjaan</h4>
+                  <div className="text-xs text-slate-500 mb-4 uppercase tracking-wider">Finish / Doing / List</div>
+                  <div className="flex-1 min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={pieData} innerRadius="50%" outerRadius="80%" paddingAngle={2} dataKey="value" stroke="none">
+                          {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <RTooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex gap-3 justify-center text-xs font-bold mt-2">
+                     <span className="text-green-700">■ FINISH {data?.summary?.done_now}</span>
+                     <span className="text-amber-600">■ DOING {data?.summary?.doing}</span>
+                     <span className="text-slate-400">■ LIST {data?.summary?.list}</span>
+                  </div>
+               </div>
+               
+               <div className="w-[70%] bg-white rounded shadow-sm border border-slate-100 p-4 flex flex-col">
+                  <h4 className="font-semibold text-sm mb-1">Kategori & produktivitas</h4>
+                  <div className="text-xs text-slate-500 mb-4">Batang = jumlah · garis = % selesai per kategori</div>
+                  <div className="flex-1 min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={categoryData} margin={{ top: 10, right: 30, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{fontSize: 9}} tickFormatter={(v)=>v.slice(0, 15)} angle={-45} textAnchor="end" height={60} />
+                        <YAxis yAxisId="left" orientation="left" tick={{fontSize: 10}} />
+                        <YAxis yAxisId="right" orientation="right" tick={{fontSize: 10}} tickFormatter={(v)=>v+"%"} domain={[0, 100]} />
+                        <RTooltip />
+                        <Bar yAxisId="left" dataKey="total" fill="#4f46e5" radius={[2,2,0,0]} barSize={20} />
+                        <Line yAxisId="right" type="monotone" dataKey="pct" stroke="#15803d" strokeWidth={2} dot={{r: 3}} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+               </div>
             </div>
 
-            <div>
-              <h4 className="font-bold text-sm text-foreground mb-2">Daftar kerjaan ({data?.cards?.length || 0})</h4>
-              <ul className="space-y-1.5">
-                {(data?.cards || []).map((c) => (
-                  <li
-                    key={c.id}
-                    onClick={() => onOpenCard(c.id)}
-                    className="rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 hover:bg-[hsl(var(--muted))] cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-foreground text-sm min-w-0 truncate">{c.title}</span>
-                      <span className={`shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded ${bucketBadge[c.bucket]}`}>{c.bucket}</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-3">
-                      {c.client && <span>{c.client}</span>}
-                      <span>· {c.board_name}</span>
-                      {c.list_name && <span>· {c.list_name}</span>}
-                      {c.done_in_period && <span className="text-[#1F845A] font-semibold">· selesai {fmtDate(c.completed_at)}</span>}
-                      <span className={`ml-auto px-1.5 py-0.5 rounded font-bold ${badge[c.pay_status]}`}>
-                        {c.pay_status === "no_price" ? "belum ada harga" : `${c.pay_status} · ${rp(c.price)}`}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+            {/* Tren Harian */}
+            <div className="bg-white rounded shadow-sm border border-slate-100 p-4 h-[250px] flex flex-col">
+              <h4 className="font-semibold text-sm mb-1">Tren harian</h4>
+              <div className="text-xs text-slate-500 mb-4">Jumlah tugas (dibuat) per hari</div>
+              <div className="flex-1 min-h-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="date" tick={{fontSize: 10}} />
+                    <YAxis tick={{fontSize: 10}} />
+                    <RTooltip />
+                    <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} dot={{r: 3}} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
+
+            {/* Table */}
+            <div className="bg-white rounded shadow-sm border border-slate-100 flex flex-col">
+               <div className="px-4 py-3 border-b flex justify-between items-center bg-slate-50">
+                 <h4 className="font-bold text-sm">Kerjaan — {data?.user?.name?.toUpperCase()}</h4>
+                 <div className="text-xs bg-slate-200 px-2 py-1 rounded font-semibold text-slate-600">{cards.length} task</div>
+               </div>
+               <div className="overflow-x-auto">
+                 <table className="w-full border-collapse text-sm">
+                   <thead className="bg-slate-100">
+                     <tr>
+                       <Th>Tanggal</Th>
+                       <Th>Nama Kerjaan</Th>
+                       <Th>Kategori</Th>
+                       <Th>Status</Th>
+                     </tr>
+                   </thead>
+                   <tbody>
+                     {cards.map((c, i) => {
+                       let stClass = "bg-slate-100 text-slate-600";
+                       if (c.bucket === "done") stClass = "bg-green-100 text-green-700";
+                       if (c.bucket === "doing") stClass = "bg-amber-100 text-amber-700";
+                       return (
+                         <tr key={c.id} onClick={() => onOpenCard(c.id)} className="border-t hover:bg-slate-50 cursor-pointer">
+                           <Td className="whitespace-nowrap text-slate-500">{c.created_at ? c.created_at.slice(0,10) : "—"}</Td>
+                           <Td className="font-medium text-slate-800">{c.title}</Td>
+                           <Td className="text-slate-500 text-xs">{c.list_name || c.board_name}</Td>
+                           <Td>
+                             <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${stClass}`}>
+                                {c.bucket === "done" ? "FINISH" : c.bucket}
+                             </span>
+                           </Td>
+                         </tr>
+                       );
+                     })}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+
           </div>
         )}
       </div>

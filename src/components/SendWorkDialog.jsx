@@ -45,6 +45,23 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
       toast.error("Pilih divisi tujuan terlebih dahulu");
       return;
     }
+
+    if (mode === "user" && memberIds.length > 0) {
+      const selectedId = memberIds[0];
+      const selectedW = workload.find((w) => w.user.id === selectedId);
+      if (selectedW) {
+        const selectedTotal = selectedW.total;
+        const minTotal = Math.min(...workload.map((w) => w.total));
+        
+        if (selectedTotal >= 5 && selectedTotal > minTotal) {
+          const ok = window.confirm(
+            `Admin ini sudah memiliki banyak pekerjaan (${selectedTotal} pekerjaan). Kami merekomendasikan untuk memberikannya pada admin lain yang lebih kosong. Apakah Anda tetap ingin memberikannya ke admin ini?`
+          );
+          if (!ok) return;
+        }
+      }
+    }
+
     setSending(true);
     try {
       await api.post(`/work-items/${item.id}/send-to-division`, {

@@ -285,6 +285,8 @@ router.get('/reports/overview', async (c) => {
 
   // ---- keuangan ----
   let total_in = 0;
+  let total_piutang = 0;
+  let piutang_cards = 0;
   let count_lunas_period = 0;
   let count_dp = 0, count_belum = 0, count_lunas_total = 0;
   const byDayMap: Record<string, number> = {};
@@ -293,6 +295,11 @@ router.get('/reports/overview', async (c) => {
     if (info.status === 'lunas') count_lunas_total += 1;
     else if (info.status === 'dp') count_dp += 1;
     else if (info.status === 'belum') count_belum += 1;
+
+    if (info.outstanding && info.outstanding > 0) {
+      total_piutang += info.outstanding;
+      piutang_cards += 1;
+    }
 
     for (const pay of info.payments) {
       if (!inRange(pay.paidAt, from, to)) continue;
@@ -390,7 +397,7 @@ router.get('/reports/overview', async (c) => {
     finance: {
       total_in,
       count_lunas_period,
-      count_lunas_total, count_dp, count_belum,
+      count_lunas_total, count_dp, count_belum, total_piutang, piutang_cards,
       by_day,
     },
     by_user: (Object.values(U) as any[])
@@ -421,7 +428,7 @@ router.get('/reports/user/:userId', async (c) => {
   const items = await prisma.workItem.findMany({
     where: { archived: false, OR: [{ currentPicId: userId }, { createdById: userId }] },
     select: {
-      id: true, title: true, clientName: true, status: true, workStatus: true, completedAt: true,
+      id: true, title: true, clientName: true, status: true, workStatus: true, completedAt: true, createdAt: true,
       masterCardId: true, currentPicId: true,
       list: { select: { name: true } },
       board: { select: { name: true, division: { select: { name: true } } } },
@@ -444,7 +451,7 @@ router.get('/reports/user/:userId', async (c) => {
       bucket: bucketOf(it),
       list_name: it.list?.name || null,
       is_done: isDoneItem(it),
-      completed_at: it.completedAt || null,
+      completed_at: it.completedAt || null, created_at: it.createdAt,
       done_in_period: inRange(it.completedAt, from, to) && isDoneItem(it),
       price: info?.price ?? null,
       paid: info?.paid ?? 0,

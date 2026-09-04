@@ -1378,6 +1378,44 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
 
     for (const divId of targetDivIds) {
       const single = targetDivIds.length === 1;
+      
+      let currentDirect = direct;
+      let currentAssignTo = body.assign_to_user_id;
+
+      const div = await tx.division.findUnique({ where: { id: divId } });
+      if (div?.key === 'cs' && !currentDirect) {
+        const csUsers = await tx.user.findMany({ 
+          where: { divisionId: div.id, isActive: true }, 
+          orderBy: { name: 'asc' } 
+        });
+        
+        if (csUsers.length > 0) {
+          const keys = csUsers.map(u => `rr_cs_${u.id}`);
+          const settings = await tx.setting.findMany({ where: { key: { in: keys } } });
+          const map = new Map();
+          for (const s of settings) map.set(s.key, s.at);
+          
+          let nextUser = csUsers[0];
+          let oldestTime = Date.now() + 1000000;
+          for (const u of csUsers) {
+            const time = map.get(`rr_cs_${u.id}`)?.getTime() || 0;
+            if (time < oldestTime) {
+              oldestTime = time;
+              nextUser = u;
+            }
+          }
+          
+          await tx.setting.upsert({
+            where: { key: `rr_cs_${nextUser.id}` },
+            update: { at: new Date() },
+            create: { key: `rr_cs_${nextUser.id}` }
+          });
+          
+          currentDirect = true;
+          currentAssignTo = nextUser.id;
+        }
+      }
+
       const resolved = await resolveDivisionBoardList(
         tx,
         divId,
@@ -1390,8 +1428,8 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
 
       // Direct assignment → langsung ke board PIC
       let boardId = targetBoardId;
-      if (direct) {
-        const pb = await resolveDivisionBoardListByCreator(tx, body.assign_to_user_id);
+      if (currentDirect && currentAssignTo) {
+        const pb = await resolveDivisionBoardListByCreator(tx, currentAssignTo);
         if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
       }
 
@@ -1417,20 +1455,20 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
           targetDivisionId: divId,
           targetBoardId,
           targetListId: listId,
-          distributionStatus: direct ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
-          workStatus: direct ? 'CLAIMED' : 'WAITING_CLAIM',
-          currentPicId: direct ? body.assign_to_user_id : null,
-          claimedAt: direct ? new Date() : null,
+          distributionStatus: currentDirect ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
+          workStatus: currentDirect ? 'CLAIMED' : 'WAITING_CLAIM',
+          currentPicId: currentDirect ? currentAssignTo : null,
+          claimedAt: currentDirect ? new Date() : null,
           divisionIds: { create: [{ divisionId: divId }] },
-          ...(direct ? { members: { create: [{ userId: body.assign_to_user_id }] } } : {}),
+          ...(currentDirect ? { members: { create: [{ userId: currentAssignTo }] } } : {}),
+
         },
       });
-      if (direct) {
+      if (currentDirect) {
         await tx.workItemAssignmentHistory.create({
-          data: { id: newId(), workItemId: assignment.id, toUserId: body.assign_to_user_id, action: 'DIRECT_ASSIGN', createdById: user.id },
+          data: { id: newId(), workItemId: assignment.id, toUserId: currentAssignTo, action: 'DIRECT_ASSIGN', createdById: user.id },
         });
       }
-      const div = await tx.division.findUnique({ where: { id: divId } });
       created.push({ id: assignment.id, division: div?.name || divId });
     }
   });
@@ -1984,6 +2022,7 @@ router.patch('/comments/:comment_id', async (c) => {
   });
   
   const item = await getWorkItem(comment.workItemId);
+  await logActivity(item.id, item.boardId, user, "mengubah komentar");
   await broadcastItem(item);
   return c.json({ ok: true });
 });
@@ -2122,13 +2161,50 @@ router.post('/bank-data/intake', async (c) => {
     const targetBoard = resolved.board;
     let listId = resolved.listId;
 
+    let currentDirect = direct;
+    let currentAssignTo = body.assign_to_user_id;
+
+    const div = await tx.division.findUnique({ where: { id: body.target_division_id } });
+    if (div?.key === 'cs' && !currentDirect) {
+      const csUsers = await tx.user.findMany({ 
+        where: { divisionId: div.id, isActive: true }, 
+        orderBy: { name: 'asc' } 
+      });
+      
+      if (csUsers.length > 0) {
+        const keys = csUsers.map(u => `rr_cs_${u.id}`);
+        const settings = await tx.setting.findMany({ where: { key: { in: keys } } });
+        const map = new Map();
+        for (const s of settings) map.set(s.key, s.at);
+        
+        let nextUser = csUsers[0];
+        let oldestTime = Date.now() + 1000000;
+        for (const u of csUsers) {
+          const time = map.get(`rr_cs_${u.id}`)?.getTime() || 0;
+          if (time < oldestTime) {
+            oldestTime = time;
+            nextUser = u;
+          }
+        }
+        
+        await tx.setting.upsert({
+          where: { key: `rr_cs_${nextUser.id}` },
+          update: { at: new Date() },
+          create: { key: `rr_cs_${nextUser.id}` }
+        });
+        
+        currentDirect = true;
+        currentAssignTo = nextUser.id;
+      }
+    }
+
     const mc = await tx.masterCard.create({
-      data: { title: body.title.trim(), client: body.client_name?.trim() || null, ownerUserId: null, ownerDivisionId: null },
+      data: { title: body.title.trim(), client: body.client_name?.trim() || null, ownerUserId: currentDirect ? currentAssignTo : null, ownerDivisionId: div?.id || null },
     });
 
     let boardId = targetBoard.id;
-    if (direct) {
-      const pb = await resolveDivisionBoardListByCreator(tx, body.assign_to_user_id);
+    if (currentDirect) {
+      const pb = await resolveDivisionBoardListByCreator(tx, currentAssignTo);
       if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
     }
 
@@ -2152,27 +2228,34 @@ router.post('/bank-data/intake', async (c) => {
         targetDivisionId: body.target_division_id,
         targetBoardId: targetBoard.id,
         targetListId: listId,
-        distributionStatus: direct ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
-        workStatus: direct ? 'CLAIMED' : 'WAITING_CLAIM',
-        currentPicId: direct ? body.assign_to_user_id : null,
-        claimedAt: direct ? new Date() : null,
+        distributionStatus: currentDirect ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
+        workStatus: currentDirect ? 'CLAIMED' : 'WAITING_CLAIM',
+        currentPicId: currentDirect ? currentAssignTo : null,
+        claimedAt: currentDirect ? new Date() : null,
         divisionIds: { create: [{ divisionId: body.target_division_id }] },
-        ...(direct ? { members: { create: [{ userId: body.assign_to_user_id }] } } : {}),
+        ...(currentDirect ? { members: { create: [{ userId: currentAssignTo }] } } : {}),
       },
     });
-    if (direct) {
+    if (currentDirect) {
       await tx.workItemAssignmentHistory.create({
-        data: { id: newId(), workItemId: assignment.id, toUserId: body.assign_to_user_id, action: 'DIRECT_ASSIGN', createdById: user.id },
+        data: { id: newId(), workItemId: assignment.id, toUserId: currentAssignTo, action: 'DIRECT_ASSIGN', createdById: user.id },
       });
     }
     result = { assignment_id: assignment.id, master_card_id: mc.id };
   });
 
-  const div = await prisma.division.findUnique({ where: { id: body.target_division_id } });
-  await logActivity(result.assignment_id, null, user, `input pekerjaan client offline "${body.title.trim()}" ke Bank Data ${div?.name || ''}`);
-  await notify([user.id], 'sent', 'Pekerjaan terkirim', `Pekerjaan "${body.title.trim()}" berhasil masuk Bank Data ${div?.name || ''}.`, result.assignment_id, null);
-  if (direct && body.assign_to_user_id) {
-    await notify([body.assign_to_user_id], 'assigned', 'Anda ditugaskan', `${user.name} menugaskan Anda pada "${body.title.trim()}".`, result.assignment_id, null, new Set([user.id]));
+  const divForLog = await prisma.division.findUnique({ where: { id: body.target_division_id } });
+  await logActivity(result.assignment_id, null, user, `input pekerjaan client offline "${body.title.trim()}" ke Bank Data ${divForLog?.name || ''}`);
+  await notify([user.id], 'sent', 'Pekerjaan terkirim', `Pekerjaan "${body.title.trim()}" berhasil masuk Bank Data ${divForLog?.name || ''}.`, result.assignment_id, null);
+  
+  let finalAssignTo = body.assign_to_user_id;
+  if (!finalAssignTo) {
+      const assignmentRecord = await prisma.workItem.findUnique({ where: { id: result.assignment_id }});
+      if (assignmentRecord?.currentPicId) finalAssignTo = assignmentRecord.currentPicId;
+  }
+  
+  if (finalAssignTo) {
+    await notify([finalAssignTo], 'assigned', 'Anda ditugaskan', `${user.name} menugaskan Anda pada "${body.title.trim()}".`, result.assignment_id, null, new Set([user.id]));
   }
   await broadcastItem(await getWorkItem(result.assignment_id));
   return c.json({ ok: true, ...result });

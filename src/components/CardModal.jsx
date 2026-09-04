@@ -6,7 +6,7 @@ import {
   MessageSquare, Hand, CheckCircle2, Archive, ArchiveRestore, Trash2, Flag, Send, Plus, Download, Activity,
   Eye, Copy, ChevronUp, ChevronDown, ArrowRightToLine, Link as LinkIcon, Image as ImageIcon, Pencil, CalendarPlus, ArrowRight, Tag,
   Circle, CircleCheck, MoreHorizontal, Zap, Bot, UserPlus, Share2, LayoutTemplate, Frame, SquareCheck, Smile,
-  Type, Bold, Italic, List, FileText, ExternalLink,
+  Type, Bold, Italic, List, FileText, ExternalLink, Wallet
 } from "lucide-react";
 import { api, errMsg, PRIORITIES, fmtDateTime, fmtDate, LABEL_COLORS, API } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -741,7 +741,11 @@ export default function CardModal({ itemId, onClose }) {
                 </div>
               </div>
             )}
+
+            {/* Keuangan */}
+            <FinanceSection itemId={item.id} />
           </div>
+
 
           {/* ═══ KOLOM KANAN — w-[380px] shrink-0, scroll sendiri ═══ */}
           <div className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-[hsl(var(--elevated))]">
@@ -1057,6 +1061,115 @@ function AddChecklistItem({ onAdd, testid }) {
       >
         Tambah
       </button>
+    </div>
+  );
+}
+
+function FinanceSection({ itemId }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["finance", itemId],
+    queryFn: () => api.get(`/work-items/${itemId}/finance`).then(r => r.data)
+  });
+
+  const [price, setPrice] = useState("");
+  const [payAmount, setPayAmount] = useState("");
+  const [payKind, setPayKind] = useState("dp");
+
+  if (isLoading) return <div className="mt-6 pl-8 text-sm text-slate-500">Memuat info keuangan...</div>;
+  if (!data?.master_card_id) return null;
+
+  const rp = (n) => n == null ? "—" : "Rp " + Math.round(n).toLocaleString("id-ID");
+
+  const savePrice = async () => {
+    try {
+       await api.post(`/work-items/${itemId}/price`, { amount: parseInt(price.replace(/\D/g, ""), 10) });
+       toast.success("Harga disimpan");
+       setPrice("");
+       qc.invalidateQueries({ queryKey: ["finance", itemId] });
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+
+  const addPayment = async () => {
+    try {
+       await api.post(`/work-items/${itemId}/payments`, { amount: parseInt(payAmount.replace(/\D/g, ""), 10), kind: payKind });
+       toast.success("Pembayaran disimpan");
+       setPayAmount("");
+       qc.invalidateQueries({ queryKey: ["finance", itemId] });
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center gap-3">
+        <Wallet size={20} className="shrink-0 text-slate-600" />
+        <h3 className="flex-1 font-semibold text-slate-900">Keuangan</h3>
+      </div>
+      <div className="mt-2 pl-8 space-y-3">
+        <div className="flex flex-wrap items-center gap-4 text-sm bg-slate-50 p-3 rounded border border-slate-200">
+          <div>
+            <div className="text-xs text-slate-500 font-semibold">Harga</div>
+            <div className="font-bold text-slate-900">{rp(data.price)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 font-semibold">Terbayar</div>
+            <div className="font-bold text-green-700">{rp(data.paid)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 font-semibold">Sisa</div>
+            <div className="font-bold text-red-600">{rp(data.outstanding)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 font-semibold">Status</div>
+            <div className="font-bold uppercase text-slate-700">{data.status.replace("_", " ")}</div>
+          </div>
+        </div>
+
+        {data.can_manage && (
+          <div className="flex flex-col gap-2 p-3 bg-white border border-slate-200 rounded">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Set harga..."
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                className="h-8 rounded border border-slate-300 px-2 text-sm flex-1 outline-none focus:border-blue-500"
+              />
+              <button onClick={savePrice} disabled={!price} className="h-8 rounded bg-slate-100 px-3 text-sm font-medium hover:bg-slate-200 disabled:opacity-50">Set Harga</button>
+            </div>
+            <div className="flex gap-2">
+              <select value={payKind} onChange={(e) => setPayKind(e.target.value)} className="h-8 rounded border border-slate-300 px-2 text-sm outline-none focus:border-blue-500">
+                <option value="dp">DP</option>
+                <option value="pelunasan">Pelunasan</option>
+                <option value="full">Lunas (Full)</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Bayar..."
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                className="h-8 rounded border border-slate-300 px-2 text-sm flex-1 outline-none focus:border-blue-500"
+              />
+              <button onClick={addPayment} disabled={!payAmount} className="h-8 rounded bg-green-600 text-white px-3 text-sm font-medium hover:bg-green-700 disabled:opacity-50">Input Bayar</button>
+            </div>
+          </div>
+        )}
+        
+        {data.payments?.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-slate-500">Riwayat Pembayaran</div>
+            {data.payments.map((p) => (
+              <div key={p.id} className="flex justify-between items-center text-sm border-b border-slate-100 py-1">
+                <div>
+                   <span className="font-semibold text-slate-800">{rp(p.amount)}</span>
+                   <span className="text-xs text-slate-500 ml-2 uppercase">{p.kind}</span>
+                </div>
+                <div className="text-xs text-slate-400">{fmtDate(p.paid_at)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
