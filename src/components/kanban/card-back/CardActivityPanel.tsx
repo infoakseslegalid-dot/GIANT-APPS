@@ -134,7 +134,9 @@ export default function CardActivityPanel(props: CardBackProps) {
     else setMOpen(false);
   };
 
-  const [hideDetails, setHideDetails] = useState(false);
+  // Default: log aktivitas sistem disembunyikan — hanya komentar yang tampil.
+  // Klik "Show details" untuk memunculkan baris moved/checklist/assignment dll.
+  const [hideDetails, setHideDetails] = useState(true);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('https://');
 

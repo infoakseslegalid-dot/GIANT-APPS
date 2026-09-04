@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useBoardPan } from "../hooks/useBoardPan";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -22,11 +23,11 @@ const STAGES = [
   { stage: 8, title: "FINISH", processor: "Penyerahan", color: "#22A06B", gate: "NIB" },
 ];
 
-function HariCard({ item, usersById, onClick, overlay }) {
+function HariCard({ item, usersById, onClick, overlay, draggable = true }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id,
     data: { item },
-    disabled: overlay,
+    disabled: overlay || !draggable,
   });
   const members = (item.member_ids || []).map((id) => usersById[id]).filter(Boolean);
   return (
@@ -93,6 +94,9 @@ export default function GlobalHari() {
   const qc = useQueryClient();
   const [activeItem, setActiveItem] = useState(null);
   const [openItem, setOpenItem] = useState(null);
+  const canMove = user?.role === "super_admin";
+  const scrollRef = useRef(null);
+  const pan = useBoardPan(scrollRef);
 
   const { data: items, isLoading, isError } = useQuery({
     queryKey: ["global-hari"],
@@ -109,6 +113,7 @@ export default function GlobalHari() {
   const onDragEnd = async (e) => {
     const { active, over } = e;
     setActiveItem(null);
+    if (!canMove) return;
     if (!over || !String(over.id).startsWith("stage-")) return;
     const target = parseInt(String(over.id).split("-")[1], 10);
     const item = active.data.current?.item;
@@ -138,17 +143,31 @@ export default function GlobalHari() {
     if (byStage[i.hari_stage]) byStage[i.hari_stage].push(i);
   });
 
+  // Latar disamakan dengan warna board default (#0079BF) — bukan warna hardcode terpisah.
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#026aa7]" data-testid="global-hari-page">
-      <div className="px-5 py-4 shrink-0">
-        <h1 className="font-heading text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-          <CalendarClock size={22} /> Board Harian — Proses Bisnis SKOR 5
-        </h1>
-        <p className="text-xs text-white/70 mt-1">
-          Kartu otomatis maju 1 hari setiap hari kerja jika syarat terpenuhi. Admin dapat memajukan manual lebih cepat — sistem memblokir jika dokumen syarat belum dicentang (LOGO hanya peringatan).
-        </p>
+    <div className="h-full flex flex-col overflow-hidden bg-[#0079BF]" data-testid="global-hari-page">
+      <div className="px-5 py-4 shrink-0 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <CalendarClock size={22} /> Board Harian — Proses Bisnis SKOR 5
+          </h1>
+          <p className="text-xs text-white/70 mt-1">
+            {canMove
+              ? "Geser kartu untuk memajukan tahap. Sistem memblokir jika dokumen syarat belum dicentang."
+              : "Halaman pantau lintas board. Hanya super admin yang dapat menggeser kartu; klik kartu untuk melihat detail."}
+          </p>
+        </div>
+        {!canMove && (
+          <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-white/15 rounded-full px-3 py-1.5">
+            <AlertTriangle size={12} /> Hanya lihat
+          </span>
+        )}
       </div>
-      <div className="flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4 minimal-scrollbar">
+      <div
+        ref={scrollRef}
+        onPointerDown={pan.onPointerDown}
+        className={`flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4 minimal-scrollbar ${pan.panning ? "cursor-grabbing" : "cursor-grab"}`}
+      >
         {isLoading ? (
           <p className="text-white/80 text-sm">Memuat...</p>
         ) : (
@@ -157,7 +176,7 @@ export default function GlobalHari() {
               {STAGES.map((s) => (
                 <HariColumn key={s.stage} {...s} count={byStage[s.stage].length}>
                   {byStage[s.stage].map((item) => (
-                    <HariCard key={item.id} item={item} usersById={usersById} onClick={() => setOpenItem(item.id)} />
+                    <HariCard key={item.id} item={item} usersById={usersById} draggable={canMove} onClick={() => setOpenItem(item.id)} />
                   ))}
                   {byStage[s.stage].length === 0 && <p className="text-[11px] text-[#8590A2] text-center py-3">Kosong</p>}
                 </HariColumn>
@@ -169,7 +188,7 @@ export default function GlobalHari() {
           </DndContext>
         )}
       </div>
-      {openItem && <CardModal itemId={openItem} onClose={() => setOpenItem(null)} />}
+      {openItem && <CardModal itemId={openItem} onClose={() => setOpenItem(null)} readOnly />}
     </div>
   );
 }

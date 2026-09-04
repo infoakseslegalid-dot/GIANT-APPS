@@ -1,9 +1,10 @@
 // @ts-nocheck
-import { formatWorkItem, canViewBoard, runAutomation as realRunAutomation } from './deps';
+import { formatWorkItem, canViewBoard, runAutomation as realRunAutomation, broadcastItem as depsBroadcastItem, wsManager } from './deps';
 import {  Hono } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { putObject, getObject } from './storage';
+import { requirePerm } from './permissions';
 
 const prisma = new PrismaClient();
 const router = new Hono();
@@ -29,7 +30,28 @@ async function notify(userIds: string[], type: string, title: string, body: stri
     data: targets.map(id => ({ id: newId(), userId: id, type, title, body, workItemId, boardId }))
   });
 }
-async function broadcastItem(item: any) { /* Socket broadcast */ }
+// Broadcast realtime ke semua klien. Selain board & mirror-board item ini,
+// ikut sebarkan ke seluruh sibling satu Master Card supaya feed grup (komentar,
+// lampiran, aktivitas) langsung sinkron di kartu Master & semua assignment.
+async function broadcastItem(item: any) {
+  try {
+    if (!item) return;
+    await depsBroadcastItem(item);
+    const mcId = item.masterCardId || item.master_card_id;
+    if (mcId) {
+      const sibs = await prisma.workItem.findMany({
+        where: { masterCardId: mcId },
+        select: { id: true, boardId: true },
+      });
+      for (const s of sibs) {
+        if (s.id === item.id) continue;
+        await wsManager.broadcast({ type: 'board_update', board_id: s.boardId, work_item_id: s.id });
+      }
+    }
+  } catch (e) {
+    console.error('[broadcastItem]', e);
+  }
+}
 // runAutomation asli di-import dari ./deps (realRunAutomation) — jalankan aman, jgn ganggu response.
 async function runAutomation(boardId: string, event: string, item: any, user: any, listId?: string) {
   try {
@@ -76,6 +98,71 @@ async function getWorkItem(id: string) {
   const item = await prisma.workItem.findUnique({ where: { id }, include: { members: true, divisionIds: true, labels: true, mirrorBoards: true, currentPic: true, sourceUser: true, masterCard: { include: { owner: true } } } });
   if (!item) throw new Error('Not found');
   return item;
+}
+
+// ── Label: single source of truth di Master Card ─────────────────────────
+// sharedLabels = [{name,color}] kanonik. Setiap WorkItem di grup (rep + semua
+// assignment) di-mirror ke daftar ini: untuk tiap board dibuat/dicocokkan row
+// Label by-name, lalu WorkItemLabel item disetel persis. Jadi tampilan lama
+// (item.label_ids + board_labels) langsung ikut tanpa ubah frontend.
+type SharedLabel = { name: string; color: string };
+
+function normLabelList(v: any): SharedLabel[] {
+  const arr = Array.isArray(v) ? v : [];
+  const seen = new Set<string>();
+  const out: SharedLabel[] = [];
+  for (const x of arr) {
+    const name = String(x?.name ?? '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, color: String(x?.color ?? '#8590A2') });
+  }
+  return out;
+}
+
+async function labelIdsToShared(labelIds: string[]): Promise<SharedLabel[]> {
+  if (!labelIds?.length) return [];
+  const rows = await prisma.label.findMany({ where: { id: { in: labelIds } } });
+  return normLabelList(rows.map((r: any) => ({ name: r.name, color: r.color || '#8590A2' })));
+}
+
+/** Terapkan daftar label kanonik ke SEMUA WorkItem satu grup Master Card. */
+async function syncGroupLabels(masterCardId: string, shared: SharedLabel[], actor: any) {
+  const canon = normLabelList(shared);
+  await prisma.masterCard.update({ where: { id: masterCardId }, data: { sharedLabels: canon } });
+
+  const groupItems = await prisma.workItem.findMany({ where: { masterCardId }, select: { id: true, boardId: true } });
+  const boardLabelCache = new Map<string, any[]>();
+
+  for (const gi of groupItems) {
+    let boardLabels = boardLabelCache.get(gi.boardId);
+    if (!boardLabels) {
+      boardLabels = await prisma.label.findMany({ where: { boardId: gi.boardId } });
+      boardLabelCache.set(gi.boardId, boardLabels);
+    }
+    const wantIds: string[] = [];
+    for (const sl of canon) {
+      let row = boardLabels.find((l: any) => (l.name || '').trim().toLowerCase() === sl.name.toLowerCase());
+      if (!row) {
+        row = await prisma.label.create({ data: { boardId: gi.boardId, name: sl.name, color: sl.color } });
+        boardLabels.push(row);
+      } else if ((row.color || '') !== sl.color) {
+        row = await prisma.label.update({ where: { id: row.id }, data: { color: sl.color } });
+        const i = boardLabels.findIndex((l: any) => l.id === row.id);
+        if (i >= 0) boardLabels[i] = row;
+      }
+      wantIds.push(row.id);
+    }
+    await prisma.workItem.update({
+      where: { id: gi.id },
+      data: { labels: { deleteMany: {}, create: wantIds.map((labelId) => ({ labelId })) }, updatedAt: new Date() },
+    });
+  }
+  for (const gi of groupItems) {
+    try { await broadcastItem(await getWorkItem(gi.id)); } catch (e) { /* ignore */ }
+  }
 }
 
 async function getItemChecked(id: string, user: any) {
@@ -145,6 +232,7 @@ async function canAccessHari(user: any) {
 }
 
 router.post('/work-items', async (c) => {
+  await requirePerm(c, 'card.create');
   const user = c.get('user');
   const body = await c.req.json();
   const board = await prisma.board.findUnique({ where: { id: body.board_id } });
@@ -218,6 +306,7 @@ router.get('/work-items/:item_id', async (c) => {
     item: formatWorkItem(item),
     comments, attachments, activities,
     board_labels: boardLabels, list_name: lst?.name, board_name: board?.name,
+    shared_labels: item.masterCardId ? normLabelList((item as any).masterCard?.sharedLabels) : null,
     mirror_boards: [],
     assignments: siblings,
     master: await masterInfo(item),
@@ -229,6 +318,7 @@ router.get('/work-items/:item_id', async (c) => {
 });
 
 router.patch('/work-items/:item_id', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
@@ -248,29 +338,75 @@ router.patch('/work-items/:item_id', async (c) => {
   if (Object.keys(updates).length === 0 && !body.label_ids) return c.json(formatWorkItem(item));
   
   const updateData: any = { ...updates, updatedAt: new Date() };
-  if (body.label_ids) {
+  const groupedLabelChange = body.label_ids !== undefined && item.masterCardId;
+  if (body.label_ids !== undefined && !item.masterCardId) {
+    // kartu biasa (non Bank Data): perilaku lama, label lokal per board
     updateData.labels = { deleteMany: {}, create: body.label_ids.map((id: string) => ({ labelId: id })) };
   }
-  
+
   const updated = await prisma.workItem.update({ where: { id: itemId }, data: updateData });
-  await logActivity(itemId, item.boardId, user, `mengubah pekerjaan "${updated.title}"`);
-  await broadcastItem(updated);
-  return c.json(formatWorkItem(updated));
+
+  if (groupedLabelChange) {
+    // Label kartu grup = single source of truth di Master Card → propagasi ke semua sibling.
+    const shared = await labelIdsToShared(body.label_ids || []);
+    await syncGroupLabels(item.masterCardId, shared, user);
+    await logActivity(itemId, item.boardId, user, `mengubah label "${updated.title}"`);
+  } else {
+    await logActivity(itemId, item.boardId, user, `mengubah pekerjaan "${updated.title}"`);
+  }
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json(formatWorkItem(await getWorkItem(itemId)));
 });
 
 router.delete('/work-items/:item_id', async (c) => {
+  await requirePerm(c, 'card.delete');
   const user = c.get('user');
-  if (!ADMIN_ROLES.includes(user.role)) return c.json({ error: 'Hanya admin yang dapat menghapus' }, 403);
   const itemId = c.req.param('item_id');
   const item = await getWorkItem(itemId);
-  await prisma.workItem.delete({ where: { id: itemId } });
+
+  const isAssignment = !!item.targetDivisionId;
+  const mc = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+  // Hapus kartu MIRROR / assignment: tidak menyentuh Master Card sama sekali —
+  // hanya baris assignment ini yang dihapus. Boleh oleh supervisor/admin, PIC,
+  // pembuat assignment, atau Owner Master Card.
+  const canDeleteAssignment =
+    isAssignment &&
+    (SUPERVISOR_ROLES.includes(user.role) ||
+      item.currentPicId === user.id ||
+      item.createdById === user.id ||
+      mc?.ownerUserId === user.id);
+
+  if (!canDeleteAssignment && !ADMIN_ROLES.includes(user.role)) {
+    return c.json({ error: isAssignment
+      ? 'Hanya PIC, pengirim, Owner, atau supervisor yang dapat menghapus assignment ini.'
+      : 'Hanya admin yang dapat menghapus kartu ini.' }, 403);
+  }
+
+  // Catat DULU (mumpung baris masih ada — Activity.workItemId itu FK wajib),
+  // baru hapus. Untuk assignment: catat di representasi Master Card supaya
+  // jejaknya kelihatan di grup; representasi TIDAK ikut terhapus.
+  let repIdToBroadcast: string | null = null;
+  if (isAssignment && item.masterCardId) {
+    const rep = await prisma.workItem.findFirst({ where: { masterCardId: item.masterCardId, targetDivisionId: null } });
+    const divName = item.targetDivisionId
+      ? (await prisma.division.findUnique({ where: { id: item.targetDivisionId } }))?.name
+      : null;
+    if (rep) {
+      await logActivity(rep.id, rep.boardId, user, `menghapus kartu mirror "${item.title}"${divName ? ` di Bank Data ${divName}` : ''} — Master Card tetap ada`);
+      repIdToBroadcast = rep.id;
+    }
+  }
+
   await prisma.attachment.updateMany({ where: { workItemId: itemId }, data: { isDeleted: true } });
-  await logActivity(null, item.boardId, user, `menghapus pekerjaan "${item.title}"`);
-  await broadcastItem(item);
-  return c.json({ ok: true });
+  await prisma.workItem.delete({ where: { id: itemId } }); // cascade: comment, activity, dll ikut terhapus
+
+  if (repIdToBroadcast) await broadcastItem(await getWorkItem(repIdToBroadcast));
+  await broadcastItem(item); // item stale tapi cukup untuk kabari board asal
+  return c.json({ ok: true, deleted_assignment: isAssignment });
 });
 
 router.post('/work-items/:item_id/move', async (c) => {
+  await requirePerm(c, 'card.move');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
@@ -350,15 +486,23 @@ router.post('/work-items/:item_id/move', async (c) => {
 
   await ensureRequirementChecklist(updated, targetList);
   await runAutomation(targetBoard.id, 'card_moved', updated, user, body.list_id);
-  if (isCrossBoard) {
+  // Log lengkap untuk SEMUA perpindahan antar-list (bukan cuma antar-board):
+  // "<user> memindahkan "<judul>" dari "<list asal>" ke "<list tujuan>"".
+  const fromListName = oldList?.name || '(tidak diketahui)';
+  const listChanged = !oldList || oldList.id !== targetList.id;
+  if (listChanged || isCrossBoard) {
+    const boardPart = isCrossBoard ? ` (board ${targetBoard.name})` : '';
+    const labelPart = droppedLabels.length ? ` — label dilepas: ${droppedLabels.join(', ')}` : '';
     await logActivity(
       itemId,
       targetBoard.id,
       user,
-      `memindahkan "${item.title}" ke board ${targetBoard.name}${droppedLabels.length ? ` (label dilepas: ${droppedLabels.join(', ')})` : ''}`,
+      `memindahkan "${item.title}" dari "${fromListName}" ke "${targetList.name}"${boardPart}${labelPart}`,
     );
   }
   await broadcastItem(updated);
+  // Board asal juga perlu di-refresh (kartu keluar dari sana).
+  if (isCrossBoard) await wsManager.broadcast({ type: 'board_update', board_id: item.boardId, work_item_id: itemId });
   return c.json({
     ok: true,
     board_id: targetBoard.id,
@@ -585,6 +729,7 @@ async function resolveDivisionBoardListByCreator(tx: any, userId: string) {
 }
 
 router.post('/work-items/:item_id/claim', async (c) => {
+  await requirePerm(c, 'bankdata.claim');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json().catch(() => ({}));
@@ -667,6 +812,7 @@ router.post('/work-items/:item_id/claim', async (c) => {
 });
 
 router.post('/work-items/:item_id/release', async (c) => {
+  await requirePerm(c, 'bankdata.release');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json().catch(() => ({}));
@@ -723,6 +869,7 @@ router.post('/work-items/:item_id/release', async (c) => {
 
 // Ambil Alih (§7.5) — supervisor mengganti PIC lama ke PIC baru secara langsung
 router.post('/work-items/:item_id/takeover', async (c) => {
+  await requirePerm(c, 'bankdata.takeover');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json().catch(() => ({}));
@@ -798,6 +945,7 @@ router.post('/work-items/:item_id/takeover', async (c) => {
 });
 
 router.post('/work-items/:item_id/assign', async (c) => {
+  await requirePerm(c, 'card.assign_members');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
@@ -829,6 +977,7 @@ router.post('/work-items/:item_id/assign', async (c) => {
 });
 
 router.post('/work-items/:item_id/submit', async (c) => {
+  await requirePerm(c, 'card.complete');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
@@ -848,6 +997,7 @@ router.post('/work-items/:item_id/submit', async (c) => {
 });
 
 router.post('/work-items/:item_id/approve', async (c) => {
+  await requirePerm(c, 'card.complete');
   const user = c.get('user');
   requireSupervisor(user);
   const itemId = c.req.param('item_id');
@@ -862,6 +1012,7 @@ router.post('/work-items/:item_id/approve', async (c) => {
 });
 
 router.post('/work-items/:item_id/reopen', async (c) => {
+  await requirePerm(c, 'card.complete');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
@@ -874,6 +1025,7 @@ router.post('/work-items/:item_id/reopen', async (c) => {
 });
 
 router.post('/work-items/:item_id/archive', async (c) => {
+  await requirePerm(c, 'card.archive');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
@@ -884,6 +1036,7 @@ router.post('/work-items/:item_id/archive', async (c) => {
 });
 
 router.post('/work-items/:item_id/unarchive', async (c) => {
+  await requirePerm(c, 'card.archive');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
@@ -902,6 +1055,7 @@ router.post('/work-items/:item_id/unarchive', async (c) => {
  *         title?, description?, note?, priority?, due_date? }
  */
 router.post('/work-items/:item_id/send-to-division', async (c) => {
+  await requirePerm(c, 'bankdata.send_to_division');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
@@ -921,7 +1075,10 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
 
   const direct = !!body.assign_to_user_id;
   const title = (body.title || item.title).trim();
-  const description = body.description ?? body.note ?? item.description ?? '';
+  // Deskripsi HANYA warisan dari Master Card (info klien & layanan). Catatan untuk
+  // penerima TIDAK masuk deskripsi — dikirim sebagai komentar pertama di bawah.
+  const description = body.description ?? item.description ?? '';
+  const receiverNote = (body.note ?? '').trim();
   const priority = PRIORITIES.includes(body.priority) ? body.priority : (item.priority || 'none');
   const dueDate = body.due_date ?? item.dueDate ?? null;
 
@@ -995,11 +1152,34 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
   for (const a of created) {
     await logActivity(a.id, null, user, `mengirim pekerjaan "${title}" ke Bank Data ${a.division}`);
     await notify([user.id], 'sent', 'Pekerjaan terkirim', `Pekerjaan "${title}" berhasil dikirim ke Bank Data ${a.division}.`, a.id, null);
+    if (receiverNote) {
+      await prisma.comment.create({
+        data: {
+          workItemId: a.id,
+          createdById: user.id,
+          createdByName: user.name,
+          text: `📩 Catatan dari ${user.name} saat mengirim pekerjaan:\n\n${receiverNote}`,
+        },
+      });
+    }
     if (direct && body.assign_to_user_id) {
       await notify([body.assign_to_user_id], 'assigned', 'Anda ditugaskan', `${user.name} menugaskan Anda pada "${title}".`, a.id, null, new Set([user.id]));
     }
   }
   await logActivity(item.id, item.boardId, user, `membuat ${created.length} assignment dari "${item.title}"`);
+
+  // Label single source of truth: pastikan assignment baru ikut label grup.
+  // Kalau Master Card belum punya sharedLabels, ambil dari label lokal kartu sumber.
+  try {
+    const mcRow = await prisma.masterCard.findUnique({ where: { id: mcId } });
+    let shared = normLabelList(mcRow?.sharedLabels);
+    if (!shared.length) {
+      const srcLabels = (item.labels || []).map((l: any) => l.labelId);
+      shared = await labelIdsToShared(srcLabels);
+    }
+    if (shared.length) await syncGroupLabels(mcId, shared, user);
+  } catch (e) { console.error('[send-to-division syncGroupLabels]', e); }
+
   await broadcastItem(await getWorkItem(item.id));
   return c.json({ ok: true, master_card_id: mcId, assignment_ids: created.map((x) => x.id) });
 });
@@ -1041,6 +1221,7 @@ router.post('/work-items/:item_id/unmirror', async (c) => {
 });
 
 router.post('/work-items/:item_id/checklists', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
@@ -1056,6 +1237,7 @@ router.post('/work-items/:item_id/checklists', async (c) => {
 });
 
 router.delete('/work-items/:item_id/checklists/:cl_id', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const clId = c.req.param('cl_id');
@@ -1069,6 +1251,7 @@ router.delete('/work-items/:item_id/checklists/:cl_id', async (c) => {
 });
 
 router.post('/work-items/:item_id/checklists/:cl_id/items', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const clId = c.req.param('cl_id');
@@ -1086,6 +1269,7 @@ router.post('/work-items/:item_id/checklists/:cl_id/items', async (c) => {
 
 
 router.post('/work-items/:item_id/checklists/:cl_id/reorder', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const clId = c.req.param('cl_id');
@@ -1104,6 +1288,7 @@ router.post('/work-items/:item_id/checklists/:cl_id/reorder', async (c) => {
 });
 
 router.patch('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const clId = c.req.param('cl_id');
@@ -1128,6 +1313,7 @@ router.patch('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) =
 });
 
 router.delete('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const clId = c.req.param('cl_id');
@@ -1144,9 +1330,18 @@ router.delete('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) 
 
 router.get('/notifications/mine', async (c) => {
   const user = c.get('user');
-  console.log('USER IN WORK ROUTER:', user);
-  const items = await prisma.notification.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 30 });
+  const rows = await prisma.notification.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 40 });
   const unread = await prisma.notification.count({ where: { userId: user.id, isRead: false } });
+  const items = rows.map((n: any) => ({
+    id: n.id,
+    type: n.type || 'info',
+    title: n.title,
+    body: n.body,
+    is_read: n.isRead,
+    board_id: n.boardId || null,
+    work_item_id: n.workItemId || null,
+    created_at: n.createdAt,
+  }));
   return c.json({ items, unread });
 });
 
@@ -1172,6 +1367,53 @@ router.get('/my-work', async (c) => {
   return c.json(items.map((i: any) => ({ ...formatWorkItem(i), board_name: i.board.name, list_name: i.list.name })));
 });
 
+/**
+ * Kalender: pekerjaan dengan tenggat (dueDate) di bulan tertentu.
+ * ?month=YYYY-MM. Supervisor/admin melihat semua; user lain melihat pekerjaan
+ * yang melibatkan dirinya (anggota / PIC / pembuat).
+ */
+router.get('/calendar', async (c) => {
+  const user = c.get('user');
+  const month = (c.req.query('month') || '').trim(); // YYYY-MM
+  const m = /^\d{4}-\d{2}$/.test(month)
+    ? month
+    : new Date().toISOString().slice(0, 7);
+
+  const where: any = {
+    archived: false,
+    dueDate: { gte: `${m}-01`, lte: `${m}-31` },
+  };
+  if (!SUPERVISOR_ROLES.includes(user.role)) {
+    where.OR = [
+      { members: { some: { userId: user.id } } },
+      { currentPicId: user.id },
+      { createdById: user.id },
+    ];
+  }
+
+  const items = await prisma.workItem.findMany({
+    where,
+    orderBy: { dueDate: 'asc' },
+    include: { board: true, list: true, currentPic: true, members: true },
+  });
+
+  return c.json(items.map((i: any) => ({
+    id: i.id,
+    title: i.title,
+    client_name: i.clientName || null,
+    due_date: i.dueDate,
+    status: i.status,
+    priority: i.priority || 'none',
+    board_id: i.boardId,
+    board_name: i.board?.name || null,
+    board_background: i.board?.background || null,
+    list_name: i.list?.name || null,
+    pic_name: i.currentPic?.name || null,
+    is_assignment: !!i.targetDivisionId,
+    member_ids: (i.members || []).map((x: any) => x.userId),
+  })));
+});
+
 router.get('/work-items', async (c) => {
   const user = c.get('user');
   requireSupervisor(user);
@@ -1190,16 +1432,139 @@ router.get('/work-items', async (c) => {
 
 router.get('/search', async (c) => {
   const user = c.get('user');
-  const q = c.req.query('q') || '';
-  const boards = await prisma.board.findMany({ where: { name: { contains: q, mode: 'insensitive' }, isArchived: false }, take: 10 });
-  const items = await prisma.workItem.findMany({
-    where: { OR: [{ title: { contains: q, mode: 'insensitive' } }, { clientName: { contains: q, mode: 'insensitive' } }], archived: false },
-    take: 20
+  const q = (c.req.query('q') || '').trim();
+  if (!q) return c.json({ boards: [], items: [] });
+
+  const boards = await prisma.board.findMany({
+    where: { name: { contains: q, mode: 'insensitive' }, isArchived: false },
+    take: 10,
   });
+
+  const rows = await prisma.workItem.findMany({
+    where: {
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { clientName: { contains: q, mode: 'insensitive' } },
+      ],
+      archived: false,
+    },
+    take: 25,
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      board: true,
+      list: true,
+      currentPic: true,
+      targetDivision: true,
+      masterCard: { include: { owner: true, ownerDivision: true } },
+    },
+  });
+
+  const DIST: Record<string, string> = {
+    AVAILABLE: 'Menunggu diambil',
+    CLAIMED: 'Sudah diambil',
+    DIRECT_ASSIGNED: 'Ditugaskan langsung',
+    RELEASED: 'Dilepas',
+  };
+
+  const items = rows.map((w: any) => {
+    const isAssignment = !!w.targetDivisionId;
+    const isMaster = !!w.masterCardId && !w.targetDivisionId;
+    let role: 'master' | 'assignment' | 'plain' = 'plain';
+    if (isAssignment) role = 'assignment';
+    else if (isMaster) role = 'master';
+    return {
+      id: w.id,
+      title: w.title,
+      client_name: w.clientName || null,
+      board_id: w.boardId,
+      board_name: w.board?.name || null,
+      list_name: w.list?.name || null,
+      pic_name: w.currentPic?.name || null,
+      owner_name: w.masterCard?.owner?.name || null,
+      role,
+      is_assignment: isAssignment,
+      is_master: isMaster,
+      target_division_name: w.targetDivision?.name || null,
+      distribution_label: isAssignment ? (DIST[w.distributionStatus] || null) : null,
+      status: w.status,
+      is_done: w.status === 'done',
+    };
+  });
+
   return c.json({ boards, items });
 });
 
+// ── Board Harian (HARI 1-8) & Peta Skor Global ────────────────────────────
+// Agregasi lintas board. Bisa dibuka semua user login (read-only); yang boleh
+// menggeser kartu di UI hanya super_admin (dibatasi di frontend), sedangkan
+// POST /work-items/:id/hari tetap punya guard sendiri.
+
+function daysSince(d: any): number {
+  if (!d) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000));
+}
+
+function globalCard(w: any) {
+  const enteredAt = w.hariStage ? w.hariEnteredAt : w.updatedAt;
+  const days = daysSince(enteredAt);
+  return {
+    id: w.id,
+    title: w.title,
+    client_name: w.clientName || null,
+    board_id: w.boardId,
+    board_name: w.board?.name || null,
+    board_background: w.board?.background || null,
+    list_name: w.list?.name || null,
+    hari_stage: w.hariStage || null,
+    member_ids: (w.members || []).map((m: any) => m.userId),
+    priority: w.priority || 'none',
+    due_date: w.dueDate || null,
+    status: w.status,
+    days_in_stage: days,
+    is_stalled: days >= 3 && w.status !== 'done',
+  };
+}
+
+router.get('/global/hari', async (c) => {
+  await requirePerm(c, 'hari.view');
+  const rows = await prisma.workItem.findMany({
+    where: { archived: false, hariStage: { not: null } },
+    include: { board: true, list: true, members: true },
+    orderBy: [{ hariStage: 'asc' }, { hariEnteredAt: 'asc' }],
+  });
+  return c.json(rows.map(globalCard));
+});
+
+router.get('/global/skor', async (c) => {
+  await requirePerm(c, 'skor.view');
+  // Master Card representation ada di board CS. Bucket berdasarkan prefix "SKOR N"
+  // pada nama list. SKOR 7 / KOMPLAIN / COWORKING diabaikan dari peta.
+  const csDivisions = await prisma.division.findMany({ where: { key: 'cs' }, select: { id: true } });
+  const csDivIds = csDivisions.map((d) => d.id);
+  const rows = await prisma.workItem.findMany({
+    where: {
+      archived: false,
+      targetDivisionId: null, // hanya kartu CS / Master Card rep, bukan assignment
+      board: { divisionId: { in: csDivIds } },
+    },
+    include: { board: true, list: true, members: true },
+    orderBy: { updatedAt: 'desc' },
+  });
+  const buckets: Record<string, any[]> = { '1': [], '2': [], '3': [], '4': [], '5': [], '6': [] };
+  for (const w of rows) {
+    const name = (w.list?.name || '').toUpperCase();
+    const m = name.match(/SKOR\s*([1-7])/);
+    let key = m ? m[1] : null;
+    if (key === '7') key = '6'; // SKOR 7 (data FU kembali) tampil di kolom FINISH
+    if (!key) continue;
+    if (name.startsWith('SKOR 6') || name.startsWith('SKOR 7')) key = '6';
+    (buckets[key] ||= []).push(globalCard(w));
+  }
+  return c.json(buckets);
+});
+
 router.post('/work-items/:item_id/hari', async (c) => {
+  await requirePerm(c, 'hari.advance');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
@@ -1243,6 +1608,7 @@ router.post('/work-items/:item_id/hari', async (c) => {
 export default router;
 
 router.post('/work-items/:item_id/comments', async (c) => {
+  await requirePerm(c, 'card.comment');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json();
@@ -1276,6 +1642,7 @@ router.post('/work-items/:item_id/comments', async (c) => {
 });
 
 router.patch('/comments/:comment_id', async (c) => {
+  await requirePerm(c, 'card.comment');
   const user = c.get('user');
   const commentId = c.req.param('comment_id');
   const body = await c.req.json();
@@ -1295,6 +1662,7 @@ router.patch('/comments/:comment_id', async (c) => {
 });
 
 router.delete('/comments/:comment_id', async (c) => {
+  await requirePerm(c, 'card.comment');
   const user = c.get('user');
   const commentId = c.req.param('comment_id');
   
@@ -1311,6 +1679,7 @@ router.delete('/comments/:comment_id', async (c) => {
 
 
 router.post('/work-items/:item_id/attachments', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
@@ -1347,6 +1716,7 @@ router.post('/work-items/:item_id/attachments', async (c) => {
 });
 
 router.post('/work-items/:item_id/attachments/link', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
@@ -1387,6 +1757,7 @@ router.get('/attachments/:id/download', async (c) => {
 });
 
 router.delete('/attachments/:id', async (c) => {
+  await requirePerm(c, 'card.edit');
   const user = c.get('user');
   const id = c.req.param('id');
   const att = await prisma.attachment.findUnique({ where: { id } });
@@ -1408,6 +1779,7 @@ router.delete('/attachments/:id', async (c) => {
  * body: { title*, client_name?, note?, target_division_id*, target_list_id?, priority?, due_date?, assign_to_user_id? }
  */
 router.post('/bank-data/intake', async (c) => {
+  await requirePerm(c, 'bankdata.intake');
   const user = c.get('user');
   const body = await c.req.json();
   if (!body.title?.trim()) return c.json({ error: 'Judul pekerjaan wajib diisi' }, 400);

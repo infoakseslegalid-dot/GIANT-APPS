@@ -143,6 +143,7 @@ export interface CardBackProps {
   onOpenSend?: () => void;
 
   /** Checklist. */
+  checklistTemplates?: Array<{ id: string; name: string; items: string[] }>;
   onAddChecklist: (title: string, items?: string[]) => Promise<void>;
   onRenameChecklist: (checklistId: string, title: string) => Promise<void>;
   onDeleteChecklist: (checklistId: string) => Promise<void>;
@@ -158,6 +159,8 @@ export interface CardBackProps {
   onMoveCard: (listId: string, position: number) => Promise<void>;
   onCopyCard: (payload: { title: string; listId: string }) => Promise<void>;
   onArchiveCard: () => Promise<void>;
+  /** Hapus kartu ini. Untuk assignment/mirror: hanya baris ini yang hilang, Master Card tetap. */
+  onDeleteCard?: () => Promise<void>;
   onMirrorCard: (boardId: string) => Promise<void>;
   onMakeTemplate: () => Promise<void>;
   onJoin: () => Promise<void>;

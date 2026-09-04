@@ -32,6 +32,10 @@ model MasterCard {
   // owner null selama client offline belum di-claim CS (Flow B)
   ownerUserId     String?
   ownerDivisionId String?
+  // Single source of truth untuk label seluruh grup (rep + semua assignment).
+  // Bentuk: [{ name: string, color: string }]. Setiap WorkItem di grup
+  // disinkronkan ke daftar ini (label per-board di-mirror by name).
+  sharedLabels    Json     @default("[]")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -92,10 +96,13 @@ model Board {
   id          String   @id @default(uuid())
   name        String
   divisionId  String?
-  background  String?
+  background  String? // warna solid (fallback / dipakai bila tidak ada gambar)
+  backgroundImagePath String? // path di object storage untuk gambar latar custom
+  backgroundImageType String? // content-type gambar latar
   isArchived  Boolean  @default(false)
   createdById String
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
   division  Division? @relation(fields: [divisionId], references: [id])
   createdBy User      @relation("BoardCreator", fields: [createdById], references: [id])
@@ -350,6 +357,43 @@ model CronRun {
 model Setting {
   key String   @id
   at  DateTime @default(now())
+}
+
+// ── Permission matrix (role × aksi) yang bisa diatur admin ───────────────
+// Katalog aksi (AppPermission) sebagian dikurasi manual, sebagian di-generate
+// otomatis dari setiap model Prisma ("table.<Model>") lewat syncPermissions().
+model AppPermission {
+  key       String   @id // mis. "bankdata.send_to_division" atau "table.User"
+  label     String
+  category  String
+  kind      String   @default("feature") // "feature" | "table"
+  createdAt DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  id      String  @id @default(uuid())
+  role    String
+  permKey String
+  allowed Boolean @default(false)
+
+  permission AppPermission @relation(fields: [permKey], references: [key], onDelete: Cascade)
+
+  @@unique([role, permKey])
+  @@index([role])
+}
+
+// Template checklist yang dikelola admin di Panel Admin. Dipakai user saat
+// menambah checklist pada kartu (isi item disalin, bukan direferensikan).
+model ChecklistTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  items       Json     @default("[]") // string[]
+  position    Float    @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model WorkItemAssignmentHistory {

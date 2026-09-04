@@ -16,10 +16,11 @@ const pop =
   'absolute left-0 top-[36px] z-30 w-[248px] rounded-[8px] border border-[#dfe1e6] bg-white p-3 shadow-[0_8px_24px_#0003]';
 const popHead = 'relative mb-2 flex h-6 items-center justify-center text-[12px] font-bold text-[#5e6c84]';
 
-type Which = null | 'add' | 'dates' | 'members';
+type Which = null | 'add' | 'dates' | 'members' | 'checklist';
 
 export default function CardQuickActions(props: CardBackProps & { onLabels?: () => void }) {
   const { card, allUsers = [], onUpdateCard, onAddChecklist, onAssignMembers, onAddAttachments, onLabels } = props;
+  const checklistTemplates = props.checklistTemplates ?? [];
 
   const [openWhich, setOpenWhich] = useState<Which>(null);
   const [search, setSearch] = useState('');
@@ -45,9 +46,21 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
   const filteredUsers = allUsers.filter((u) => u.name.toLowerCase().includes(search.toLowerCase()));
   const hasDates = !!card.startDate || !!card.dueDate;
 
-  const addChecklist = () => {
-    if (!card.checklists.some((c) => c.title === 'Checklist')) onAddChecklist('Checklist');
-    document.querySelector('[data-card-checklist]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const afterAddScroll = () => {
+    setTimeout(
+      () => document.querySelector('[data-card-checklist]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      120,
+    );
+  };
+  const addBlankChecklist = () => {
+    onAddChecklist('Checklist');
+    setOpenWhich(null);
+    afterAddScroll();
+  };
+  const addFromTemplate = (t: { name: string; items: string[] }) => {
+    onAddChecklist(t.name, t.items);
+    setOpenWhich(null);
+    afterAddScroll();
   };
 
   return (
@@ -95,9 +108,48 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
       </div>
 
       {/* CHECKLIST */}
-      <button type="button" className={btn} onClick={addChecklist}>
-        <SquareCheck size={14} /> Checklist
-      </button>
+      <div className="relative">
+        <button type="button" className={btn} onClick={() => (checklistTemplates.length ? toggle('checklist') : addBlankChecklist())}>
+          <SquareCheck size={14} /> Checklist
+        </button>
+        {openWhich === 'checklist' && (
+          <div className={pop}>
+            <div className={popHead}>
+              Tambah checklist
+              <button type="button" onClick={() => setOpenWhich(null)} className="absolute right-0 text-[#6b778c] hover:text-[#172b4d]">
+                <X size={14} />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={addBlankChecklist}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-[#172b4d] hover:bg-[#f1f2f4]"
+            >
+              <Plus size={14} className="text-[#5e6c84]" /> Checklist kosong
+            </button>
+            {checklistTemplates.length > 0 && (
+              <>
+                <div className="my-1.5 border-t border-[#dfe1e6]" />
+                <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#8590a2]">Dari template</p>
+                <div className="flex max-h-[220px] flex-col gap-0.5 overflow-y-auto">
+                  {checklistTemplates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => addFromTemplate(t)}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-[#172b4d] hover:bg-[#f1f2f4]"
+                    >
+                      <SquareCheck size={14} className="shrink-0 text-[#5e6c84]" />
+                      <span className="min-w-0 flex-1 truncate">{t.name}</span>
+                      <span className="shrink-0 text-[10px] text-[#8590a2]">{t.items.length}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* MEMBERS */}
       <div className="relative">

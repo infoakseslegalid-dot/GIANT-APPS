@@ -57,3 +57,16 @@ export function fmtDateTime(iso) {
     return iso;
   }
 }
+
+/** Waktu relatif singkat dalam Bahasa Indonesia: "baru saja", "5 mnt", "3 jam", "2 hr". */
+export function timeAgo(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (isNaN(s)) return "";
+  if (s < 45) return "baru saja";
+  if (s < 3600) return `${Math.round(s / 60)} mnt lalu`;
+  if (s < 86400) return `${Math.round(s / 3600)} jam lalu`;
+  if (s < 604800) return `${Math.round(s / 86400)} hari lalu`;
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: s > 31536000 ? "numeric" : undefined });
+}

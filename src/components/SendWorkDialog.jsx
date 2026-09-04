@@ -90,6 +90,7 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
               placeholder="mis: Draft akta sudah selesai, mohon dilanjutkan ke notaris."
               className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none"
             />
+            <p className="text-[11px] text-[#8590A2] mt-1">Dikirim sebagai komentar pertama di kartu penerima — bukan mengubah deskripsi.</p>
           </div>
 
           <div className="border-t border-[#DFE1E6] pt-3">

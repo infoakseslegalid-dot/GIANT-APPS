@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from "react";import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutGrid, Home, Briefcase, ListChecks, Settings, LogOut, Search, ChevronDown, Kanban,
-  Database, CalendarClock, BarChart3, CalendarDays, ChevronsUpDown, X, UserCog,
+  LayoutGrid, LogOut, Search, ChevronDown, Kanban, ChevronsUpDown, X, UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, errMsg } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "./common";
 import NotificationsMenu from "./NotificationsMenu";
+import Sidebar from "./Sidebar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
@@ -77,17 +77,40 @@ function GlobalSearch() {
           {results.items?.length > 0 && (
             <div className="p-2 border-t">
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2] px-2 py-1">Pekerjaan</p>
-              {results.items.map((i) => (
-                <button
-                  key={i.id}
-                  data-testid={`search-item-${i.id}`}
-                  onClick={() => { setOpen(false); setQ(""); navigate(`/board/${i.board_id}?card=${i.id}`); }}
-                  className="w-full px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left"
-                >
-                  <p className="text-sm text-[#172B4D]">{i.title}</p>
-                  {i.client_name && <p className="text-xs text-[#44546F]">{i.client_name}</p>}
-                </button>
-              ))}
+              {results.items.map((i) => {
+                const badge =
+                  i.role === "master"
+                    ? { t: "Master Card", c: "bg-[#E9F2FF] text-[#0C66E4]" }
+                    : i.role === "assignment"
+                    ? { t: "Assignment", c: "bg-[#EAE6FF] text-[#5E4DB2]" }
+                    : null;
+                const meta = [
+                  i.board_name && `📋 ${i.board_name}`,
+                  i.list_name && `• ${i.list_name}`,
+                ].filter(Boolean).join(" ");
+                const sub = [
+                  i.role === "assignment" && i.target_division_name && `Divisi: ${i.target_division_name}`,
+                  i.role === "assignment" && (i.pic_name ? `PIC: ${i.pic_name}` : i.distribution_label),
+                  i.role === "assignment" && i.owner_name && `Owner: ${i.owner_name}`,
+                  i.role !== "assignment" && i.pic_name && `PIC: ${i.pic_name}`,
+                ].filter(Boolean).join("  ·  ");
+                return (
+                  <button
+                    key={i.id}
+                    data-testid={`search-item-${i.id}`}
+                    onClick={() => { setOpen(false); setQ(""); navigate(`/board/${i.board_id}?card=${i.id}`); }}
+                    className="w-full px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-sm text-[#172B4D] ${i.is_done ? "line-through opacity-60" : ""}`}>{i.title}</p>
+                      {badge && <span className={`shrink-0 rounded px-1.5 py-px text-[9px] font-bold ${badge.c}`}>{badge.t}</span>}
+                    </div>
+                    {i.client_name && <p className="text-xs text-[#44546F]">{i.client_name}</p>}
+                    {meta && <p className="text-[11px] text-[#8590A2]">{meta}</p>}
+                    {sub && <p className="text-[11px] text-[#8590A2]">{sub}</p>}
+                  </button>
+                );
+              })}
             </div>
           )}
           {!results.boards?.length && !results.items?.length && (
@@ -235,35 +258,6 @@ export default function AppLayout() {
     return () => window.removeEventListener("keydown", h);
   }, []);
   const isBoard = location.pathname.startsWith("/board/");
-  const isAdminRole = ["super_admin", "admin"].includes(user?.role);
-  const isSupervisorUp = ["super_admin", "admin", "supervisor"].includes(user?.role);
-
-  const { data: boards } = useQuery({
-    queryKey: ["boards"],
-    queryFn: () => api.get("/boards").then((r) => r.data),
-  });
-  const { data: divisions } = useQuery({
-    queryKey: ["divisions"],
-    queryFn: () => api.get("/divisions").then((r) => r.data),
-  });
-  const myDiv = (divisions || []).find((d) => d.id === user?.division_id);
-  const canHari = isAdminRole || ["draf", "pajak", "perizinan", "desain"].includes(myDiv?.key);
-  const canSkor = isSupervisorUp || myDiv?.key === "cs";
-
-  const navItem = (to, icon, label, testid) => (
-    <Link
-      to={to}
-      data-testid={testid}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-        location.pathname === to
-          ? "bg-[#E9F2FF] text-[#0C66E4]"
-          : "text-[#44546F] hover:bg-[#F1F2F4]"
-      }`}
-    >
-      {icon}
-      {label}
-    </Link>
-  );
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" data-testid="app-layout">
@@ -311,62 +305,7 @@ export default function AppLayout() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {!isBoard && (
-          <aside className="w-60 bg-white border-r overflow-y-auto minimal-scrollbar shrink-0 py-4 px-3 space-y-1" data-testid="app-sidebar">
-            {navItem("/", <Home size={16} />, "Dashboard", "nav-dashboard")}
-            {navItem("/my-work", <Briefcase size={16} />, "Pekerjaan Saya", "nav-my-work")}
-            {navItem("/calendar", <CalendarDays size={16} />, "Kalender", "nav-calendar")}
-            {isSupervisorUp && navItem("/work", <ListChecks size={16} />, "Semua Pekerjaan", "nav-all-work")}
-            <div className="pt-4 pb-1 px-3 flex items-center gap-2">
-              <LayoutGrid size={12} className="text-[#8590A2]" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2]">Board Saya</span>
-            </div>
-            {(boards || []).map((b) => (
-              <Link
-                key={b.id}
-                to={`/board/${b.id}`}
-                data-testid={`sidebar-board-${b.id}`}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#44546F] hover:bg-[#F1F2F4] transition-colors"
-              >
-                <span className="w-5 h-5 rounded shrink-0" style={{ backgroundColor: b.background }} />
-                <span className="truncate">{b.name}</span>
-              </Link>
-            ))}
-            <div className="pt-4 pb-1 px-3 flex items-center gap-2">
-              <Database size={12} className="text-[#8590A2]" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2]">Bank Data Divisi</span>
-            </div>
-            {(divisions || []).map((d) => (
-              <Link
-                key={d.id}
-                to={`/bank-data/${d.id}`}
-                data-testid={`sidebar-bankdata-${d.id}`}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  location.pathname === `/bank-data/${d.id}` ? "bg-[#E9F2FF] text-[#0C66E4] font-medium" : "text-[#44546F] hover:bg-[#F1F2F4]"
-                }`}
-              >
-                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                <span className="truncate">{d.name}</span>
-              </Link>
-            ))}
-            {(canHari || canSkor) && (
-              <div className="pt-4 pb-1 px-3 flex items-center gap-2">
-                <BarChart3 size={12} className="text-[#8590A2]" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2]">Pantauan Global</span>
-              </div>
-            )}
-            {canHari && navItem("/global/hari", <CalendarClock size={16} />, "Board Harian (Hari 1-7)", "nav-global-hari")}
-            {canSkor && navItem("/global/skor", <BarChart3 size={16} />, "Peta Skor Global", "nav-global-skor")}
-            {isAdminRole && (
-              <>
-                <div className="pt-4 pb-1 px-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2]">Administrasi</span>
-                </div>
-                {navItem("/admin", <Settings size={16} />, "Admin Panel", "nav-admin-panel")}
-              </>
-            )}
-          </aside>
-        )}
+        {!isBoard && <Sidebar />}
         <main className={isBoard ? "flex-1 overflow-hidden flex flex-col" : "flex-1 overflow-y-auto minimal-scrollbar bg-[#F4F5F7]"}>
           <Outlet />
         </main>

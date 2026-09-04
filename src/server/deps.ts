@@ -128,15 +128,35 @@ export function requireSupervisor(user: any) {
     }
 }
 
-// Minimal WebSocket Manager representation
-export class WSManager {
-    conns: Set<any>;
-    constructor() {
-        this.conns = new Set();
+// ── Realtime event bus (in-process) ──────────────────────────────────────
+// Satu instance dibagi via globalThis supaya route-handler SSE (worker Next)
+// dan handler mutasi memakai bus yang sama, baik dijalankan lewat `next dev`
+// maupun lewat custom server (server.mjs).
+type BusListener = (m: any) => void;
+class RealtimeBus {
+    listeners: Set<BusListener> = new Set();
+    subscribe(fn: BusListener): () => void {
+        this.listeners.add(fn);
+        return () => this.listeners.delete(fn);
     }
-    // Omitted full WS implementation for now as it typically uses separate Next.js API or external service
+    publish(message: any) {
+        for (const fn of this.listeners) {
+            try { fn(message); } catch (e) { /* satu listener rusak jangan hentikan sisanya */ }
+        }
+        // Jembatan opsional ke WebSocket bawaan server.mjs (kalau dipakai).
+        try {
+            const fn = (globalThis as any).__WS_BROADCAST__;
+            if (typeof fn === 'function') fn(message);
+        } catch (e) { /* ignore */ }
+    }
+}
+const _g = globalThis as any;
+export const realtimeBus: RealtimeBus = _g.__REALTIME_BUS__ || (_g.__REALTIME_BUS__ = new RealtimeBus());
+
+// Nama lama dipertahankan agar pemanggil tidak perlu diubah.
+export class WSManager {
     async broadcast(message: any) {
-        // Mock implementation
+        realtimeBus.publish(message);
     }
 }
 

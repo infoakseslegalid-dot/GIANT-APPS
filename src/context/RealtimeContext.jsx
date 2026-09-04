@@ -3,54 +3,122 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
 
+/**
+ * Sinkronisasi realtime lintas akun tanpa refresh.
+ *
+ * Transport: Server-Sent Events (EventSource) ke GET /api/events. SSE dipilih
+ * dibanding WebSocket karena lewat HTTP biasa — jalan baik di `next dev` maupun
+ * custom server (server.mjs) — dan EventSource menangani reconnect sendiri.
+ *
+ * Server mengirim pesan { type, board_id?, work_item_id?, user_id?, title? }.
+ * Di sini kita hanya meng-invalidate query React Query yang relevan sehingga
+ * komponen yang sedang tampil otomatis refetch (komentar, board, bank data, dst).
+ */
 export function RealtimeProvider({ children }) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
   useEffect(() => {
     if (!user) return;
-    if (!document.cookie.includes("access_token")) return;
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/api/ws';
-    let ws = null;
-    let closed = false;
-    let retry = null;
+
+    let es = null;
+    let stopped = false;
+    let reconnectTimer = null;
+    let missedWhileOffline = false;
+
+    const invalidateForMessage = (msg) => {
+      if (!msg || !msg.type) return;
+      if (msg.type === "hello" || msg.type === "ping") return;
+
+      if (msg.type === "notification") {
+        if (msg.user_id === user.id) {
+          qc.invalidateQueries({ queryKey: ["notifications"] });
+          if (msg.title) toast(msg.title);
+        }
+        return;
+      }
+
+      // board_update & activity → segarkan semua tampilan yang mungkin terpengaruh
+      if (msg.board_id) {
+        qc.invalidateQueries({ queryKey: ["board", msg.board_id] });
+        qc.invalidateQueries({ queryKey: ["board-archived", msg.board_id] });
+        qc.invalidateQueries({ queryKey: ["board-full", msg.board_id] });
+      }
+      if (msg.work_item_id) {
+        qc.invalidateQueries({ queryKey: ["work-item", msg.work_item_id] });
+      }
+      qc.invalidateQueries({ queryKey: ["boards"] });
+      qc.invalidateQueries({ queryKey: ["my-work"] });
+      qc.invalidateQueries({ queryKey: ["all-work"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      qc.invalidateQueries({ queryKey: ["bank-data"] });
+      qc.invalidateQueries({ queryKey: ["bank-data-summary"] });
+      qc.invalidateQueries({ queryKey: ["activities"] });
+      qc.invalidateQueries({ queryKey: ["global-hari"] });
+      qc.invalidateQueries({ queryKey: ["global-skor"] });
+    };
 
     const connect = () => {
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.type === "notification") {
-            if (msg.user_id === user.id) {
-              qc.invalidateQueries({ queryKey: ["notifications"] });
-              toast(msg.title || "Notifikasi baru");
-            }
-          } else if (msg.type === "board_update") {
-            if (msg.board_id) qc.invalidateQueries({ queryKey: ["board", msg.board_id] });
-            if (msg.work_item_id) qc.invalidateQueries({ queryKey: ["work-item", msg.work_item_id] });
-            qc.invalidateQueries({ queryKey: ["boards"] });
-            qc.invalidateQueries({ queryKey: ["my-work"] });
-            qc.invalidateQueries({ queryKey: ["all-work"] });
-            qc.invalidateQueries({ queryKey: ["stats"] });
-          } else if (msg.type === "activity") {
-            if (msg.work_item_id) qc.invalidateQueries({ queryKey: ["work-item", msg.work_item_id] });
-            qc.invalidateQueries({ queryKey: ["activities"] });
-          }
-        } catch (e) {}
+      if (stopped) return;
+      try {
+        es = new EventSource("/api/events", { withCredentials: true });
+      } catch (e) {
+        reconnectTimer = setTimeout(connect, 2500);
+        return;
+      }
+
+      es.onopen = () => {
+        // Saat pertama connect / reconnect: tarik ulang semua supaya tidak ada
+        // perubahan yang terlewat selama offline.
+        if (missedWhileOffline) {
+          qc.invalidateQueries();
+          missedWhileOffline = false;
+        }
       };
-      ws.onclose = () => {
-        if (!closed) retry = setTimeout(connect, 3000);
+
+      es.onmessage = (ev) => {
+        try {
+          invalidateForMessage(JSON.parse(ev.data));
+        } catch (e) {
+          /* abaikan pesan non-JSON */
+        }
+      };
+
+      es.onerror = () => {
+        // EventSource akan mencoba reconnect otomatis, tapi kita paksa siklus
+        // bersih + tandai perlu catch-up.
+        missedWhileOffline = true;
+        if (es) {
+          es.close();
+          es = null;
+        }
+        if (!stopped) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connect, 2500);
+        }
       };
     };
+
     connect();
-    const ping = setInterval(() => {
-      if (ws && ws.readyState === 1) ws.send("ping");
-    }, 30000);
+
+    // Kalau tab kembali aktif setelah lama idle, pastikan koneksi hidup + catch-up.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        if (!es || es.readyState === 2 /* CLOSED */) {
+          missedWhileOffline = true;
+          connect();
+        } else {
+          qc.invalidateQueries();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
-      closed = true;
-      if (retry) clearTimeout(retry);
-      clearInterval(ping);
-      if (ws) ws.close();
+      stopped = true;
+      clearTimeout(reconnectTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+      if (es) es.close();
     };
   }, [user, qc]);
 

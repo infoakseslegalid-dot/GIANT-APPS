@@ -19,7 +19,7 @@ function initialsOf(name?: string | null): string {
   return n.slice(0, 2).toUpperCase();
 }
 
-export default function CardModalWrapper({ itemId, onClose }: { itemId: string; onClose: () => void }) {
+export default function CardModalWrapper({ itemId, onClose, readOnly = false }: { itemId: string; onClose: () => void; readOnly?: boolean }) {
   const { user } = useAuth() as any;
   const qc = useQueryClient();
   const [showSend, setShowSend] = useState(false);
@@ -35,6 +35,11 @@ export default function CardModalWrapper({ itemId, onClose }: { itemId: string; 
   });
 
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: () => api.get('/users').then((r) => r.data) });
+  const { data: checklistTemplates } = useQuery({
+    queryKey: ['checklist-templates'],
+    queryFn: () => api.get('/checklist-templates').then((r) => r.data),
+    staleTime: 60000,
+  });
 
   if (!data || !users) {
     return (
@@ -45,9 +50,15 @@ export default function CardModalWrapper({ itemId, onClose }: { itemId: string; 
   }
 
   const { item, comments, attachments, activities, board_labels, list_name } = data;
-  const canEdit: boolean = data.can_edit ?? true;
-  const canComment: boolean = data.can_comment ?? true;
-  const denyEdit = () => { toast.error('Hanya PIC / anggota divisi terkait yang dapat mengubah kartu ini.'); };
+  // Halaman agregat (Board Harian / Peta Skor Global): non-super_admin hanya boleh melihat.
+  const forcedReadOnly = readOnly && user?.role !== 'super_admin';
+  const canEdit: boolean = forcedReadOnly ? false : (data.can_edit ?? true);
+  const canComment: boolean = forcedReadOnly ? false : (data.can_comment ?? true);
+  const denyEdit = () => {
+    toast.error(forcedReadOnly
+      ? 'Halaman ini hanya untuk melihat. Buka kartu dari board aslinya untuk mengubah.'
+      : 'Hanya PIC / anggota divisi terkait yang dapat mengubah kartu ini.');
+  };
   const gate = (fn: () => Promise<any>) => (canEdit ? fn() : (denyEdit(), Promise.resolve()));
 
   const invalidate = () => {
@@ -317,6 +328,9 @@ export default function CardModalWrapper({ itemId, onClose }: { itemId: string; 
       }}
       onRenameAttachment={async () => { toast.info('Ganti nama lampiran belum tersedia'); }}
 
+      checklistTemplates={(checklistTemplates || []).map((t: any) => ({
+        id: t.id, name: t.name, items: Array.isArray(t.items) ? t.items : [],
+      }))}
       onAddChecklist={async (title, templateItems) => {
         const res = await run(() => api.post(`/work-items/${curId}/checklists`, { title }));
         if (res?.data?.id && templateItems && templateItems.length > 0) {
@@ -358,6 +372,16 @@ export default function CardModalWrapper({ itemId, onClose }: { itemId: string; 
           () => api.post(`/work-items/${curId}/${card.isArchived ? 'unarchive' : 'archive'}`),
           card.isArchived ? 'Dikembalikan dari arsip' : 'Diarsipkan',
         );
+      }}
+      onDeleteCard={async () => {
+        const r = await run(() => api.delete(`/work-items/${curId}`), 'Kartu mirror dihapus');
+        if (r) {
+          qc.invalidateQueries({ queryKey: ['bank-data'] });
+          qc.invalidateQueries({ queryKey: ['bank-data-summary'] });
+          // kalau yang dihapus adalah kartu turunan yang sedang dibuka, kembali ke master bila ada
+          if (data.master?.id && curId !== data.master.id) setActiveId(data.master.id);
+          else onClose();
+        }
       }}
       onJoin={async () => {
         if (user?.id) await run(() => api.post(`/work-items/${curId}/assign`, { add_user_ids: [user.id] }), 'Anda bergabung');

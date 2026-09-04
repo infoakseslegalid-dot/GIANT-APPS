@@ -14,6 +14,7 @@ import {
   LayoutTemplate,
   MoreHorizontal,
   Share2,
+  Trash2,
   UserPlus,
 } from 'lucide-react';
 import type { CardBackProps } from './types';
@@ -22,7 +23,7 @@ const menuItem =
   'flex h-[29px] cursor-pointer items-center gap-[9px] px-[11px] text-[11px] text-[#172b4d] hover:bg-[#f1f2f4]';
 
 export default function CardMoreMenu(props: CardBackProps) {
-  const { card, onJoin, onMoveCard, onCopyCard, onMakeTemplate, onArchiveCard, onOpenSend } = props;
+  const { card, onJoin, onMoveCard, onCopyCard, onMakeTemplate, onArchiveCard, onOpenSend, onDeleteCard, isAssignment } = props;
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -90,6 +91,19 @@ export default function CardMoreMenu(props: CardBackProps) {
             <Archive size={14} className="text-[#44546f]" />
             <span>{card.isArchived ? 'Send to board' : 'Archive'}</span>
           </div>
+          {isAssignment && onDeleteCard && (
+            <div
+              className={`${menuItem} !text-[#c9372c] hover:!bg-[#ffeceb]`}
+              onClick={pick(() => {
+                if (confirm('Hapus kartu mirror ini? Master Card TIDAK ikut terhapus — hanya assignment di divisi ini yang hilang.')) {
+                  onDeleteCard();
+                }
+              })}
+            >
+              <Trash2 size={14} />
+              <span>Hapus kartu mirror ini</span>
+            </div>
+          )}
         </div>
       )}
     </div>

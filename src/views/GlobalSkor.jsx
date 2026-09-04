@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useBoardPan } from "../hooks/useBoardPan";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, AlertTriangle, Eye } from "lucide-react";
 import { api, fmtDate } from "../lib/api";
@@ -16,6 +17,8 @@ const SKOR_COLUMNS = [
 
 export default function GlobalSkor() {
   const [openItem, setOpenItem] = useState(null);
+  const scrollRef = useRef(null);
+  const pan = useBoardPan(scrollRef);
 
   const { data: buckets, isLoading, isError } = useQuery({
     queryKey: ["global-skor"],
@@ -34,7 +37,7 @@ export default function GlobalSkor() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#0b4f6c]" data-testid="global-skor-page">
+    <div className="h-full flex flex-col overflow-hidden bg-[#0079BF]" data-testid="global-skor-page">
       <div className="px-5 py-4 shrink-0 flex items-start justify-between">
         <div>
           <h1 className="font-heading text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
@@ -46,7 +49,11 @@ export default function GlobalSkor() {
           <Eye size={12} /> Read-only
         </span>
       </div>
-      <div className="flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4 minimal-scrollbar">
+      <div
+        ref={scrollRef}
+        onPointerDown={pan.onPointerDown}
+        className={`flex-1 overflow-x-auto overflow-y-hidden px-4 pb-4 minimal-scrollbar ${pan.panning ? "cursor-grabbing" : "cursor-grab"}`}
+      >
         {isLoading ? (
           <p className="text-white/80 text-sm">Memuat...</p>
         ) : (
@@ -109,7 +116,7 @@ export default function GlobalSkor() {
           </div>
         )}
       </div>
-      {openItem && <CardModal itemId={openItem} onClose={() => setOpenItem(null)} />}
+      {openItem && <CardModal itemId={openItem} onClose={() => setOpenItem(null)} readOnly />}
     </div>
   );
 }

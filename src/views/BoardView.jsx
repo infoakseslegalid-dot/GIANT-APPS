@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { useBoardPan } from "../hooks/useBoardPan";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -15,6 +16,7 @@ import CardModal from "../components/kanban/CardModalWrapper";
 import AutomationModal from "../components/AutomationModal";
 import { Avatar } from "../components/common";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import BoardBackgroundMenu from "../components/BoardBackgroundMenu";
 
 const FILTERS = [
   { value: "all", label: "Semua" },
@@ -49,6 +51,9 @@ export default function BoardView() {
   const [newListName, setNewListName] = useState("");
   const [reqList, setReqList] = useState(null);
   const [reqText, setReqText] = useState("");
+
+  const canvasRef = useRef(null);
+  const pan = useBoardPan(canvasRef);
 
   const { data } = useQuery({
     queryKey: ["board", boardId],
@@ -195,7 +200,7 @@ export default function BoardView() {
     if (!reqList) return;
     const items = reqText.split("\n").map((s) => s.trim()).filter(Boolean);
     try {
-      await api.patch(`/lists/${reqList.id}`, { entry_requirements: items });
+      await api.patch(`/lists/${reqList.id}`, { entryRequirements: items });
       toast.success("Syarat masuk list diperbarui");
       setReqList(null);
       qc.invalidateQueries({ queryKey: ["board", boardId] });
@@ -306,9 +311,17 @@ export default function BoardView() {
     }
   };
 
+  const bgImg = board.background_image_url;
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: board.background || "#0079bf" }} data-testid="board-view">
-      <div className="h-14 w-full flex items-center px-4 bg-black/10 backdrop-blur-sm shrink-0 text-white justify-between gap-3">
+    <div
+      className="relative flex-1 flex flex-col overflow-hidden"
+      style={bgImg
+        ? { backgroundImage: `url(${bgImg})`, backgroundSize: "cover", backgroundPosition: "center" }
+        : { backgroundColor: board.background || "#0079bf" }}
+      data-testid="board-view"
+    >
+      {bgImg && <div className="pointer-events-none absolute inset-0 bg-black/35" />}
+      <div className="relative z-10 h-14 w-full flex items-center px-4 bg-black/10 backdrop-blur-sm shrink-0 text-white justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="font-heading text-lg font-bold truncate" data-testid="board-title">{board.name}</h1>
           {division && (
@@ -408,6 +421,7 @@ export default function BoardView() {
           >
             Salin Link
           </button>
+          <BoardBackgroundMenu board={board} boardId={boardId} />
           {isSupervisorUp && (
             <button
               data-testid="board-automation-button"
@@ -433,7 +447,12 @@ export default function BoardView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto overflow-y-hidden p-3 minimal-scrollbar" data-testid="board-canvas">
+      <div
+        ref={canvasRef}
+        onPointerDown={pan.onPointerDown}
+        className={`relative z-10 flex-1 overflow-x-auto overflow-y-hidden p-3 ${pan.panning ? "cursor-grabbing" : "cursor-grab"} [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/40 hover:[&::-webkit-scrollbar-thumb]:bg-white/60`}
+        data-testid="board-canvas"
+      >
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}

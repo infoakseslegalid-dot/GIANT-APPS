@@ -337,7 +337,7 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
           </DropdownMenu>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto minimal-scrollbar px-2 pb-1 space-y-2 min-h-[8px]">
+      <div className="flex-1 overflow-y-auto minimal-scrollbar px-2 pb-1 space-y-2 min-h-[8px] cursor-default">
         <SortableContext items={sortedCards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
           {sortedCards.map((card) => (
             <CardTile

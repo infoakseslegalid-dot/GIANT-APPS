@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserPlus, Trash2, Pencil, Activity } from "lucide-react";
+import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw } from "lucide-react";
 import { api, errMsg, ROLE_LABELS, fmtDateTime } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "../components/common";
@@ -443,6 +443,277 @@ function FlowTab() {
   );
 }
 
+function ChecklistTemplateRow({ tpl }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(tpl.name);
+  const [itemsText, setItemsText] = useState((tpl.items || []).join("\n"));
+  const [busy, setBusy] = useState(false);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["checklist-templates"] });
+
+  const save = async () => {
+    if (!name.trim()) return toast.error("Nama template wajib diisi");
+    setBusy(true);
+    try {
+      await api.patch(`/checklist-templates/${tpl.id}`, {
+        name: name.trim(),
+        items: itemsText.split("\n").map((s) => s.trim()).filter(Boolean),
+      });
+      toast.success("Template disimpan");
+      setEditing(false);
+      invalidate();
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    if (!confirm(`Hapus template "${tpl.name}"?`)) return;
+    try {
+      await api.delete(`/checklist-templates/${tpl.id}`);
+      toast.success("Template dihapus");
+      invalidate();
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+
+  if (!editing) {
+    return (
+      <div className="rounded-lg border border-[#DFE1E6] bg-white p-4" data-testid={`tpl-row-${tpl.id}`}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm text-[#172B4D]">{tpl.name}</p>
+            <p className="text-xs text-[#8590A2]">{(tpl.items || []).length} item</p>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <button onClick={() => setEditing(true)} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]" title="Ubah"><Pencil size={14} /></button>
+            <button onClick={remove} className="p-1.5 rounded hover:bg-[#FFEDEB] text-[#CA3521]" title="Hapus"><Trash2 size={14} /></button>
+          </div>
+        </div>
+        {(tpl.items || []).length > 0 && (
+          <ul className="mt-2 space-y-0.5">
+            {tpl.items.map((it, i) => (
+              <li key={i} className="text-xs text-[#44546F] flex items-center gap-1.5">
+                <span className="inline-block w-3 h-3 rounded-[3px] border border-[#B3BAC5]" /> {it}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border-2 border-[#0C66E4] bg-white p-4">
+      <label className="text-xs font-semibold text-[#44546F]">Nama template</label>
+      <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+      <label className="text-xs font-semibold text-[#44546F] mt-2 block">Item (satu per baris)</label>
+      <textarea
+        value={itemsText}
+        onChange={(e) => setItemsText(e.target.value)}
+        rows={6}
+        className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
+      />
+      <div className="flex gap-2 mt-2">
+        <button onClick={save} disabled={busy} className={btnPrimary}>{busy ? "Menyimpan..." : "Simpan"}</button>
+        <button onClick={() => { setEditing(false); setName(tpl.name); setItemsText((tpl.items || []).join("\n")); }} className="h-9 px-4 rounded-lg border border-[#DFE1E6] text-sm text-[#44546F] hover:bg-[#F1F2F4]">Batal</button>
+      </div>
+    </div>
+  );
+}
+
+function ChecklistTemplatesTab() {
+  const qc = useQueryClient();
+  const { data: templates } = useQuery({
+    queryKey: ["checklist-templates"],
+    queryFn: () => api.get("/checklist-templates").then((r) => r.data),
+  });
+  const [name, setName] = useState("");
+  const [itemsText, setItemsText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    if (!name.trim()) return toast.error("Nama template wajib diisi");
+    setBusy(true);
+    try {
+      await api.post("/checklist-templates", {
+        name: name.trim(),
+        items: itemsText.split("\n").map((s) => s.trim()).filter(Boolean),
+      });
+      toast.success("Template dibuat");
+      setName(""); setItemsText("");
+      qc.invalidateQueries({ queryKey: ["checklist-templates"] });
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-4" data-testid="admin-checklist-templates-tab">
+      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5">
+        <h3 className="font-heading font-bold text-[#172B4D] mb-1 flex items-center gap-2">
+          <ListChecks size={16} /> Template Checklist
+        </h3>
+        <p className="text-sm text-[#44546F] mb-3">
+          Template dipakai ulang saat menambah checklist di kartu. Isi item akan disalin ke kartu.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="text-xs font-semibold text-[#44546F]">Nama template baru</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="mis: Dokumen Pendirian PT" className={inputCls} data-testid="tpl-new-name" />
+          </div>
+          <div className="sm:row-span-2">
+            <label className="text-xs font-semibold text-[#44546F]">Item (satu per baris)</label>
+            <textarea
+              value={itemsText}
+              onChange={(e) => setItemsText(e.target.value)}
+              rows={5}
+              placeholder={"Akta\nSK Kemenkumham\nNPWP\nNIB"}
+              className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
+              data-testid="tpl-new-items"
+            />
+          </div>
+          <div>
+            <button onClick={create} disabled={busy} className={`${btnPrimary} flex items-center gap-1.5`} data-testid="tpl-new-submit">
+              <Plus size={14} /> {busy ? "Membuat..." : "Buat Template"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {(templates || []).map((t) => <ChecklistTemplateRow key={t.id} tpl={t} />)}
+        {templates && templates.length === 0 && (
+          <p className="text-sm text-[#8590A2] col-span-full">Belum ada template. Buat satu di atas.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PermissionsTab() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["permissions"],
+    queryFn: () => api.get("/permissions").then((r) => r.data),
+  });
+  const [savingCell, setSavingCell] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const roles = data?.roles || [];
+  const perms = data?.permissions || [];
+  const categories = [...new Set(perms.map((p) => p.category))];
+
+  const toggle = async (perm, role, next) => {
+    if (role === "super_admin") return;
+    setSavingCell(`${perm.key}:${role}`);
+    try {
+      const r = await api.patch("/permissions", { role, key: perm.key, allowed: next });
+      qc.setQueryData(["permissions"], r.data.matrix);
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setSavingCell(null);
+    }
+  };
+
+  const setRoleAll = async (perm, roleList, value) => {
+    try {
+      const changes = roleList.filter((r) => r !== "super_admin").map((role) => ({ role, key: perm.key, allowed: value }));
+      const r = await api.patch("/permissions", { changes });
+      qc.setQueryData(["permissions"], r.data.matrix);
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      const r = await api.post("/permissions/sync");
+      qc.setQueryData(["permissions"], r.data.matrix);
+      toast.success(`Sinkron: ${r.data.permissions} izin, ${r.data.newRows} baris baru`);
+    } catch (e) { toast.error(errMsg(e)); } finally { setSyncing(false); }
+  };
+
+  if (isLoading) return <p className="text-sm text-[#8590A2] p-4">Memuat matriks...</p>;
+
+  return (
+    <div className="space-y-4" data-testid="admin-permissions-tab">
+      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-heading font-bold text-[#172B4D] mb-1 flex items-center gap-2">
+              <ShieldCheck size={16} /> Hak Akses per Peran
+            </h3>
+            <p className="text-sm text-[#44546F]">
+              Centang aksi yang boleh dilakukan tiap peran. <b>Super Admin</b> selalu penuh.
+              Cek kepemilikan lama (PIC / divisi / owner) tetap berlaku di atas matriks ini.
+              Daftar <b>Tabel Database</b> ikut otomatis saat ada model baru.
+            </p>
+          </div>
+          <button onClick={sync} disabled={syncing} className={`${btnPrimary} flex items-center gap-1.5 shrink-0`}>
+            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> Sinkronkan
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[720px]">
+          <thead className="sticky top-0 bg-[#F7F8F9] border-b border-[#DFE1E6]">
+            <tr>
+              <th className="text-left font-semibold text-[#44546F] px-4 py-2.5 w-[40%]">Aksi</th>
+              {roles.map((role) => (
+                <th key={role} className="text-center font-semibold text-[#44546F] px-2 py-2.5 whitespace-nowrap">
+                  {ROLE_LABELS[role] || role}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {categories.flatMap((cat) => [
+                <tr key={`cat-${cat}`} className="bg-[#FAFBFC]">
+                  <td colSpan={roles.length + 1} className="px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#8590A2]">{cat}</td>
+                </tr>,
+                ...perms.filter((p) => p.category === cat).map((perm) => (
+                  <tr key={perm.key} className="border-b border-[#F1F2F4] hover:bg-[#F7F8F9]">
+                    <td className="px-4 py-2 text-[#172B4D]">
+                      <div className="flex items-center gap-2">
+                        <span>{perm.label}</span>
+                        <button
+                          title="Aktifkan semua peran"
+                          onClick={() => setRoleAll(perm, roles, true)}
+                          className="text-[10px] text-[#0C66E4] hover:underline"
+                        >semua</button>
+                        <button
+                          title="Matikan semua peran"
+                          onClick={() => setRoleAll(perm, roles, false)}
+                          className="text-[10px] text-[#8590A2] hover:underline"
+                        >nihil</button>
+                      </div>
+                      <code className="text-[10px] text-[#8590A2]">{perm.key}</code>
+                    </td>
+                    {roles.map((role) => {
+                      const on = !!perm.allow[role];
+                      const isSuper = role === "super_admin";
+                      const busy = savingCell === `${perm.key}:${role}`;
+                      return (
+                        <td key={role} className="text-center px-2 py-2">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={isSuper || busy}
+                            onChange={(e) => toggle(perm, role, e.target.checked)}
+                            className="w-4 h-4 accent-[#0C66E4] disabled:opacity-40"
+                            data-testid={`perm-${perm.key}-${role}`}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                )),
+            ])}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPanel() {
   const { user } = useAuth();
   const { data: divisions } = useQuery({ queryKey: ["divisions"], queryFn: () => api.get("/divisions").then((r) => r.data) });
@@ -469,6 +740,8 @@ export default function AdminPanel() {
           {isAdmin && <TabsTrigger value="divisions" data-testid="tab-trigger-divisions">Divisi</TabsTrigger>}
           {isAdmin && <TabsTrigger value="boards" data-testid="tab-trigger-boards">Board</TabsTrigger>}
           {isAdmin && <TabsTrigger value="flow" data-testid="tab-trigger-flow">Alur & Syarat List</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="checklist-templates" data-testid="tab-trigger-checklist-templates">Template Checklist</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="permissions" data-testid="tab-trigger-permissions">Hak Akses</TabsTrigger>}
           <TabsTrigger value="activity" data-testid="tab-trigger-activity">Log Aktivitas</TabsTrigger>
         </TabsList>
         {isAdmin && (
@@ -477,6 +750,8 @@ export default function AdminPanel() {
             <TabsContent value="divisions" className="mt-4"><DivisionsTab divisions={divisions} /></TabsContent>
             <TabsContent value="boards" className="mt-4"><BoardsTab divisions={divisions} /></TabsContent>
             <TabsContent value="flow" className="mt-4"><FlowTab /></TabsContent>
+            <TabsContent value="checklist-templates" className="mt-4"><ChecklistTemplatesTab /></TabsContent>
+            <TabsContent value="permissions" className="mt-4"><PermissionsTab /></TabsContent>
           </>
         )}
         <TabsContent value="activity" className="mt-4"><ActivityTab /></TabsContent>

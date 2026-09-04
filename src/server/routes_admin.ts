@@ -9,8 +9,59 @@ import {
 import {
   db, requireAdmin, requireSupervisor, canViewBoard, broadcastBoard, getBoard, hashPassword, todayStr
 } from './deps'
+import { fullMatrix, syncPermissions, invalidatePermCache, requirePerm } from './permissions'
+import { can } from './permissions'
+import { putObject, getObject } from './storage'
+import { v4 as uuidv4 } from 'uuid'
 
 export const adminRouter = new Hono()
+
+// Boleh ubah latar board: pengelola board (matriks) ATAU anggota board.
+async function canEditBoardBg(user: any, board: any) {
+  if (!user || !board) return false
+  if (await can(user, 'board.manage')) return true
+  if (['super_admin', 'admin', 'supervisor'].includes(user.role)) return true
+  return (board.members || []).some((m: any) => m.userId === user.id)
+}
+const BG_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const BG_MAX_BYTES = 5 * 1024 * 1024
+
+/** URL relatif gambar latar board (dengan cache-buster) atau null. */
+export function boardBgUrl(board: any): string | null {
+  if (!board?.backgroundImagePath) return null
+  const v = String(board.backgroundImagePath).slice(-12)
+  return `/api/boards/${board.id}/background-image?v=${encodeURIComponent(v)}`
+}
+
+// ---------- PERMISSION MATRIX (role × aksi) ----------
+adminRouter.get('/permissions', async (c) => {
+  await requirePerm(c, 'permission.manage')
+  return c.json(await fullMatrix())
+})
+
+adminRouter.post('/permissions/sync', async (c) => {
+  await requirePerm(c, 'permission.manage')
+  const res = await syncPermissions()
+  return c.json({ ok: true, ...res, matrix: await fullMatrix() })
+})
+
+adminRouter.patch('/permissions', async (c) => {
+  await requirePerm(c, 'permission.manage')
+  const body = await c.req.json()
+  const changes = Array.isArray(body.changes) ? body.changes
+    : (body.role && body.key ? [{ role: body.role, key: body.key, allowed: !!body.allowed }] : [])
+  if (!changes.length) return c.json({ error: 'Tidak ada perubahan' }, 400)
+  for (const ch of changes) {
+    if (ch.role === 'super_admin') continue // super_admin selalu penuh
+    await db.rolePermission.upsert({
+      where: { role_permKey: { role: ch.role, permKey: ch.key } },
+      update: { allowed: !!ch.allowed },
+      create: { role: ch.role, permKey: ch.key, allowed: !!ch.allowed },
+    })
+  }
+  invalidatePermCache()
+  return c.json({ ok: true, matrix: await fullMatrix() })
+})
 
 
 
@@ -32,7 +83,7 @@ const CreateUserBody = z.object({
 
 adminRouter.post('/users', zValidator('json', CreateUserBody), async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'user.manage')
   const body = c.req.valid('json')
   const email = body.email.toLowerCase().trim()
   
@@ -71,7 +122,7 @@ const UpdateUserBody = z.object({
 
 adminRouter.patch('/users/:user_id', zValidator('json', UpdateUserBody), async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'user.manage')
   const userId = c.req.param('user_id')
   const body = c.req.valid('json')
   
@@ -120,7 +171,7 @@ const DivisionBody = z.object({
 
 adminRouter.post('/divisions', zValidator('json', DivisionBody), async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'division.manage')
   const body = c.req.valid('json')
   
   const doc = await db.division.create({
@@ -135,7 +186,7 @@ adminRouter.post('/divisions', zValidator('json', DivisionBody), async (c) => {
 
 adminRouter.patch('/divisions/:division_id', zValidator('json', DivisionBody), async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'division.manage')
   const divId = c.req.param('division_id')
   const body = c.req.valid('json')
   
@@ -148,7 +199,7 @@ adminRouter.patch('/divisions/:division_id', zValidator('json', DivisionBody), a
 
 adminRouter.delete('/divisions/:division_id', async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'division.manage')
   const divId = c.req.param('division_id')
   
   const boardsCount = await db.board.count({ where: { divisionId: divId, isArchived: false } })
@@ -183,6 +234,7 @@ adminRouter.get('/boards', async (c) => {
     rest.division_color = d ? d.color : null
     rest.card_count = workItems.length
     rest.member_ids = members.map((m: any) => m.userId)
+    rest.background_image_url = boardBgUrl(b)
     return rest
   })
   return c.json(result)
@@ -200,7 +252,7 @@ const CreateBoardBody = z.object({
 
 adminRouter.post('/boards', zValidator('json', CreateBoardBody), async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'board.manage')
   const body = c.req.valid('json')
   
   const doc = await db.board.create({
@@ -246,7 +298,7 @@ const UpdateBoardBody = z.object({
 
 adminRouter.patch('/boards/:board_id', zValidator('json', UpdateBoardBody), async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'board.manage')
   const boardId = c.req.param('board_id')
   const body = c.req.valid('json')
   
@@ -278,7 +330,7 @@ adminRouter.patch('/boards/:board_id', zValidator('json', UpdateBoardBody), asyn
 
 adminRouter.delete('/boards/:board_id', async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'board.manage')
   const boardId = c.req.param('board_id')
   
   await db.board.update({ where: { id: boardId }, data: { isArchived: true } })
@@ -287,7 +339,7 @@ adminRouter.delete('/boards/:board_id', async (c) => {
 
 adminRouter.post('/boards/:board_id/unarchive', async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'board.manage')
   const boardId = c.req.param('board_id')
   
   await db.board.update({ where: { id: boardId }, data: { isArchived: false } })
@@ -301,6 +353,73 @@ adminRouter.get('/boards-archived', async (c) => {
   return c.json(boards)
 })
 
+// ---------- BOARD BACKGROUND ----------
+
+// Set warna solid, atau hapus gambar latar.
+adminRouter.patch('/boards/:board_id/background', async (c) => {
+  const user = c.get('user')
+  const boardId = c.req.param('board_id')
+  const board = await db.board.findUnique({ where: { id: boardId }, include: { members: true } })
+  if (!board) return c.json({ error: 'Board tidak ditemukan' }, 404)
+  if (!(await canEditBoardBg(user, board))) return c.json({ error: 'Tidak diizinkan mengubah latar board ini' }, 403)
+
+  const body = await c.req.json()
+  const data: any = {}
+  if (typeof body.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.color)) data.background = body.color
+  if (body.clear_image) { data.backgroundImagePath = null; data.backgroundImageType = null }
+  if (!Object.keys(data).length) return c.json({ error: 'Tidak ada perubahan' }, 400)
+
+  const updated = await db.board.update({ where: { id: boardId }, data })
+  await broadcastBoard(boardId)
+  return c.json({ ...updated, background_image_url: boardBgUrl(updated) })
+})
+
+// Unggah gambar latar custom (multipart, field `file`).
+adminRouter.post('/boards/:board_id/background/image', async (c) => {
+  const user = c.get('user')
+  const boardId = c.req.param('board_id')
+  const board = await db.board.findUnique({ where: { id: boardId }, include: { members: true } })
+  if (!board) return c.json({ error: 'Board tidak ditemukan' }, 404)
+  if (!(await canEditBoardBg(user, board))) return c.json({ error: 'Tidak diizinkan mengubah latar board ini' }, 403)
+
+  const form = await c.req.parseBody()
+  const file = form['file'] as File
+  if (!file) return c.json({ error: 'Tidak ada berkas' }, 400)
+  const type = file.type || 'application/octet-stream'
+  if (!BG_IMAGE_TYPES.includes(type)) return c.json({ error: 'Format harus JPG, PNG, WEBP, atau GIF' }, 400)
+  if (file.size > BG_MAX_BYTES) return c.json({ error: 'Ukuran maksimal 5 MB' }, 400)
+
+  const buf = Buffer.from(await file.arrayBuffer())
+  const ext = (file.name || 'bg').split('.').pop() || 'img'
+  const path = `board-bg/${boardId}/${uuidv4()}.${ext}`
+  await putObject(path, buf, type)
+
+  const updated = await db.board.update({
+    where: { id: boardId },
+    data: { backgroundImagePath: path, backgroundImageType: type },
+  })
+  await broadcastBoard(boardId)
+  return c.json({ ...updated, background_image_url: boardBgUrl(updated) })
+})
+
+// Serve gambar latar.
+adminRouter.get('/boards/:board_id/background-image', async (c) => {
+  const boardId = c.req.param('board_id')
+  const board = await db.board.findUnique({ where: { id: boardId } })
+  if (!board || !board.backgroundImagePath) return c.text('Not found', 404)
+  try {
+    const { data, contentType } = await getObject(board.backgroundImagePath)
+    return new Response(data, {
+      headers: {
+        'Content-Type': board.backgroundImageType || contentType || 'image/jpeg',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    })
+  } catch {
+    return c.text('Gagal memuat gambar', 500)
+  }
+})
+
 const CopyBoardBody = z.object({
   name: z.string(),
   withCards: z.boolean().default(false),
@@ -308,7 +427,7 @@ const CopyBoardBody = z.object({
 
 adminRouter.post('/boards/:board_id/copy', zValidator('json', CopyBoardBody), async (c) => {
   const user = c.get('user')
-  requireAdmin(user)
+  await requirePerm(c, 'board.manage')
   const boardId = c.req.param('board_id')
   const body = c.req.valid('json')
   
@@ -459,7 +578,7 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
   })
 
   return c.json({
-    board,
+    board: { ...board, background_image_url: boardBgUrl(board) },
     lists,
     labels,
     cards: cardsOut,
@@ -488,6 +607,7 @@ const CreateListBody = z.object({
 })
 
 adminRouter.post('/boards/:board_id/lists', zValidator('json', CreateListBody), async (c) => {
+  await requirePerm(c, 'list.manage')
   const user = c.get('user')
   const boardId = c.req.param('board_id')
   const body = c.req.valid('json')
@@ -523,7 +643,7 @@ adminRouter.patch('/lists/:list_id', zValidator('json', UpdateListBody), async (
   if (!lst) return c.json({ error: "List tidak ditemukan" }, 404)
 
   // Ubah syarat masuk list hanya boleh admin (diatur dari Admin Panel).
-  if (body.entryRequirements !== undefined) requireAdmin(user)
+  if (body.entryRequirements !== undefined || body.color !== undefined) await requirePerm(c, 'list.entry_requirements')
 
   const updates: any = {}
   if (body.name !== undefined) updates.name = body.name
@@ -539,6 +659,7 @@ adminRouter.patch('/lists/:list_id', zValidator('json', UpdateListBody), async (
 })
 
 adminRouter.delete('/lists/:list_id', async (c) => {
+  await requirePerm(c, 'list.manage')
   const listId = c.req.param('list_id')
   const lst = await db.list.findUnique({ where: { id: listId } })
   if (!lst) return c.json({ error: "List tidak ditemukan" }, 404)
@@ -558,6 +679,7 @@ const ReorderListsBody = z.object({
 })
 
 adminRouter.post('/boards/:board_id/lists/reorder', zValidator('json', ReorderListsBody), async (c) => {
+  await requirePerm(c, 'list.manage')
   const boardId = c.req.param('board_id')
   const body = c.req.valid('json')
   
@@ -573,6 +695,7 @@ adminRouter.post('/boards/:board_id/lists/reorder', zValidator('json', ReorderLi
 })
 
 adminRouter.post('/lists/:list_id/copy', async (c) => {
+  await requirePerm(c, 'list.manage')
   const user = c.get('user')
   const listId = c.req.param('list_id')
   const src = await db.list.findUnique({ where: { id: listId } })
@@ -616,6 +739,7 @@ adminRouter.post('/lists/:list_id/copy', async (c) => {
 })
 
 adminRouter.post('/lists/:list_id/archive-all-cards', async (c) => {
+  await requirePerm(c, 'list.manage')
   const listId = c.req.param('list_id')
   const lst = await db.list.findUnique({ where: { id: listId } })
   if (!lst) return c.json({ error: "List tidak ditemukan" }, 404)
@@ -634,7 +758,7 @@ const MoveListBody = z.object({
 
 adminRouter.post('/lists/:list_id/move', zValidator('json', MoveListBody), async (c) => {
   const user = c.get('user')
-  requireSupervisor(user)
+  await requirePerm(c, 'list.manage')
   const listId = c.req.param('list_id')
   const body = c.req.valid('json')
   
@@ -668,6 +792,7 @@ const LabelBody = z.object({
 })
 
 adminRouter.post('/boards/:board_id/labels', zValidator('json', LabelBody), async (c) => {
+  await requirePerm(c, 'label.manage')
   const boardId = c.req.param('board_id')
   const body = c.req.valid('json')
   await getBoard(boardId) // ensures exists
@@ -684,6 +809,7 @@ adminRouter.post('/boards/:board_id/labels', zValidator('json', LabelBody), asyn
 })
 
 adminRouter.patch('/labels/:label_id', zValidator('json', LabelBody), async (c) => {
+  await requirePerm(c, 'label.manage')
   const labelId = c.req.param('label_id')
   const body = c.req.valid('json')
   
@@ -699,6 +825,7 @@ adminRouter.patch('/labels/:label_id', zValidator('json', LabelBody), async (c) 
 })
 
 adminRouter.delete('/labels/:label_id', async (c) => {
+  await requirePerm(c, 'label.manage')
   const labelId = c.req.param('label_id')
   const lbl = await db.label.findUnique({ where: { id: labelId } })
   if (!lbl) return c.json({ error: "Label tidak ditemukan" }, 404)
@@ -726,7 +853,7 @@ const AutomationBody = z.object({
 
 adminRouter.post('/boards/:board_id/automation', zValidator('json', AutomationBody), async (c) => {
   const user = c.get('user')
-  requireSupervisor(user)
+  await requirePerm(c, 'automation.manage')
   const boardId = c.req.param('board_id')
   const body = c.req.valid('json')
   
@@ -752,7 +879,7 @@ adminRouter.post('/boards/:board_id/automation', zValidator('json', AutomationBo
 
 adminRouter.delete('/automation/:rule_id', async (c) => {
   const user = c.get('user')
-  requireSupervisor(user)
+  await requirePerm(c, 'automation.manage')
   const ruleId = c.req.param('rule_id')
   await db.automationRule.delete({ where: { id: ruleId } })
   return c.json({ ok: true })
@@ -863,4 +990,67 @@ adminRouter.get('/stats', async (c) => {
     by_division: byDivision,
     by_user: byUser
   })
+})
+
+// ---------- CHECKLIST TEMPLATES ----------
+// GET: semua user login (dipakai saat menambah checklist di kartu).
+// POST/PATCH/DELETE: admin saja (dikelola dari Panel Admin).
+
+const asItems = (v) => {
+  if (Array.isArray(v)) return v.map((s) => String(s).trim()).filter(Boolean)
+  if (typeof v === 'string') {
+    return v.split('\n').map((s) => s.trim()).filter(Boolean)
+  }
+  return []
+}
+const tplOut = (t) => ({
+  id: t.id,
+  name: t.name,
+  items: Array.isArray(t.items) ? t.items : asItems(t.items),
+  position: t.position,
+  created_at: t.createdAt,
+})
+
+adminRouter.get('/checklist-templates', async (c) => {
+  const rows = await db.checklistTemplate.findMany({ orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] })
+  return c.json(rows.map(tplOut))
+})
+
+adminRouter.post('/checklist-templates', async (c) => {
+  const user = c.get('user')
+  await requirePerm(c, 'checklist_template.manage')
+  const body = await c.req.json()
+  const name = (body.name || '').trim()
+  if (!name) return c.json({ error: 'Nama template wajib diisi' }, 400)
+  const items = asItems(body.items)
+  const count = await db.checklistTemplate.count()
+  const created = await db.checklistTemplate.create({
+    data: { name, items, position: (count + 1) * 10, createdById: user.id },
+  })
+  return c.json(tplOut(created))
+})
+
+adminRouter.patch('/checklist-templates/:id', async (c) => {
+  const user = c.get('user')
+  await requirePerm(c, 'checklist_template.manage')
+  const id = c.req.param('id')
+  const body = await c.req.json()
+  const data = {}
+  if (body.name !== undefined) {
+    const name = (body.name || '').trim()
+    if (!name) return c.json({ error: 'Nama template wajib diisi' }, 400)
+    data.name = name
+  }
+  if (body.items !== undefined) data.items = asItems(body.items)
+  if (body.position !== undefined) data.position = Number(body.position) || 0
+  const updated = await db.checklistTemplate.update({ where: { id }, data })
+  return c.json(tplOut(updated))
+})
+
+adminRouter.delete('/checklist-templates/:id', async (c) => {
+  const user = c.get('user')
+  await requirePerm(c, 'checklist_template.manage')
+  const id = c.req.param('id')
+  await db.checklistTemplate.delete({ where: { id } })
+  return c.json({ ok: true })
 })

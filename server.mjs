@@ -16,6 +16,8 @@ const handle = app.getRequestHandler()
 const honoListener = getRequestListener(api.fetch)
 
 app.prepare().then(() => {
+  // Upgrade handler milik Next (HMR websocket saat dev) — hanya tersedia setelah prepare().
+  const nextUpgrade = app.getUpgradeHandler()
   const server = createServer((req, res) => {
     try {
       const parsedUrl = parse(req.url, true)
@@ -38,11 +40,30 @@ app.prepare().then(() => {
   })
   
   const wss = new WebSocketServer({ noServer: true })
-  
-  wss.on('connection', (ws, request) => {
-    ws.on('message', (message) => {
-      ws.send(JSON.stringify({ type: 'pong' }))
+
+  // Registry semua koneksi klien yang aktif. Hidup di scope custom-server ini
+  // (tidak ikut ter-reload oleh HMR), jadi aman dipakai sebagai anchor global.
+  const wsClients = new Set()
+
+  // Dipanggil oleh layer API (src/server/deps.ts -> WSManager.broadcast) lewat globalThis.
+  globalThis.__WS_BROADCAST__ = (payload) => {
+    const data = typeof payload === 'string' ? payload : JSON.stringify(payload)
+    for (const ws of wsClients) {
+      try {
+        if (ws.readyState === 1) ws.send(data)
+      } catch {
+        wsClients.delete(ws)
+      }
+    }
+  }
+
+  wss.on('connection', (ws) => {
+    wsClients.add(ws)
+    ws.on('message', () => {
+      try { ws.send(JSON.stringify({ type: 'pong' })) } catch {}
     })
+    ws.on('close', () => wsClients.delete(ws))
+    ws.on('error', () => wsClients.delete(ws))
   })
 
   server.on('upgrade', (req, socket, head) => {
@@ -52,7 +73,8 @@ app.prepare().then(() => {
         wss.emit('connection', ws, req)
       })
     } else {
-      socket.destroy()
+      // HMR / _next websocket dll → biarkan Next yang menangani.
+      nextUpgrade(req, socket, head)
     }
   })
 
