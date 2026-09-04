@@ -5,6 +5,7 @@ import { api, errMsg, API } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import CardBack from './card-back/CardBack';
 import SendWorkDialog from '../SendWorkDialog';
+import MoveCardDialog from '../MoveCardDialog';
 import { resolveColor } from './card-back/helpers';
 import type {
   TrelloCard, CardMember, CardLabel, CardAttachment, CardActivity, Checklist,
@@ -23,6 +24,7 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
   const { user } = useAuth() as any;
   const qc = useQueryClient();
   const [showSend, setShowSend] = useState(false);
+  const [showMove, setShowMove] = useState(false);
   // bisa berpindah ke assignment turunan tanpa menutup modal
   const [activeId, setActiveId] = useState(itemId);
   const [prevProp, setPrevProp] = useState(itemId);
@@ -44,7 +46,7 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
   if (!data || !users) {
     return (
       <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-16 backdrop-blur-sm" onClick={onClose}>
-        <div className="w-full max-w-4xl rounded-xl bg-[#f4f5f7] p-10 text-center text-[#44546F]">Memuat...</div>
+        <div className="w-full max-w-4xl rounded-xl bg-[hsl(var(--muted))] p-10 text-center text-2">Memuat...</div>
       </div>
     );
   }
@@ -194,7 +196,10 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
   const card: TrelloCard = {
     id: item.id,
     title: item.title,
-    isComplete: item.status === 'done',
+    clientName: item.client_name ?? null,
+    isComplete: item.status === 'done' || item.is_done,
+    statusLabel: item.display_status_label,
+    statusTone: item.display_status_tone,
     listId: item.list_id,
     listName: list_name || 'List',
     description: item.description || '',
@@ -224,6 +229,17 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
     }
   };
 
+  /** Upload → URL absolut (untuk disisipkan saat MENGEDIT komentar). */
+  const uploadInline = async (f: File) => {
+    const id = await uploadFile(f);
+    if (!id) return null;
+    return {
+      url: `${window.location.origin}${API}/attachments/${id}/download`,
+      fileName: f.name || 'berkas',
+      isImage: (f.type || '').startsWith('image/'),
+    };
+  };
+
   return (
    <>
     <CardBack
@@ -235,6 +251,8 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       canEdit={canEdit}
       canComment={canComment}
       picName={item.current_pic_name || null}
+      picUserId={item.current_pic_id || null}
+      ownerName={item.owner_user_name || null}
       isMasterCard={!item.target_division_id}
       isAssignment={!!data.is_assignment}
       master={data.master ? { id: data.master.id, title: data.master.title, boardName: data.master.board_name, listName: data.master.list_name } : null}
@@ -242,7 +260,10 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       assignments={(data.assignments || []).map((a: any) => ({
         id: a.id, title: a.title, divisionName: a.division_name, divisionKey: a.division_key,
         picName: a.pic_name, distributionStatus: a.distribution_status, workStatus: a.work_status, listName: a.list_name,
+        displayStatus: a.display_status, displayStatusLabel: a.display_status_label,
+        displayStatusTone: a.display_status_tone, isDone: a.is_done,
       }))}
+      groupProgress={data.group_progress || null}
       onOpenAssignment={(id: string) => setActiveId(id)}
 
       allUsers={(users || []).map((u: any) => ({
@@ -252,9 +273,10 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
         await gate(() => run(() => api.post(`/work-items/${curId}/assign`, add ? { add_user_ids: [userId] } : { remove_user_ids: [userId] })));
       }}
       onOpenSend={() => setShowSend(true)}
+      onOpenMove={() => setShowMove(true)}
 
       onUpdateCard={async (patch) => {
-        if (!canEdit && (patch.isComplete !== undefined || patch.title !== undefined || patch.description !== undefined || patch.startDate !== undefined || patch.dueDate !== undefined || patch.coverColor !== undefined || patch.coverImageUrl !== undefined)) {
+        if (!canEdit && (patch.isComplete !== undefined || patch.title !== undefined || patch.clientName !== undefined || patch.description !== undefined || patch.startDate !== undefined || patch.dueDate !== undefined || patch.coverColor !== undefined || patch.coverImageUrl !== undefined)) {
           return denyEdit();
         }
         // status (mark complete) tidak lewat PATCH — pakai submit/reopen
@@ -270,6 +292,7 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
 
         const payload: any = {};
         if (patch.title !== undefined) payload.title = patch.title;
+        if (patch.clientName !== undefined) payload.client_name = patch.clientName;
         if (patch.description !== undefined) payload.description = patch.description;
         if (patch.startDate !== undefined) payload.start_date = patch.startDate;
         if (patch.dueDate !== undefined) payload.due_date = patch.dueDate;
@@ -302,6 +325,7 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
         }
       }}
 
+      onUploadInline={uploadInline}
       onAddComment={async (html, files, mentionIds) => {
         let firstId: string | null = null;
         for (const f of files || []) {
@@ -384,7 +408,15 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
         }
       }}
       onJoin={async () => {
-        if (user?.id) await run(() => api.post(`/work-items/${curId}/assign`, { add_user_ids: [user.id] }), 'Anda bergabung');
+        if (!user?.id) return;
+        const r = await run(() => api.post(`/work-items/${curId}/assign`, { add_user_ids: [user.id] }));
+        if (r) toast.success(r.data?.became_pic ? 'Anda menjadi PIC kartu ini' : 'Anda bergabung sebagai anggota');
+      }}
+      onTakePic={async () => {
+        await run(() => api.post(`/work-items/${curId}/set-pic`), 'Anda menjadi PIC kartu ini');
+      }}
+      onTransferOwner={async (userId: string) => {
+        await run(() => api.post(`/work-items/${curId}/transfer-owner`, { user_id: userId }), 'Kepemilikan kartu dipindahkan');
       }}
     />
 
@@ -393,6 +425,17 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
         item={item}
         onClose={() => setShowSend(false)}
         onDone={() => { setShowSend(false); invalidate(); qc.invalidateQueries({ queryKey: ['bank-data'] }); qc.invalidateQueries({ queryKey: ['bank-data-summary'] }); }}
+      />
+    )}
+    {showMove && (
+      <MoveCardDialog
+        item={item}
+        onClose={() => setShowMove(false)}
+        onDone={() => {
+          setShowMove(false);
+          invalidate();
+          qc.invalidateQueries({ queryKey: ['boards'] });
+        }}
       />
     )}
    </>

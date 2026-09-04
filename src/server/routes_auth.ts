@@ -102,6 +102,8 @@ authApp.patch('/me', async (c) => {
     const data: any = {};
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
     if (typeof body.avatar_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.avatar_color)) data.avatarColor = body.avatar_color;
+    if (['light', 'dark', 'system'].includes(body.theme)) data.theme = body.theme;
+    if (['id', 'en'].includes(body.locale)) data.locale = body.locale;
     if (Object.keys(data).length === 0) return c.json({ error: 'Tidak ada perubahan' }, 400);
     const updated = await db.user.update({ where: { id: user.id }, data });
     return c.json(publicUser(updated));

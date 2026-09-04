@@ -11,10 +11,10 @@ import type { CardBackProps } from './types';
 import CardDatesPopover from './CardDates';
 
 const btn =
-  'flex h-[30px] items-center gap-[5px] rounded-[5px] border border-[#d7dce2] bg-[#f7f8f9] px-[10px] text-[12px] font-medium text-[#172b4d] transition-colors hover:bg-[#e9ebee]';
+  'flex h-[30px] items-center gap-[5px] rounded-[5px] border border-[#d7dce2] bg-[hsl(var(--muted))] px-[10px] text-[12px] font-medium text-foreground transition-colors hover:bg-[hsl(var(--muted))]';
 const pop =
-  'absolute left-0 top-[36px] z-30 w-[248px] rounded-[8px] border border-[#dfe1e6] bg-white p-3 shadow-[0_8px_24px_#0003]';
-const popHead = 'relative mb-2 flex h-6 items-center justify-center text-[12px] font-bold text-[#5e6c84]';
+  'absolute left-0 top-[36px] z-30 w-[248px] rounded-[8px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-3 shadow-[0_8px_24px_#0003]';
+const popHead = 'relative mb-2 flex h-6 items-center justify-center text-[12px] font-bold text-3';
 
 type Which = null | 'add' | 'dates' | 'members' | 'checklist';
 
@@ -73,14 +73,14 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
         {openWhich === 'add' && (
           <div className={pop}>
             <div className={popHead}>Tambah ke kartu</div>
-            <button type="button" onClick={() => { setOpenWhich(null); onLabels?.(); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-[#172b4d] hover:bg-[#f1f2f4]">
-              <Tag size={14} className="text-[#5e6c84]" /> Labels
+            <button type="button" onClick={() => { setOpenWhich(null); onLabels?.(); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-foreground hover:bg-[hsl(var(--muted))]">
+              <Tag size={14} className="text-3" /> Labels
             </button>
-            <button type="button" onClick={() => { setOpenWhich(null); fileRef.current?.click(); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-[#172b4d] hover:bg-[#f1f2f4]">
-              <Paperclip size={14} className="text-[#5e6c84]" /> Lampiran
+            <button type="button" onClick={() => { setOpenWhich(null); fileRef.current?.click(); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-foreground hover:bg-[hsl(var(--muted))]">
+              <Paperclip size={14} className="text-3" /> Lampiran
             </button>
-            <button type="button" onClick={() => { setOpenWhich(null); onUpdateCard({ coverColor: 'blue', coverImageUrl: null }); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-[#172b4d] hover:bg-[#f1f2f4]">
-              <ImageIcon size={14} className="text-[#5e6c84]" /> Cover
+            <button type="button" onClick={() => { setOpenWhich(null); onUpdateCard({ coverColor: 'blue', coverImageUrl: null }); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-foreground hover:bg-[hsl(var(--muted))]">
+              <ImageIcon size={14} className="text-3" /> Cover
             </button>
           </div>
         )}
@@ -116,32 +116,32 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
           <div className={pop}>
             <div className={popHead}>
               Tambah checklist
-              <button type="button" onClick={() => setOpenWhich(null)} className="absolute right-0 text-[#6b778c] hover:text-[#172b4d]">
+              <button type="button" onClick={() => setOpenWhich(null)} className="absolute right-0 text-3 hover:text-foreground">
                 <X size={14} />
               </button>
             </div>
             <button
               type="button"
               onClick={addBlankChecklist}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-[#172b4d] hover:bg-[#f1f2f4]"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12px] text-foreground hover:bg-[hsl(var(--muted))]"
             >
-              <Plus size={14} className="text-[#5e6c84]" /> Checklist kosong
+              <Plus size={14} className="text-3" /> Checklist kosong
             </button>
             {checklistTemplates.length > 0 && (
               <>
-                <div className="my-1.5 border-t border-[#dfe1e6]" />
-                <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#8590a2]">Dari template</p>
+                <div className="my-1.5 border-t border-[hsl(var(--hairline))]" />
+                <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-3">Dari template</p>
                 <div className="flex max-h-[220px] flex-col gap-0.5 overflow-y-auto">
                   {checklistTemplates.map((t) => (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => addFromTemplate(t)}
-                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-[#172b4d] hover:bg-[#f1f2f4]"
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-foreground hover:bg-[hsl(var(--muted))]"
                     >
-                      <SquareCheck size={14} className="shrink-0 text-[#5e6c84]" />
+                      <SquareCheck size={14} className="shrink-0 text-3" />
                       <span className="min-w-0 flex-1 truncate">{t.name}</span>
-                      <span className="shrink-0 text-[10px] text-[#8590a2]">{t.items.length}</span>
+                      <span className="shrink-0 text-[10px] text-3">{t.items.length}</span>
                     </button>
                   ))}
                 </div>
@@ -160,7 +160,7 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
           <div className={pop}>
             <div className={popHead}>
               Anggota
-              <button type="button" onClick={() => setOpenWhich(null)} className="absolute right-0 text-[#6b778c] hover:text-[#172b4d]">
+              <button type="button" onClick={() => setOpenWhich(null)} className="absolute right-0 text-3 hover:text-foreground">
                 <X size={14} />
               </button>
             </div>
@@ -169,7 +169,7 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari anggota…"
-              className="mb-2 h-8 w-full rounded-[5px] border border-[#dfe1e6] px-2 text-[12px] outline-none focus:border-[#0c66e4]"
+              className="mb-2 h-8 w-full rounded-[5px] border border-[hsl(var(--hairline))] px-2 text-[12px] outline-none focus:border-[#0c66e4]"
             />
             <div className="flex max-h-[240px] flex-col gap-0.5 overflow-y-auto">
               {filteredUsers.map((u) => {
@@ -179,17 +179,17 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
                     key={u.id}
                     type="button"
                     onClick={() => onAssignMembers?.(u.id, !on)}
-                    className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] hover:bg-[#f1f2f4]"
+                    className="flex items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] hover:bg-[hsl(var(--muted))]"
                   >
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: u.avatarColor || '#0c66e4' }}>
                       {u.initials}
                     </span>
-                    <span className="flex-1 truncate text-[#172b4d]">{u.name}</span>
+                    <span className="flex-1 truncate text-foreground">{u.name}</span>
                     {on && <span className="text-[#0c66e4]">✓</span>}
                   </button>
                 );
               })}
-              {filteredUsers.length === 0 && <p className="py-3 text-center text-[11px] text-[#8590a2]">Tidak ada.</p>}
+              {filteredUsers.length === 0 && <p className="py-3 text-center text-[11px] text-3">Tidak ada.</p>}
             </div>
           </div>
         )}

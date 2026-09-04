@@ -30,18 +30,18 @@ export default function CardDatesPopover({
   const [nowTs] = useState(() => Date.now());
   const dueOverdue = !!card.dueDate && !card.isComplete && new Date(toInput(card.dueDate)).getTime() < nowTs;
   const inp =
-    'h-8 w-full rounded-[5px] border border-[#dfe1e6] bg-white px-2 text-[12px] text-[#172b4d] outline-none focus:border-[#0c66e4]';
+    'h-8 w-full rounded-[5px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 text-[12px] text-foreground outline-none focus:border-[#0c66e4]';
 
   return (
-    <div className="absolute left-0 top-[36px] z-30 w-[236px] rounded-[8px] border border-[#dfe1e6] bg-white p-3 shadow-[0_8px_24px_#0003]">
-      <div className="relative mb-2 flex h-6 items-center justify-center text-[12px] font-bold text-[#5e6c84]">
+    <div className="absolute left-0 top-[36px] z-30 w-[236px] rounded-[8px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-3 shadow-[0_8px_24px_#0003]">
+      <div className="relative mb-2 flex h-6 items-center justify-center text-[12px] font-bold text-3">
         Tanggal
-        <button type="button" onClick={onClose} className="absolute right-0 text-[#6b778c] hover:text-[#172b4d]">
+        <button type="button" onClick={onClose} className="absolute right-0 text-3 hover:text-foreground">
           <X size={14} />
         </button>
       </div>
 
-      <label className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-[#8590a2]">
+      <label className="mb-2 block text-[10px] font-bold uppercase tracking-wide text-3">
         Mulai
         <input
           type="date"
@@ -52,7 +52,7 @@ export default function CardDatesPopover({
         />
       </label>
 
-      <label className="block text-[10px] font-bold uppercase tracking-wide text-[#8590a2]">
+      <label className="block text-[10px] font-bold uppercase tracking-wide text-3">
         Tenggat
         <input
           type="date"
@@ -63,7 +63,7 @@ export default function CardDatesPopover({
         />
       </label>
 
-      <div className="mt-2 flex items-center justify-between text-[10px] text-[#5e6c84]">
+      <div className="mt-2 flex items-center justify-between text-[10px] text-3">
         <span className={dueOverdue ? 'font-semibold text-[#e34935]' : ''}>
           {labelFor(card.dueDate)}{dueOverdue ? ' · Terlambat' : ''}
         </span>
@@ -71,7 +71,7 @@ export default function CardDatesPopover({
           <button
             type="button"
             onClick={() => onUpdateCard({ startDate: null, dueDate: null })}
-            className="rounded px-1 py-0.5 underline hover:text-[#172b4d]"
+            className="rounded px-1 py-0.5 underline hover:text-foreground"
           >
             Hapus
           </button>

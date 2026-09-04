@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from "react";import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutGrid, LogOut, Search, ChevronDown, Kanban, ChevronsUpDown, X, UserCog,
+  LayoutGrid, LogOut, Search, ChevronDown, Kanban, ChevronsUpDown, X, UserCog, Sun, Moon, Monitor,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { useTheme } from "../lib/theme";
 import { api, errMsg } from "../lib/api";
+import { setLocale } from "../lib/i18n";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "./common";
 import NotificationsMenu from "./NotificationsMenu";
@@ -45,7 +48,7 @@ function GlobalSearch() {
 
   return (
     <div className="relative w-full max-w-md" ref={ref}>
-      <div className="flex items-center gap-2 bg-white/20 rounded px-3 h-8 text-white focus-within:bg-white/30 transition-colors">
+      <div className="flex items-center gap-2 bg-[hsl(var(--elevated))]/20 rounded px-3 h-8 text-white focus-within:bg-[hsl(var(--elevated))]/30 transition-colors">
         <Search size={14} className="shrink-0 opacity-80" />
         <input
           data-testid="global-search-input"
@@ -57,26 +60,26 @@ function GlobalSearch() {
         />
       </div>
       {open && results && (
-        <div className="absolute top-10 left-0 right-0 bg-white rounded-lg shadow-xl border z-50 max-h-96 overflow-y-auto minimal-scrollbar fade-enter" data-testid="global-search-results">
+        <div className="absolute top-10 left-0 right-0 bg-[hsl(var(--elevated))] rounded-lg shadow-xl border z-50 max-h-96 overflow-y-auto minimal-scrollbar fade-enter" data-testid="global-search-results">
           {results.boards?.length > 0 && (
             <div className="p-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2] px-2 py-1">Board</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-3 px-2 py-1">Board</p>
               {results.boards.map((b) => (
                 <button
                   key={b.id}
                   data-testid={`search-board-${b.id}`}
                   onClick={() => { setOpen(false); setQ(""); navigate(`/board/${b.id}`); }}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[hsl(var(--muted))] text-left"
                 >
                   <span className="w-4 h-4 rounded" style={{ backgroundColor: b.background }} />
-                  <span className="text-sm text-[#172B4D]">{b.name}</span>
+                  <span className="text-sm text-foreground">{b.name}</span>
                 </button>
               ))}
             </div>
           )}
           {results.items?.length > 0 && (
             <div className="p-2 border-t">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2] px-2 py-1">Pekerjaan</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-3 px-2 py-1">Pekerjaan</p>
               {results.items.map((i) => {
                 const badge =
                   i.role === "master"
@@ -99,22 +102,22 @@ function GlobalSearch() {
                     key={i.id}
                     data-testid={`search-item-${i.id}`}
                     onClick={() => { setOpen(false); setQ(""); navigate(`/board/${i.board_id}?card=${i.id}`); }}
-                    className="w-full px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left"
+                    className="w-full px-2 py-1.5 rounded hover:bg-[hsl(var(--muted))] text-left"
                   >
                     <div className="flex items-center gap-1.5">
-                      <p className={`text-sm text-[#172B4D] ${i.is_done ? "line-through opacity-60" : ""}`}>{i.title}</p>
+                      <p className={`text-sm text-foreground ${i.is_done ? "line-through opacity-60" : ""}`}>{i.title}</p>
                       {badge && <span className={`shrink-0 rounded px-1.5 py-px text-[9px] font-bold ${badge.c}`}>{badge.t}</span>}
                     </div>
-                    {i.client_name && <p className="text-xs text-[#44546F]">{i.client_name}</p>}
-                    {meta && <p className="text-[11px] text-[#8590A2]">{meta}</p>}
-                    {sub && <p className="text-[11px] text-[#8590A2]">{sub}</p>}
+                    {i.client_name && <p className="text-xs text-2">{i.client_name}</p>}
+                    {meta && <p className="text-[11px] text-3">{meta}</p>}
+                    {sub && <p className="text-[11px] text-3">{sub}</p>}
                   </button>
                 );
               })}
             </div>
           )}
           {!results.boards?.length && !results.items?.length && (
-            <p className="p-4 text-sm text-[#44546F] text-center">Tidak ada hasil untuk "{q}"</p>
+            <p className="p-4 text-sm text-2 text-center">Tidak ada hasil untuk "{q}"</p>
           )}
         </div>
       )}
@@ -145,15 +148,15 @@ function BoardSwitcher() {
       <button
         data-testid="board-switcher-button"
         onClick={() => { setOpen((v) => !v); setQ(""); }}
-        className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors"
+        className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-[hsl(var(--elevated))]/15 hover:bg-[hsl(var(--elevated))]/25 text-sm font-medium transition-colors"
       >
         <LayoutGrid size={15} /> Board <ChevronsUpDown size={13} />
       </button>
       {open && (
-        <div className="absolute left-0 mt-1.5 z-50 w-[320px] max-h-[70vh] overflow-hidden rounded-lg bg-white text-[#172B4D] shadow-2xl border border-[#DFE1E6] flex flex-col" data-testid="board-switcher-panel">
-          <div className="p-2 border-b border-[#DFE1E6]">
-            <div className="flex items-center gap-2 rounded-md border border-[#DFE1E6] px-2">
-              <Search size={14} className="text-[#8590A2]" />
+        <div className="absolute left-0 mt-1.5 z-50 w-[320px] max-h-[70vh] overflow-hidden rounded-lg bg-[hsl(var(--elevated))] text-foreground shadow-2xl border border-[hsl(var(--hairline))] flex flex-col" data-testid="board-switcher-panel">
+          <div className="p-2 border-b border-[hsl(var(--hairline))]">
+            <div className="flex items-center gap-2 rounded-md border border-[hsl(var(--hairline))] px-2">
+              <Search size={14} className="text-3" />
               <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari board…"
                 className="h-8 flex-1 text-sm outline-none bg-transparent" />
             </div>
@@ -162,13 +165,13 @@ function BoardSwitcher() {
             {filtered.map((b) => (
               <button key={b.id} data-testid={`board-switch-${b.id}`}
                 onClick={() => { setOpen(false); navigate(`/board/${b.id}`); }}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-[#F1F2F4]">
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-[hsl(var(--muted))]">
                 <span className="h-5 w-6 rounded shrink-0" style={{ backgroundColor: b.background }} />
                 <span className="truncate">{b.name}</span>
-                {b.division_name && <span className="ml-auto text-[10px] text-[#8590A2] shrink-0">{b.division_name}</span>}
+                {b.division_name && <span className="ml-auto text-[10px] text-3 shrink-0">{b.division_name}</span>}
               </button>
             ))}
-            {filtered.length === 0 && <p className="px-3 py-4 text-center text-xs text-[#8590A2]">Tidak ada board.</p>}
+            {filtered.length === 0 && <p className="px-3 py-4 text-center text-xs text-3">Tidak ada board.</p>}
           </div>
         </div>
       )}
@@ -178,62 +181,127 @@ function BoardSwitcher() {
 
 function EditProfileModal({ user, onClose }) {
   const { setUser } = useAuth();
+  const { t } = useTranslation();
+  const { setTheme } = useTheme();
   const [name, setName] = useState(user?.name || "");
   const [color, setColor] = useState(user?.avatar_color || AVATAR_COLORS[0]);
+  const [theme, setThemeLocal] = useState(user?.theme || "system");
+  const [locale, setLocaleLocal] = useState(user?.locale || "id");
   const [pw, setPw] = useState({ old_password: "", new_password: "" });
   const [saving, setSaving] = useState(false);
+
+  const patchPref = async (payload) => {
+    try {
+      const r = await api.patch("/auth/me", payload);
+      setUser(r.data);
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+  const pickTheme = (v) => { setThemeLocal(v); setTheme(v); patchPref({ theme: v }); };
+  const pickLocale = (v) => { setLocaleLocal(v); setLocale(v); patchPref({ locale: v }); };
 
   const saveProfile = async () => {
     setSaving(true);
     try {
       const r = await api.patch("/auth/me", { name: name.trim(), avatar_color: color });
       setUser(r.data);
-      toast.success("Profil diperbarui");
+      toast.success(t("profile.updated"));
       onClose();
     } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
   };
   const changePw = async () => {
-    if (pw.new_password.length < 6) { toast.error("Kata sandi baru minimal 6 karakter"); return; }
+    if (pw.new_password.length < 6) { toast.error(t("profile.passwordTooShort")); return; }
     try {
       await api.post("/auth/change-password", pw);
-      toast.success("Kata sandi diganti");
+      toast.success(t("profile.passwordChanged"));
       setPw({ old_password: "", new_password: "" });
     } catch (e) { toast.error(errMsg(e)); }
   };
 
+  const inp = "h-9 w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--surface))] px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-[#0C66E4]";
+  const themeOpts = [
+    { v: "light", label: t("profile.themeLight"), Icon: Sun },
+    { v: "dark", label: t("profile.themeDark"), Icon: Moon },
+    { v: "system", label: t("profile.themeSystem"), Icon: Monitor },
+  ];
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 pt-20" onClick={onClose} data-testid="edit-profile-modal">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 pt-20 overflow-y-auto" onClick={onClose} data-testid="edit-profile-modal">
+      <div className="w-full max-w-md rounded-xl bg-[hsl(var(--elevated))] p-6 shadow-2xl mb-10" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-heading text-lg font-bold text-[#172B4D]">Edit Profil</h2>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]"><X size={18} /></button>
+          <h2 className="font-heading text-lg font-bold text-foreground">{t("profile.title")}</h2>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2"><X size={18} /></button>
         </div>
         <div className="flex items-center gap-3 mb-4">
           <Avatar name={name} color={color} size="h-12 w-12 text-base" />
-          <div className="text-xs text-[#8590A2]">{user?.email}</div>
+          <div className="text-xs text-3">{user?.email}</div>
         </div>
-        <label className="text-xs font-semibold text-[#44546F]">Nama</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} className="mb-3 h-9 w-full rounded-lg border border-[#DFE1E6] px-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-        <label className="text-xs font-semibold text-[#44546F]">Warna avatar</label>
+        <label className="text-xs font-semibold text-2">{t("profile.name")}</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} className={`mb-3 ${inp}`} />
+        <label className="text-xs font-semibold text-2">{t("profile.avatarColor")}</label>
         <div className="mt-1 mb-4 flex flex-wrap gap-1.5">
           {AVATAR_COLORS.map((c) => (
             <button key={c} onClick={() => setColor(c)}
-              className={`h-7 w-7 rounded-full ${color === c ? "ring-2 ring-[#0C66E4] ring-offset-1" : ""}`}
+              className={`h-7 w-7 rounded-full ${color === c ? "ring-2 ring-[#0C66E4] ring-offset-1 ring-offset-[hsl(var(--elevated))]" : ""}`}
               style={{ backgroundColor: c }} />
           ))}
         </div>
         <button onClick={saveProfile} disabled={saving} className="w-full h-9 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold disabled:opacity-50">
-          Simpan Profil
+          {t("profile.save")}
         </button>
 
-        <div className="mt-5 pt-4 border-t border-[#DFE1E6]">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Ganti Kata Sandi</p>
-          <input type="password" value={pw.old_password} onChange={(e) => setPw({ ...pw, old_password: e.target.value })} placeholder="Kata sandi lama"
-            className="mb-2 h-9 w-full rounded-lg border border-[#DFE1E6] px-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-          <input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} placeholder="Kata sandi baru (min. 6)"
-            className="mb-2 h-9 w-full rounded-lg border border-[#DFE1E6] px-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4]" />
-          <button onClick={changePw} className="h-8 px-3 rounded-lg border border-[#DFE1E6] text-sm font-semibold text-[#172B4D] hover:bg-[#F1F2F4]">
-            Ganti Kata Sandi
+        {/* Tampilan / Appearance */}
+        <div className="mt-5 pt-4 border-t border-[hsl(var(--hairline))]">
+          <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">{t("profile.appearance")}</p>
+          <div className="grid grid-cols-3 gap-2">
+            {themeOpts.map(({ v, label, Icon }) => (
+              <button
+                key={v}
+                data-testid={`theme-opt-${v}`}
+                onClick={() => pickTheme(v)}
+                className={`flex flex-col items-center gap-1 rounded-lg border py-2.5 text-[12px] font-semibold transition-colors ${
+                  theme === v
+                    ? "border-[#0C66E4] bg-[#E9F2FF] text-[#0C66E4] dark:bg-[#0c66e4]/15"
+                    : "border-[hsl(var(--hairline))] text-2 hover:bg-[hsl(var(--muted))]"
+                }`}
+              >
+                <Icon size={16} /> {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Bahasa / Language */}
+        <div className="mt-4 pt-4 border-t border-[hsl(var(--hairline))]">
+          <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">{t("profile.language")}</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { v: "id", label: "🇮🇩  Indonesia" },
+              { v: "en", label: "🇬🇧  English" },
+            ].map(({ v, label }) => (
+              <button
+                key={v}
+                data-testid={`locale-opt-${v}`}
+                onClick={() => pickLocale(v)}
+                className={`rounded-lg border py-2.5 text-[13px] font-semibold transition-colors ${
+                  locale === v
+                    ? "border-[#0C66E4] bg-[#E9F2FF] text-[#0C66E4] dark:bg-[#0c66e4]/15"
+                    : "border-[hsl(var(--hairline))] text-2 hover:bg-[hsl(var(--muted))]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-[hsl(var(--hairline))]">
+          <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">{t("profile.changePassword")}</p>
+          <input type="password" value={pw.old_password} onChange={(e) => setPw({ ...pw, old_password: e.target.value })} placeholder={t("profile.oldPassword")}
+            className={`mb-2 ${inp}`} />
+          <input type="password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} placeholder={t("profile.newPassword")}
+            className={`mb-2 ${inp}`} />
+          <button onClick={changePw} className="h-8 px-3 rounded-lg border border-[hsl(var(--hairline))] text-sm font-semibold text-foreground hover:bg-[hsl(var(--muted))]">
+            {t("profile.changePasswordBtn")}
           </button>
         </div>
       </div>
@@ -243,6 +311,7 @@ function EditProfileModal({ user, onClose }) {
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [editProfile, setEditProfile] = useState(false);
@@ -261,9 +330,9 @@ export default function AppLayout() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" data-testid="app-layout">
-      <header className="h-12 w-full flex items-center justify-between gap-4 px-4 bg-[#026aa7] shadow-sm shrink-0 z-40 text-white border-b border-black/10">
+      <header className="h-12 w-full flex items-center justify-between gap-4 px-4 bg-[#026aa7] dark:bg-[hsl(var(--surface))] shadow-sm shrink-0 z-40 text-white border-b border-black/10 dark:border-[hsl(var(--hairline))]">
         <div className="flex items-center gap-2 shrink-0">
-          <Link to="/" className="flex items-center gap-2 hover:bg-white/10 rounded px-2 py-1 transition-colors" data-testid="app-logo-link">
+          <Link to="/" className="flex items-center gap-2 hover:bg-[hsl(var(--elevated))]/10 rounded px-2 py-1 transition-colors" data-testid="app-logo-link">
             <Kanban size={20} />
             <span className="font-heading font-bold text-lg tracking-tight hidden sm:inline">ALI Workspace</span>
           </Link>
@@ -274,22 +343,22 @@ export default function AppLayout() {
           <NotificationsMenu />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button data-testid="user-menu-button" className="flex items-center gap-1.5 hover:bg-white/20 rounded-full pl-1 pr-2 py-1 transition-colors active:scale-95">
+              <button data-testid="user-menu-button" className="flex items-center gap-1.5 hover:bg-[hsl(var(--elevated))]/20 rounded-full pl-1 pr-2 py-1 transition-colors active:scale-95">
                 <Avatar name={user?.name} color={user?.avatar_color} size="h-7 w-7 text-[11px]" />
                 <ChevronDown size={14} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 bg-white shadow-lg">
-              <div className="px-3 py-3 border-b">
-                <p className="text-sm font-semibold text-[#172B4D]" data-testid="user-menu-name">{user?.name}</p>
-                <p className="text-xs text-[#44546F]">{user?.email}</p>
+            <DropdownMenuContent align="end" className="w-64 bg-[hsl(var(--elevated))] text-foreground shadow-lg">
+              <div className="px-3 py-3 border-b border-[hsl(var(--hairline))]">
+                <p className="text-sm font-semibold text-foreground" data-testid="user-menu-name">{user?.name}</p>
+                <p className="text-xs text-3">{user?.email}</p>
               </div>
               <DropdownMenuItem
                 data-testid="edit-profile-menu-item"
                 onClick={() => setEditProfile(true)}
                 className="cursor-pointer"
               >
-                <UserCog size={14} className="mr-2" /> Edit Profil
+                <UserCog size={14} className="mr-2" /> {t("userMenu.editProfile")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -297,7 +366,7 @@ export default function AppLayout() {
                 onClick={async () => { await logout(); navigate("/login"); }}
                 className="text-[#CA3521] cursor-pointer"
               >
-                <LogOut size={14} className="mr-2" /> Keluar
+                <LogOut size={14} className="mr-2" /> {t("userMenu.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -306,7 +375,7 @@ export default function AppLayout() {
 
       <div className="flex-1 flex overflow-hidden">
         {!isBoard && <Sidebar />}
-        <main className={isBoard ? "flex-1 overflow-hidden flex flex-col" : "flex-1 overflow-y-auto minimal-scrollbar bg-[#F4F5F7]"}>
+        <main className={isBoard ? "flex-1 overflow-hidden flex flex-col" : "flex-1 overflow-y-auto minimal-scrollbar bg-[hsl(var(--surface-2))] text-foreground"}>
           <Outlet />
         </main>
       </div>

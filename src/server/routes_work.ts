@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { formatWorkItem, canViewBoard, runAutomation as realRunAutomation, broadcastItem as depsBroadcastItem, wsManager } from './deps';
+import { formatWorkItem, canViewBoard, canEditBoard, runAutomation as realRunAutomation, broadcastItem as depsBroadcastItem, wsManager } from './deps';
 import {  Hono } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
@@ -171,6 +171,63 @@ async function getItemChecked(id: string, user: any) {
   return item;
 }
 
+// ── STATUS PEKERJAAN — satu sumber tampilan ──────────────────────────────
+// Menyatukan status kartu (active/submitted/done), workStatus, dan posisi list
+// jadi SATU label jelas untuk user (banyak user usia lanjut → wajib gamblang).
+function isDoneListName(name: string | null | undefined) {
+  const n = (name || '').toUpperCase();
+  return /(^|\b)(FINISH|DONE|SELESAI)(\b|$)/.test(n) || n.startsWith('SKOR 6');
+}
+
+/** { code, label, tone } — dipakai badge di UI. */
+function displayStatus(item: any) {
+  const isAssignment = !!item.targetDivisionId;
+  if (item.archived) return { code: 'ARCHIVED', label: 'Diarsipkan', tone: 'gray' };
+  if (item.status === 'done' || item.workStatus === 'COMPLETED') return { code: 'DONE', label: 'Selesai', tone: 'green' };
+  if (item.status === 'submitted') return { code: 'REVIEW', label: 'Menunggu persetujuan', tone: 'amber' };
+  if (isAssignment && item.distributionStatus === 'AVAILABLE') return { code: 'WAITING_CLAIM', label: 'Menunggu diambil', tone: 'slate' };
+  if (isAssignment && item.distributionStatus === 'RELEASED') return { code: 'RELEASED', label: 'Dilepas', tone: 'slate' };
+  if (item.workStatus === 'REVISION') return { code: 'REVISION', label: 'Perlu revisi', tone: 'amber' };
+  return { code: 'IN_PROGRESS', label: 'Sedang dikerjakan', tone: 'blue' };
+}
+
+/**
+ * Status Master Card = TURUNAN dari assignment-nya, bukan diset manual.
+ * "Selesai" hanya jika SEMUA assignment selesai; kalau ada yang dibuka lagi,
+ * Master ikut dibuka lagi. Idempotent — aman dipanggil berkali-kali.
+ * Mengembalikan { changed, allDone, done, total }.
+ */
+async function recomputeMasterStatus(masterCardId: string, actor: any) {
+  if (!masterCardId) return { changed: false, allDone: false, done: 0, total: 0 };
+  const rows = await prisma.workItem.findMany({ where: { masterCardId } });
+  const rep = rows.find((r: any) => !r.targetDivisionId);
+  const assigns = rows.filter((r: any) => r.targetDivisionId);
+  if (!rep || assigns.length === 0) return { changed: false, allDone: false, done: 0, total: assigns.length };
+
+  const done = assigns.filter((a: any) => a.status === 'done').length;
+  const allDone = done === assigns.length;
+  // Rep dianggap "selesai" bila SALAH SATU penanda menunjukkan selesai — supaya
+  // data yang keburu tidak sinkron (status vs workStatus) ikut dirapikan.
+  const repDone = rep.status === 'done' || rep.workStatus === 'COMPLETED';
+  let changed = false;
+
+  if (allDone && !repDone) {
+    await prisma.workItem.update({ where: { id: rep.id }, data: { status: 'done', workStatus: 'COMPLETED', completedAt: new Date(), updatedAt: new Date() } });
+    await logActivity(rep.id, rep.boardId, actor, `pekerjaan "${rep.title}" selesai — semua divisi telah menyelesaikan bagiannya`);
+    changed = true;
+  } else if (!allDone && repDone) {
+    await prisma.workItem.update({ where: { id: rep.id }, data: { status: 'active', workStatus: 'IN_PROGRESS', completedAt: null, updatedAt: new Date() } });
+    await logActivity(rep.id, rep.boardId, actor, `pekerjaan "${rep.title}" dibuka kembali — masih ada divisi yang belum selesai`);
+    changed = true;
+  } else if (allDone && repDone && (rep.status !== 'done' || rep.workStatus !== 'COMPLETED')) {
+    // rapikan penanda yang belum konsisten walau kesimpulannya sama
+    await prisma.workItem.update({ where: { id: rep.id }, data: { status: 'done', workStatus: 'COMPLETED', updatedAt: new Date() } });
+    changed = true;
+  }
+  if (changed) await broadcastItem(await getWorkItem(rep.id));
+  return { changed, allDone, done, total: assigns.length };
+}
+
 function doneChecklistTexts(item: any) {
   const done: string[] = [];
   let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
@@ -238,10 +295,20 @@ router.post('/work-items', async (c) => {
   const board = await prisma.board.findUnique({ where: { id: body.board_id } });
   const lst = await prisma.list.findFirst({ where: { id: body.list_id, boardId: body.board_id } });
   if (!lst) return c.json({ error: 'List not found' }, 404);
+  if (!(await canEditOnBoard(user, body.board_id))) {
+    return c.json({ detail: 'Anda hanya bisa membuat kartu di board Anda sendiri.' }, 403);
+  }
   const count = await prisma.workItem.count({ where: { listId: body.list_id, archived: false } });
   
   const divIds = body.division_ids?.length ? body.division_ids : (board?.divisionId ? [board.divisionId] : []);
-  
+
+  // Pembuat SELALU jadi anggota kartu. Untuk kartu di board CS (atau dibuat orang
+  // CS) → pembuat otomatis jadi Pemilik (Owner) + PIC: klien WA yang dibuat manual
+  // pun langsung jelas siapa penanggung jawabnya.
+  const csDiv = await prisma.division.findFirst({ where: { key: 'cs' } });
+  const csContext = !!csDiv && ((user.divisionId && user.divisionId === csDiv.id) || (board?.divisionId && board.divisionId === csDiv.id));
+  const memberIds = [...new Set([user.id, ...(body.member_ids || [])])];
+
   const item = await prisma.workItem.create({
     data: {
       id: newId(), title: body.title.trim(), clientName: body.clientName?.trim() || '', description: body.description || '',
@@ -249,14 +316,21 @@ router.post('/work-items', async (c) => {
       dueDate: body.due_date || null, priority: PRIORITIES.includes(body.priority) ? body.priority : 'none',
       status: 'active', archived: false, needsApproval: !!body.needs_approval,
       createdById: user.id, createdByName: user.name,
+      currentPicId: user.id,
+      workStatus: 'IN_PROGRESS',
       checklists: [],
       labels: { create: (body.label_ids || []).map((id: string) => ({ labelId: id })) },
-      members: { create: (body.member_ids || []).map((id: string) => ({ userId: id })) },
+      members: { create: memberIds.map((id: string) => ({ userId: id })) },
       divisionIds: { create: divIds.map((id: string) => ({ divisionId: id })) }
     },
     include: { members: true, labels: true, divisionIds: true }
   });
-  
+
+  // Board CS → buat Master Card (Owner = pembuat) + checklist "Progres Legalitas".
+  if (csContext) {
+    try { await ensureMasterCard(prisma, item); } catch (e) { console.error('[work-items ensureMasterCard]', e); }
+  }
+
   await logActivity(item.id, item.boardId, user, `membuat pekerjaan "${item.title}"`);
   await ensureRequirementChecklist(item, lst);
   await runAutomation(item.boardId, 'card_created', item, user, item.listId);
@@ -270,7 +344,18 @@ router.post('/work-items', async (c) => {
 router.get('/work-items/:item_id', async (c) => {
   const user = c.get('user');
   const itemId = c.req.param('item_id');
-  const item = await getItemChecked(itemId, user);
+  let item: any;
+  try { item = await getItemChecked(itemId, user); }
+  catch { return c.json({ detail: 'Kartu tidak ditemukan atau sudah dihapus' }, 404); }
+
+  // Self-heal: pastikan status Master Card selaras dengan assignment-nya
+  // (memperbaiki data lama yang ter-set manual "selesai").
+  if (item.masterCardId) {
+    try {
+      const rc = await recomputeMasterStatus(item.masterCardId, user);
+      if (rc.changed) item = await getItemChecked(itemId, user);
+    } catch (e) { /* jangan gagalkan GET */ }
+  }
 
   // Feed di-scope ke GRUP Master Card (master + semua assignment).
   const ids = await groupItemIds(item);
@@ -288,27 +373,47 @@ router.get('/work-items/:item_id', async (c) => {
   const lst = await prisma.list.findUnique({ where: { id: item.listId } });
   const board = await prisma.board.findUnique({ where: { id: item.boardId } });
 
+  // Untuk assignment (kartu grup): deskripsi & checklist DITAMPILKAN dari Master
+  // Card rep (canonical) supaya "tampil sama" di semua board.
+  const host = await canonicalItem(item);
+  const itemOut: any = formatWorkItem(item);
+  if (host.id !== item.id) {
+    itemOut.description = host.description || '';
+    itemOut.checklists = normChecklists(host.checklists);
+    itemOut.client_name = host.clientName ?? itemOut.client_name;
+  }
+
   // Ringkasan assignment saudara (untuk panel di Master Card).
-  const siblings = item.masterCardId
-    ? (await prisma.workItem.findMany({
+  const sibRows = item.masterCardId
+    ? await prisma.workItem.findMany({
         where: { masterCardId: item.masterCardId, targetDivisionId: { not: null } },
         include: { targetDivision: true, currentPic: true, list: true },
         orderBy: { createdAt: 'asc' },
-      })).map((s: any) => ({
-        id: s.id, title: s.title, division_name: s.targetDivision?.name || null,
-        division_key: s.targetDivision?.key || null, pic_name: s.currentPic?.name || null,
-        distribution_status: s.distributionStatus, work_status: s.workStatus,
-        list_name: s.list?.name || null, updated_at: s.updatedAt,
-      }))
+      })
     : [];
+  const siblings = sibRows.map((s: any) => {
+    const ds = displayStatus(s);
+    return {
+      id: s.id, title: s.title, division_name: s.targetDivision?.name || null,
+      division_key: s.targetDivision?.key || null, pic_name: s.currentPic?.name || null,
+      distribution_status: s.distributionStatus, work_status: s.workStatus,
+      list_name: s.list?.name || null, updated_at: s.updatedAt,
+      display_status: ds.code, display_status_label: ds.label, display_status_tone: ds.tone,
+      is_done: ds.code === 'DONE',
+    };
+  });
+  const groupProgress = siblings.length
+    ? { done: siblings.filter((s: any) => s.is_done).length, total: siblings.length }
+    : null;
 
   return c.json({
-    item: formatWorkItem(item),
+    item: itemOut,
     comments, attachments, activities,
     board_labels: boardLabels, list_name: lst?.name, board_name: board?.name,
     shared_labels: item.masterCardId ? normLabelList((item as any).masterCard?.sharedLabels) : null,
     mirror_boards: [],
     assignments: siblings,
+    group_progress: groupProgress,
     master: await masterInfo(item),
     is_assignment: !!(item.masterCardId && item.targetDivisionId),
     mentionable_users: await mentionableUsers(item),
@@ -325,35 +430,50 @@ router.patch('/work-items/:item_id', async (c) => {
   const denied = await editDenied(c, user, item);
   if (denied) return denied;
   const body = await c.req.json();
-  const updates: any = {};
-  
-  const fieldMap: any = { title: 'title', client_name: 'clientName', description: 'description', start_date: 'startDate', due_date: 'dueDate', needs_approval: 'needsApproval' };
-  for (const [sField, cField] of Object.entries(fieldMap)) {
-    if (body[sField] !== undefined) updates[cField as string] = body[sField];
-  }
-  if (body.cover_color !== undefined) updates.coverColor = body.cover_color;
-  if (body.cover_attachment_id !== undefined) updates.coverAttachmentId = body.cover_attachment_id;
 
-  if (body.priority && PRIORITIES.includes(body.priority)) updates.priority = body.priority;
-  if (Object.keys(updates).length === 0 && !body.label_ids) return c.json(formatWorkItem(item));
-  
-  const updateData: any = { ...updates, updatedAt: new Date() };
+  // Field BERSAMA (satu sumber di Master Card rep untuk kartu grup): judul,
+  // nama klien, deskripsi. Field LOKAL per kartu: cover, prioritas, tanggal.
+  const shared: any = {};
+  if (body.title !== undefined) shared.title = body.title;
+  if (body.client_name !== undefined) shared.clientName = body.client_name;
+  if (body.description !== undefined) shared.description = body.description;
+
+  const local: any = {};
+  if (body.start_date !== undefined) local.startDate = body.start_date;
+  if (body.due_date !== undefined) local.dueDate = body.due_date;
+  if (body.needs_approval !== undefined) local.needsApproval = body.needs_approval;
+  if (body.cover_color !== undefined) local.coverColor = body.cover_color;
+  if (body.cover_attachment_id !== undefined) local.coverAttachmentId = body.cover_attachment_id;
+  if (body.priority && PRIORITIES.includes(body.priority)) local.priority = body.priority;
+
+  if (!Object.keys(shared).length && !Object.keys(local).length && !body.label_ids) {
+    return c.json(formatWorkItem(item));
+  }
+
+  const host = await canonicalItem(item);
+  const grouped = host.id !== item.id;
+
+  // label kartu grup → single source of truth
   const groupedLabelChange = body.label_ids !== undefined && item.masterCardId;
   if (body.label_ids !== undefined && !item.masterCardId) {
-    // kartu biasa (non Bank Data): perilaku lama, label lokal per board
-    updateData.labels = { deleteMany: {}, create: body.label_ids.map((id: string) => ({ labelId: id })) };
+    local.labels = { deleteMany: {}, create: body.label_ids.map((id: string) => ({ labelId: id })) };
   }
 
-  const updated = await prisma.workItem.update({ where: { id: itemId }, data: updateData });
+  if (Object.keys(local).length) {
+    await prisma.workItem.update({ where: { id: itemId }, data: { ...local, updatedAt: new Date() } });
+  }
+  if (Object.keys(shared).length) {
+    await prisma.workItem.update({ where: { id: host.id }, data: { ...shared, updatedAt: new Date() } });
+  }
 
   if (groupedLabelChange) {
-    // Label kartu grup = single source of truth di Master Card → propagasi ke semua sibling.
-    const shared = await labelIdsToShared(body.label_ids || []);
-    await syncGroupLabels(item.masterCardId, shared, user);
-    await logActivity(itemId, item.boardId, user, `mengubah label "${updated.title}"`);
+    const sh = await labelIdsToShared(body.label_ids || []);
+    await syncGroupLabels(item.masterCardId, sh, user);
+    await logActivity(host.id, host.boardId, user, `mengubah label "${host.title}"`);
   } else {
-    await logActivity(itemId, item.boardId, user, `mengubah pekerjaan "${updated.title}"`);
+    await logActivity(host.id, host.boardId, user, `mengubah pekerjaan "${host.title}"`);
   }
+  if (grouped && Object.keys(shared).length) await broadcastItem(await getWorkItem(host.id));
   await broadcastItem(await getWorkItem(itemId));
   return c.json(formatWorkItem(await getWorkItem(itemId)));
 });
@@ -397,12 +517,38 @@ router.delete('/work-items/:item_id', async (c) => {
     }
   }
 
+  // Hapus Master Card rep → ikut hapus SEMUA assignment turunannya + baris
+  // MasterCard, supaya tidak ada assignment yatim.
+  const isMasterRep = !!item.masterCardId && !item.targetDivisionId;
+  let removedAssignments = 0;
+  const boardsToRefresh = new Set<string>([item.boardId]);
+  if (isMasterRep) {
+    const sibs = await prisma.workItem.findMany({
+      where: { masterCardId: item.masterCardId, targetDivisionId: { not: null } },
+      select: { id: true, boardId: true },
+    });
+    for (const s of sibs) {
+      boardsToRefresh.add(s.boardId);
+      await prisma.attachment.updateMany({ where: { workItemId: s.id }, data: { isDeleted: true } });
+      await prisma.workItem.delete({ where: { id: s.id } });
+      removedAssignments++;
+    }
+  }
+
   await prisma.attachment.updateMany({ where: { workItemId: itemId }, data: { isDeleted: true } });
   await prisma.workItem.delete({ where: { id: itemId } }); // cascade: comment, activity, dll ikut terhapus
 
-  if (repIdToBroadcast) await broadcastItem(await getWorkItem(repIdToBroadcast));
+  if (isMasterRep && item.masterCardId) {
+    await prisma.masterCard.delete({ where: { id: item.masterCardId } }).catch(() => {});
+  }
+
+  if (repIdToBroadcast) {
+    const rb = await getWorkItem(repIdToBroadcast).catch(() => null);
+    if (rb) await broadcastItem(rb);
+  }
+  for (const b of boardsToRefresh) await wsManager.broadcast({ type: 'board_update', board_id: b });
   await broadcastItem(item); // item stale tapi cukup untuk kabari board asal
-  return c.json({ ok: true, deleted_assignment: isAssignment });
+  return c.json({ ok: true, deleted_assignment: isAssignment, removed_assignments: removedAssignments });
 });
 
 router.post('/work-items/:item_id/move', async (c) => {
@@ -471,6 +617,22 @@ router.post('/work-items/:item_id/move', async (c) => {
     droppedLabels = res.droppedLabels;
   }
 
+  // Pindah ke list "selesai" (FINISH/DONE/SELESAI/SKOR 6) → tandai selesai.
+  // Keluar dari list selesai ke list biasa → buka kembali. Semua status
+  // (status kartu + workStatus) diselaraskan sekaligus.
+  const toDone = isDoneListName(targetList.name);
+  const fromDone = isDoneListName(oldList?.name);
+  const statusSync: any = {};
+  if (toDone && item.status !== 'done') {
+    statusSync.status = 'done';
+    statusSync.workStatus = 'COMPLETED';
+    statusSync.completedAt = new Date();
+  } else if (!toDone && fromDone && item.status === 'done') {
+    statusSync.status = 'active';
+    statusSync.workStatus = item.targetDivisionId || item.currentPicId ? 'IN_PROGRESS' : (item.workStatus ?? null);
+    statusSync.completedAt = null;
+  }
+
   const updated = await prisma.workItem.update({
     where: { id: itemId },
     data: {
@@ -480,6 +642,7 @@ router.post('/work-items/:item_id/move', async (c) => {
       hariStage,
       hariEnteredAt,
       updatedAt: new Date(),
+      ...statusSync,
       ...(labelUpdate ? { labels: labelUpdate } : {}),
     },
   });
@@ -503,6 +666,10 @@ router.post('/work-items/:item_id/move', async (c) => {
   await broadcastItem(updated);
   // Board asal juga perlu di-refresh (kartu keluar dari sana).
   if (isCrossBoard) await wsManager.broadcast({ type: 'board_update', board_id: item.boardId, work_item_id: itemId });
+  // Kalau assignment pindah ke/keluar dari list selesai → status Master ikut dihitung ulang.
+  if (Object.keys(statusSync).length && item.targetDivisionId && item.masterCardId) {
+    await recomputeMasterStatus(item.masterCardId, user);
+  }
   return c.json({
     ok: true,
     board_id: targetBoard.id,
@@ -663,11 +830,30 @@ async function groupNotifyIds(item: any): Promise<string[]> {
 async function canEditItem(user: any, item: any): Promise<boolean> {
   if (TAKEOVER_ROLES.includes(user.role)) return true;
   if (item.currentPicId === user.id) return true;
+  if (item.createdById === user.id) return true; // pembuat kartu selalu boleh
+  // Assignment: anggota divisi tujuan boleh mengerjakan (kolaboratif).
   if (item.targetDivisionId && user.divisionId && item.targetDivisionId === user.divisionId) return true;
-  const board = await prisma.board.findUnique({ where: { id: item.boardId }, include: { members: true } });
-  if (board?.divisionId && user.divisionId && board.divisionId === user.divisionId) return true;
+  const board = await prisma.board.findUnique({ where: { id: item.boardId }, include: { members: true, division: true } });
   if (board?.members?.some((m: any) => m.userId === user.id)) return true;
+  // Kolaborasi se-divisi HANYA untuk divisi non-CS (Admin Draf, Pajak, Perizinan,
+  // Desain). CS dikecualikan: tiap CS hanya boleh di BOARD-nya sendiri
+  // (lewat keanggotaan board / PIC / pembuat / Owner Master Card).
+  if (
+    board?.divisionId && user.divisionId &&
+    board.divisionId === user.divisionId &&
+    board.division?.key !== 'cs'
+  ) return true;
+  if (item.masterCardId) {
+    const mc = await prisma.masterCard.findUnique({ where: { id: item.masterCardId } });
+    if (mc?.ownerUserId === user.id) return true;
+  }
   return false;
+}
+
+/** Boleh membuat kartu di board ini? */
+async function canEditOnBoard(user: any, boardId: string): Promise<boolean> {
+  const board = await prisma.board.findUnique({ where: { id: boardId }, include: { members: true, division: true } });
+  return canEditBoard(user, board);
 }
 
 async function canCommentItem(user: any, item: any): Promise<boolean> {
@@ -698,13 +884,13 @@ async function commentDenied(c: any, user: any, item: any) {
 async function resolveDivisionBoardList(tx: any, divisionId: string, preferBoardId?: string, preferListId?: string) {
   let board: any = null;
   if (preferBoardId) {
-    board = await tx.board.findFirst({ where: { id: preferBoardId, isArchived: false }, include: { lists: { orderBy: { position: 'asc' } } } });
+    board = await tx.board.findFirst({ where: { id: preferBoardId, isArchived: false }, include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } } } });
     if (board && board.lists.length === 0) board = null;
   }
   if (!board) {
     const candidates = await tx.board.findMany({
       where: { divisionId, isArchived: false, lists: { some: {} } },
-      include: { lists: { orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
+      include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
     });
     candidates.sort((a: any, b: any) => b._count.lists - a._count.lists);
     board = candidates[0] || null;
@@ -721,7 +907,7 @@ async function resolveDivisionBoardList(tx: any, divisionId: string, preferBoard
 async function resolveDivisionBoardListByCreator(tx: any, userId: string) {
   const candidates = await tx.board.findMany({
     where: { createdById: userId, isArchived: false, lists: { some: {} } },
-    include: { lists: { orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
+    include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
   });
   candidates.sort((a: any, b: any) => b._count.lists - a._count.lists);
   const board = candidates[0] || null;
@@ -968,12 +1154,99 @@ router.post('/work-items/:item_id/assign', async (c) => {
   }
   
   await prisma.workItem.update({ where: { id: itemId }, data: updateData });
-  if (body.add_user_ids?.length) {
-    await logActivity(itemId, item.boardId, user, `menugaskan PIC pada "${item.title}"`);
-    await notify(body.add_user_ids, 'assigned', 'Anda ditugaskan', `${user.name} menugaskan Anda pada "${item.title}"`, itemId, item.boardId, new Set([user.id]));
+
+  // "Join" (menambahkan diri sendiri) → kalau kartu BELUM ada PIC, otomatis jadi PIC.
+  let becamePic = false;
+  const joinedSelf = Array.isArray(body.add_user_ids) && body.add_user_ids.length === 1 && body.add_user_ids[0] === user.id;
+  if (joinedSelf && !item.currentPicId) {
+    await prisma.workItem.update({
+      where: { id: itemId },
+      data: { currentPicId: user.id, workStatus: item.workStatus === 'COMPLETED' ? item.workStatus : 'IN_PROGRESS' },
+    });
+    becamePic = true;
+    await logActivity(itemId, item.boardId, user, `mengambil "${item.title}" sebagai PIC`);
+  } else if (body.add_user_ids?.length) {
+    await logActivity(itemId, item.boardId, user, `menambahkan anggota pada "${item.title}"`);
+    await notify(body.add_user_ids.filter((id: string) => id !== user.id), 'assigned', 'Anda ditambahkan ke kartu', `${user.name} menambahkan Anda ke "${item.title}"`, itemId, item.boardId, new Set([user.id]));
   }
   await broadcastItem(await getWorkItem(itemId));
-  return c.json({ ok: true });
+  return c.json({ ok: true, became_pic: becamePic });
+});
+
+// "Jadikan saya PIC" / tetapkan PIC — untuk kartu CS biasa (bukan alur klaim Bank Data).
+router.post('/work-items/:item_id/set-pic', async (c) => {
+  await requirePerm(c, 'card.assign_members');
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const body = await c.req.json().catch(() => ({}));
+  const item = await getItemChecked(itemId, user);
+  { const _d = await editDenied(c, user, item); if (_d) return _d; }
+
+  const targetId: string = body.user_id || user.id;
+  const target = await prisma.user.findUnique({ where: { id: targetId } });
+  if (!target) return c.json({ error: 'Pengguna tidak ditemukan' }, 404);
+  if (item.currentPicId === targetId) return c.json({ ok: true, pic_user_id: targetId });
+
+  await prisma.workItem.update({
+    where: { id: itemId },
+    data: { currentPicId: targetId, workStatus: item.workStatus === 'COMPLETED' ? item.workStatus : 'IN_PROGRESS' },
+  });
+  await prisma.workItemMember.upsert({
+    where: { workItemId_userId: { workItemId: itemId, userId: targetId } },
+    update: {}, create: { workItemId: itemId, userId: targetId },
+  });
+  const self = targetId === user.id;
+  await logActivity(itemId, item.boardId, user, self ? `mengambil "${item.title}" sebagai PIC` : `menetapkan ${target.name} sebagai PIC "${item.title}"`);
+  if (!self) {
+    await notify([targetId], 'assigned', 'Anda jadi PIC', `${user.name} menetapkan Anda sebagai PIC "${item.title}".`, itemId, item.boardId, new Set([user.id]));
+  }
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json({ ok: true, pic_user_id: targetId });
+});
+
+// Oper kepemilikan kartu: Pemilik (Owner Master Card) + PIC dipindah sekaligus
+// ke user lain. Boleh oleh Owner sekarang, PIC, pembuat, atau supervisor/admin.
+router.post('/work-items/:item_id/transfer-owner', async (c) => {
+  await requirePerm(c, 'card.assign_members');
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const body = await c.req.json().catch(() => ({}));
+  const targetId: string = body.user_id;
+  if (!targetId) return c.json({ error: 'user_id wajib diisi' }, 400);
+
+  const item = await getItemChecked(itemId, user);
+  const mc = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+  const allowed =
+    TAKEOVER_ROLES.includes(user.role) ||
+    item.currentPicId === user.id ||
+    item.createdById === user.id ||
+    mc?.ownerUserId === user.id;
+  if (!allowed) return c.json({ detail: 'Hanya Pemilik / PIC / pembuat kartu atau supervisor yang dapat mengoper kepemilikan.' }, 403);
+
+  const target = await prisma.user.findUnique({ where: { id: targetId } });
+  if (!target) return c.json({ error: 'Pengguna tidak ditemukan' }, 404);
+
+  // Owner disimpan di Master Card. Kartu grup: update MC. Kartu biasa: buatkan MC
+  // supaya kepemilikan tercatat.
+  let mcId = item.masterCardId as string | null;
+  if (!mcId) {
+    try { mcId = await ensureMasterCard(prisma, item); } catch { mcId = null; }
+  }
+  if (mcId) {
+    await prisma.masterCard.update({ where: { id: mcId }, data: { ownerUserId: targetId, ownerDivisionId: target.divisionId || null } });
+  }
+  await prisma.workItem.update({
+    where: { id: itemId },
+    data: { currentPicId: targetId, workStatus: item.workStatus === 'COMPLETED' ? item.workStatus : 'IN_PROGRESS' },
+  });
+  await prisma.workItemMember.upsert({
+    where: { workItemId_userId: { workItemId: itemId, userId: targetId } },
+    update: {}, create: { workItemId: itemId, userId: targetId },
+  });
+  await logActivity(itemId, item.boardId, user, `mengoper kepemilikan "${item.title}" ke ${target.name}`);
+  await notify([targetId], 'assigned', 'Kepemilikan kartu dioper ke Anda', `${user.name} mengoper kepemilikan "${item.title}" kepada Anda (Pemilik + PIC).`, itemId, item.boardId, new Set([user.id]));
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json({ ok: true, owner_user_id: targetId, pic_user_id: targetId });
 });
 
 router.post('/work-items/:item_id/submit', async (c) => {
@@ -983,16 +1256,26 @@ router.post('/work-items/:item_id/submit', async (c) => {
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
   if (item.status === 'done') return c.json({ error: 'Sudah selesai' }, 400);
-  
+
+  // Master Card yang PUNYA assignment → status-nya turunan. Tidak bisa diselesaikan manual.
+  const isMasterRep = !!item.masterCardId && !item.targetDivisionId;
+  if (isMasterRep) {
+    const nAssign = await prisma.workItem.count({ where: { masterCardId: item.masterCardId, targetDivisionId: { not: null } } });
+    if (nAssign > 0) {
+      return c.json({ detail: 'Kartu ini selesai otomatis saat semua divisi menyelesaikan bagiannya. Tandai selesai di kartu divisinya.' }, 400);
+    }
+  }
+
   if (item.needsApproval) {
-    await prisma.workItem.update({ where: { id: itemId }, data: { status: 'submitted', submittedById: user.id, updatedAt: new Date() } });
+    await prisma.workItem.update({ where: { id: itemId }, data: { status: 'submitted', workStatus: 'WAITING', submittedById: user.id, updatedAt: new Date() } });
     await logActivity(itemId, item.boardId, user, `mengajukan penyelesaian "${item.title}"`);
   } else {
-    await prisma.workItem.update({ where: { id: itemId }, data: { status: 'done', completedAt: new Date(), updatedAt: new Date() } });
+    await prisma.workItem.update({ where: { id: itemId }, data: { status: 'done', workStatus: 'COMPLETED', completedAt: new Date(), updatedAt: new Date() } });
     await logActivity(itemId, item.boardId, user, `menyelesaikan pekerjaan "${item.title}"`);
   }
   const updated = await getWorkItem(itemId);
   await broadcastItem(updated);
+  if (item.targetDivisionId && item.masterCardId) await recomputeMasterStatus(item.masterCardId, user);
   return c.json(formatWorkItem(updated));
 });
 
@@ -1004,10 +1287,11 @@ router.post('/work-items/:item_id/approve', async (c) => {
   const item = await getItemChecked(itemId, user);
   if (item.status !== 'submitted') return c.json({ error: 'Tidak menunggu persetujuan' }, 400);
   
-  await prisma.workItem.update({ where: { id: itemId }, data: { status: 'done', completedAt: new Date(), approvedById: user.id, updatedAt: new Date() } });
+  await prisma.workItem.update({ where: { id: itemId }, data: { status: 'done', workStatus: 'COMPLETED', completedAt: new Date(), approvedById: user.id, updatedAt: new Date() } });
   await logActivity(itemId, item.boardId, user, `menyetujui penyelesaian "${item.title}"`);
   const updated = await getWorkItem(itemId);
   await broadcastItem(updated);
+  if (item.targetDivisionId && item.masterCardId) await recomputeMasterStatus(item.masterCardId, user);
   return c.json(formatWorkItem(updated));
 });
 
@@ -1017,10 +1301,12 @@ router.post('/work-items/:item_id/reopen', async (c) => {
   const itemId = c.req.param('item_id');
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
-  await prisma.workItem.update({ where: { id: itemId }, data: { status: 'active', completedAt: null, approvedById: null, updatedAt: new Date() } });
+  const reopenWork = item.targetDivisionId ? 'IN_PROGRESS' : (item.currentPicId ? 'IN_PROGRESS' : null);
+  await prisma.workItem.update({ where: { id: itemId }, data: { status: 'active', workStatus: reopenWork ?? item.workStatus ?? null, completedAt: null, approvedById: null, updatedAt: new Date() } });
   await logActivity(itemId, item.boardId, user, `membuka kembali pekerjaan "${item.title}"`);
   const updated = await getWorkItem(itemId);
   await broadcastItem(updated);
+  if (item.targetDivisionId && item.masterCardId) await recomputeMasterStatus(item.masterCardId, user);
   return c.json(formatWorkItem(updated));
 });
 
@@ -1220,6 +1506,45 @@ router.post('/work-items/:item_id/unmirror', async (c) => {
   return c.json({ ok: true });
 });
 
+// Untuk kartu grup Bank Data: checklist & deskripsi = milik Master Card rep
+// (canonical). Semua sibling (assignment) menampilkan & mengubah yang sama.
+async function canonicalItem(item) {
+  if (!item || !item.masterCardId || !item.targetDivisionId) return item;
+  const rep = await prisma.workItem.findFirst({ where: { masterCardId: item.masterCardId, targetDivisionId: null } });
+  return rep || item;
+}
+function normChecklists(v) {
+  let cl = v;
+  if (typeof cl === 'string') { try { cl = JSON.parse(cl); } catch { cl = []; } }
+  return Array.isArray(cl) ? cl : [];
+}
+
+// ── WATCH / UNWATCH ──────────────────────────────────────────────────────
+router.post('/work-items/:item_id/watch', async (c) => {
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const item = await getItemChecked(itemId, user);
+  const ids = Array.isArray(item.watcherUserIds) ? item.watcherUserIds : [];
+  if (!ids.includes(user.id)) {
+    await prisma.workItem.update({ where: { id: itemId }, data: { watcherUserIds: [...ids, user.id] } });
+  }
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json({ ok: true, watching: true });
+});
+
+router.post('/work-items/:item_id/unwatch', async (c) => {
+  const user = c.get('user');
+  const itemId = c.req.param('item_id');
+  const item = await getItemChecked(itemId, user);
+  const ids = Array.isArray(item.watcherUserIds) ? item.watcherUserIds : [];
+  if (ids.includes(user.id)) {
+    await prisma.workItem.update({ where: { id: itemId }, data: { watcherUserIds: ids.filter((x) => x !== user.id) } });
+  }
+  await broadcastItem(await getWorkItem(itemId));
+  return c.json({ ok: true, watching: false });
+});
+
+// ── CHECKLISTS (shared via Master Card rep untuk kartu grup) ──────────────
 router.post('/work-items/:item_id/checklists', async (c) => {
   await requirePerm(c, 'card.edit');
   const user = c.get('user');
@@ -1227,13 +1552,14 @@ router.post('/work-items/:item_id/checklists', async (c) => {
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
-  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
-  checklists.push({ id: newId(), title: body.title.trim(), items: [] });
-  
-  await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
-  await logActivity(itemId, item.boardId, user, `menambahkan checklist "${body.title}"`);
-  await broadcastItem(await getWorkItem(itemId));
-  return c.json({ ok: true });
+  const host = await canonicalItem(item);
+  const checklists = normChecklists(host.checklists);
+  const cl = { id: newId(), title: body.title.trim(), items: [] };
+  checklists.push(cl);
+  await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  await logActivity(host.id, host.boardId, user, `menambahkan checklist "${body.title}"`);
+  await broadcastItem(await getWorkItem(host.id));
+  return c.json({ ok: true, id: cl.id });
 });
 
 router.delete('/work-items/:item_id/checklists/:cl_id', async (c) => {
@@ -1243,10 +1569,10 @@ router.delete('/work-items/:item_id/checklists/:cl_id', async (c) => {
   const clId = c.req.param('cl_id');
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
-  const checklists = ((item.checklists as any[]) || []).filter((c: any) => c.id !== clId);
-  
-  await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
-  await broadcastItem(await getWorkItem(itemId));
+  const host = await canonicalItem(item);
+  const checklists = normChecklists(host.checklists).filter((x) => x.id !== clId);
+  await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
 
@@ -1258,15 +1584,14 @@ router.post('/work-items/:item_id/checklists/:cl_id/items', async (c) => {
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
-  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
-  const cl = checklists.find((c: any) => c.id === clId);
+  const host = await canonicalItem(item);
+  const checklists = normChecklists(host.checklists);
+  const cl = checklists.find((x) => x.id === clId);
   if (cl) cl.items.push({ id: newId(), text: body.text.trim(), done: false });
-  
-  await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
-  await broadcastItem(await getWorkItem(itemId));
+  await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
-
 
 router.post('/work-items/:item_id/checklists/:cl_id/reorder', async (c) => {
   await requirePerm(c, 'card.edit');
@@ -1276,14 +1601,15 @@ router.post('/work-items/:item_id/checklists/:cl_id/reorder', async (c) => {
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
-  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
-  const cl = checklists.find((c: any) => c.id === clId);
+  const host = await canonicalItem(item);
+  const checklists = normChecklists(host.checklists);
+  const cl = checklists.find((x) => x.id === clId);
   if (cl && body.ordered_ids) {
-    const map = new Map(cl.items.map((i: any) => [i.id, i]));
-    cl.items = body.ordered_ids.map((id: string) => map.get(id)).filter(Boolean);
+    const map = new Map(cl.items.map((i) => [i.id, i]));
+    cl.items = body.ordered_ids.map((id) => map.get(id)).filter(Boolean);
   }
-  await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
-  await broadcastItem(await getWorkItem(itemId));
+  await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
 
@@ -1296,10 +1622,11 @@ router.patch('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) =
   const body = await c.req.json();
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
-  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
-  const cl = checklists.find((c: any) => c.id === clId);
+  const host = await canonicalItem(item);
+  const checklists = normChecklists(host.checklists);
+  const cl = checklists.find((x) => x.id === clId);
   if (cl) {
-    const sub = cl.items.find((i: any) => i.id === subId);
+    const sub = cl.items.find((i) => i.id === subId);
     if (sub) {
       if (body.done !== undefined) sub.done = body.done;
       if (body.text !== undefined) sub.text = body.text.trim();
@@ -1307,8 +1634,8 @@ router.patch('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) =
       if (body.due_date !== undefined) sub.due_date = body.due_date;
     }
   }
-  await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
-  await broadcastItem(await getWorkItem(itemId));
+  await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
 
@@ -1319,12 +1646,12 @@ router.delete('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) 
   const clId = c.req.param('cl_id');
   const subId = c.req.param('sub_id');
   const item = await getItemChecked(itemId, user);
-  let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
-  const cl = checklists.find((c: any) => c.id === clId);
-  if (cl) cl.items = cl.items.filter((i: any) => i.id !== subId);
-  
-  await prisma.workItem.update({ where: { id: itemId }, data: { checklists, updatedAt: new Date() } });
-  await broadcastItem(await getWorkItem(itemId));
+  const host = await canonicalItem(item);
+  const checklists = normChecklists(host.checklists);
+  const cl = checklists.find((x) => x.id === clId);
+  if (cl) cl.items = cl.items.filter((i) => i.id !== subId);
+  await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
 
@@ -1881,7 +2208,7 @@ router.get('/bank-data/:division_id', async (c) => {
 
   const boards = await prisma.board.findMany({
     where: { divisionId: divisionId, isArchived: false },
-    include: { lists: { orderBy: { position: 'asc' } } }
+    include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } } }
   });
 
   const items = await prisma.workItem.findMany({

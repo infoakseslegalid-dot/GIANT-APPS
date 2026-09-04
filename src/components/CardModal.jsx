@@ -21,7 +21,7 @@ const EMOJIS = ["👍", "❤️", "😂", "✅"];
 
 function SectionTitle({ icon, children }) {
   return (
-    <div className="flex items-center gap-2 text-[#44546F] mb-2">
+    <div className="flex items-center gap-2 text-2 mb-2">
       {icon}
       <h3 className="text-xs font-bold uppercase tracking-wider">{children}</h3>
     </div>
@@ -30,7 +30,7 @@ function SectionTitle({ icon, children }) {
 
 function ActionChip({ icon, label, onClick, testid, color = "default", disabled, active }) {
   const styles = {
-    default: active ? "bg-[#0C66E4] text-white" : "bg-[#091E420F] hover:bg-[#091E4224] text-[#172B4D]",
+    default: active ? "bg-[#0C66E4] text-white" : "bg-[hsl(var(--muted))] hover:bg-[hsl(var(--accent))] text-foreground",
     green: "bg-[#22A06B] hover:bg-[#1D8A5C] text-white",
     blue: "bg-[#0c66e4] hover:bg-[#0052cc] text-white",
     red: "bg-[#FFECE8] hover:bg-[#FFD5CC] text-[#CA3521]",
@@ -94,7 +94,7 @@ export default function CardModal({ itemId, onClose }) {
   if (!data) {
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-16" onClick={onClose}>
-        <div className="bg-[#f4f5f7] w-full max-w-4xl rounded-xl p-10 text-center text-[#44546F]">Memuat...</div>
+        <div className="bg-[hsl(var(--muted))] w-full max-w-4xl rounded-xl p-10 text-center text-2">Memuat...</div>
       </div>
     );
   }
@@ -339,7 +339,7 @@ export default function CardModal({ itemId, onClose }) {
         aria-labelledby="card-modal-title"
         onClick={(e) => e.stopPropagation()}
         data-testid="card-modal-content"
-        className="flex max-h-[90vh] w-[900px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-lg bg-white text-[#172b4d] shadow-2xl max-sm:h-full max-sm:max-h-full max-sm:w-full max-sm:max-w-full max-sm:rounded-none"
+        className="flex max-h-[90vh] w-[900px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-lg bg-[hsl(var(--elevated))] text-foreground shadow-2xl max-sm:h-full max-sm:max-h-full max-sm:w-full max-sm:max-w-full max-sm:rounded-none"
       >
         {/* Cover */}
         {item.cover_attachment_id && attachmentsById[item.cover_attachment_id] ? (
@@ -482,7 +482,7 @@ export default function CardModal({ itemId, onClose }) {
                 key={item.id + item.title}
                 onBlur={(e) => e.target.value.trim() && e.target.value !== item.title && saveField("title", e.target.value.trim())}
                 onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                className="min-w-0 flex-1 rounded border-2 border-transparent bg-transparent px-1 text-xl font-semibold leading-tight text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                className="min-w-0 flex-1 rounded border-2 border-transparent bg-transparent px-1 text-xl font-semibold leading-tight text-slate-900 outline-none focus:border-blue-600 focus:bg-[hsl(var(--elevated))]"
               />
             </div>
 
@@ -744,8 +744,8 @@ export default function CardModal({ itemId, onClose }) {
           </div>
 
           {/* ═══ KOLOM KANAN — w-[380px] shrink-0, scroll sendiri ═══ */}
-          <div className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-white">
-            <div className="sticky top-0 z-[1] flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
+          <div className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-slate-200 bg-[hsl(var(--elevated))]">
+            <div className="sticky top-0 z-[1] flex shrink-0 items-center gap-2 border-b border-slate-200 bg-[hsl(var(--elevated))] px-4 py-3">
               <MessageSquare size={18} className="text-slate-600" />
               <h3 className="flex-1 font-semibold text-slate-900">Comments and activity</h3>
               <button onClick={() => setShowActivityDetail(!showActivityDetail)} className="h-8 rounded bg-slate-100 px-3 text-xs font-medium text-slate-700 hover:bg-slate-200">
@@ -774,7 +774,7 @@ export default function CardModal({ itemId, onClose }) {
               ) : (
                 <>
                   {/* Input box */}
-                  <div className="overflow-hidden rounded-lg border-2 border-blue-600 bg-white shadow-sm">
+                  <div className="overflow-hidden rounded-lg border-2 border-blue-600 bg-[hsl(var(--elevated))] shadow-sm">
                     {/* Toolbar */}
                     <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 px-2 py-1.5">
                       <span className="flex h-7 items-center gap-0.5 rounded px-1.5 text-slate-500 text-xs"><Type size={14} /><ChevronDown size={11} /></span>
@@ -923,7 +923,7 @@ export default function CardModal({ itemId, onClose }) {
                         </div>
                       ) : (
                         <>
-                          <div className="mt-1 whitespace-pre-wrap rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
+                          <div className="mt-1 whitespace-pre-wrap rounded border border-slate-200 bg-[hsl(var(--elevated))] px-3 py-2 text-sm text-slate-800 shadow-sm">
                             {(c.text || "").split("\n").map((l, j) => <p key={j}>{renderCommentText(l)}</p>)}
                           </div>
                           {att && (
@@ -970,7 +970,7 @@ export default function CardModal({ itemId, onClose }) {
         </div>
 
         {/* ── BOTTOM BAR ─────────────────────────────────────────────── */}
-        <div className="flex h-12 shrink-0 items-center justify-center gap-6 border-t border-slate-200 bg-white text-sm font-medium transition-colors">
+        <div className="flex h-12 shrink-0 items-center justify-center gap-6 border-t border-slate-200 bg-[hsl(var(--elevated))] text-sm font-medium transition-colors">
           <button
             type="button"
             onClick={() => setActiveTab("powerups")}
@@ -1009,7 +1009,7 @@ function ChecklistTitle({ cl, onRename }) {
     return (
       <p className="text-sm font-semibold flex items-center gap-1.5">
         {cl.title}
-        <button aria-label="Ubah nama checklist" data-testid={`checklist-rename-${cl.id}`} onClick={() => setEditing(true)} className="text-[#8590A2] hover:text-[#44546F]">
+        <button aria-label="Ubah nama checklist" data-testid={`checklist-rename-${cl.id}`} onClick={() => setEditing(true)} className="text-3 hover:text-2">
           <Pencil size={11} />
         </button>
       </p>
@@ -1048,7 +1048,7 @@ function AddChecklistItem({ onAdd, testid }) {
           if (e.key === "Escape") setOpen(false);
         }}
         placeholder="Item checklist"
-        className="h-8 flex-1 rounded border border-[#DFE1E6] px-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]"
+        className="h-8 flex-1 rounded border border-[hsl(var(--hairline))] px-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]"
       />
       <button
         data-testid={`add-checklist-item-submit-${testid}`}

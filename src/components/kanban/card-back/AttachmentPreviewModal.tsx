@@ -64,7 +64,7 @@ export default function AttachmentPreviewModal({
           target="_blank"
           rel="noreferrer"
           title="Open in new tab"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:bg-white/15 hover:text-white"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:bg-[hsl(var(--elevated))]/15 hover:text-white"
         >
           <ExternalLink size={16} />
         </a>
@@ -72,7 +72,7 @@ export default function AttachmentPreviewModal({
           type="button"
           title="Download"
           onClick={download}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:bg-white/15 hover:text-white"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:bg-[hsl(var(--elevated))]/15 hover:text-white"
         >
           <Download size={16} />
         </button>
@@ -80,7 +80,7 @@ export default function AttachmentPreviewModal({
           type="button"
           title="Close"
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:bg-white/15 hover:text-white"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-white/80 hover:bg-[hsl(var(--elevated))]/15 hover:text-white"
         >
           <X size={18} />
         </button>
@@ -98,14 +98,14 @@ export default function AttachmentPreviewModal({
           <iframe
             src={attachment.url}
             title={attachment.fileName}
-            className="h-full w-full max-w-[1000px] rounded-[6px] border-0 bg-white shadow-2xl"
+            className="h-full w-full max-w-[1000px] rounded-[6px] border-0 bg-[hsl(var(--elevated))] shadow-2xl"
           />
         ) : (
-          <div className="flex w-[320px] flex-col items-center gap-4 rounded-[10px] bg-white p-8 text-center shadow-2xl">
-            <div className="flex h-16 w-16 items-center justify-center rounded-[10px] bg-[#091e420f] text-sm font-bold text-[#44546f]">
+          <div className="flex w-[320px] flex-col items-center gap-4 rounded-[10px] bg-[hsl(var(--elevated))] p-8 text-center shadow-2xl">
+            <div className="flex h-16 w-16 items-center justify-center rounded-[10px] bg-[hsl(var(--muted))] text-sm font-bold text-2">
               {fileExtLabel(attachment.fileName)}
             </div>
-            <p className="text-[12px] text-[#5e6c84]">
+            <p className="text-[12px] text-3">
               Pratinjau tidak tersedia untuk tipe file ini.
             </p>
             <button

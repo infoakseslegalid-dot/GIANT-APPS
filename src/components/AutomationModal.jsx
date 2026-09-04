@@ -83,22 +83,22 @@ export default function AutomationModal({ boardId, lists, labels, divisions, onC
     return `${t}${listName} → ${a}${val ? ` "${val}"` : ""}`;
   };
 
-  const selectCls = "h-9 rounded-lg border border-[#DFE1E6] px-2 text-sm text-[#172B4D] bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]";
+  const selectCls = "h-9 rounded-lg border border-[hsl(var(--hairline))] px-2 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-20 overflow-y-auto fade-enter" onClick={onClose} data-testid="automation-modal">
-      <div className="bg-white w-full max-w-xl rounded-xl shadow-2xl relative mb-16 p-6 modal-enter" onClick={(e) => e.stopPropagation()}>
-        <button aria-label="Tutup" data-testid="automation-close-button" onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]">
+      <div className="bg-[hsl(var(--elevated))] w-full max-w-xl rounded-xl shadow-2xl relative mb-16 p-6 modal-enter" onClick={(e) => e.stopPropagation()}>
+        <button aria-label="Tutup" data-testid="automation-close-button" onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2">
           <X size={18} />
         </button>
         <div className="flex items-center gap-2 mb-1">
           <Zap size={20} className="text-[#F5CD47]" />
-          <h2 className="font-heading text-lg font-bold text-[#172B4D]">Otomasi Board</h2>
+          <h2 className="font-heading text-lg font-bold text-foreground">Otomasi Board</h2>
         </div>
-        <p className="text-sm text-[#44546F] mb-5">Aturan berjalan otomatis saat kartu dibuat, dipindah, atau di-mirror.</p>
+        <p className="text-sm text-2 mb-5">Aturan berjalan otomatis saat kartu dibuat, dipindah, atau di-mirror.</p>
 
-        <div className="bg-[#F4F5F7] rounded-xl p-4 space-y-3 mb-6">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2]">Buat aturan baru</p>
+        <div className="bg-[hsl(var(--muted))] rounded-xl p-4 space-y-3 mb-6">
+          <p className="text-xs font-bold uppercase tracking-wider text-3">Buat aturan baru</p>
           <div className="flex flex-wrap items-center gap-2">
             <select data-testid="automation-trigger-select" value={trigger} onChange={(e) => setTrigger(e.target.value)} className={selectCls}>
               {TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -129,10 +129,10 @@ export default function AutomationModal({ boardId, lists, labels, divisions, onC
         </div>
 
         <div className="space-y-2" data-testid="automation-rules-list">
-          {(rules || []).length === 0 && <p className="text-sm text-[#44546F]">Belum ada aturan.</p>}
+          {(rules || []).length === 0 && <p className="text-sm text-2">Belum ada aturan.</p>}
           {(rules || []).map((r) => (
-            <div key={r.id} className="flex items-center justify-between bg-[#F4F5F7] rounded-lg px-3 py-2" data-testid={`automation-rule-${r.id}`}>
-              <p className="text-sm text-[#172B4D]">{describe(r)}</p>
+            <div key={r.id} className="flex items-center justify-between bg-[hsl(var(--muted))] rounded-lg px-3 py-2" data-testid={`automation-rule-${r.id}`}>
+              <p className="text-sm text-foreground">{describe(r)}</p>
               <button aria-label="Hapus aturan" data-testid={`automation-delete-${r.id}`} onClick={() => removeRule(r.id)} className="p-1 rounded hover:bg-[#FFECE8] text-[#CA3521]">
                 <Trash2 size={14} />
               </button>

@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   Home, Briefcase, CalendarDays, ListChecks, LayoutGrid, Database,
   BarChart3, CalendarClock, Settings, ChevronDown, Star, Search,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck,
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, TrendingUp,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -39,8 +40,8 @@ function RailItem({ to, icon, label, testid, collapsed, active }) {
         collapsed ? "h-9 w-9 justify-center mx-auto" : "gap-3 px-3 py-2"
       } ${
         active
-          ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold"
-          : "text-[#44546F] hover:bg-[#F1F2F4]"
+          ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold dark:bg-[#0c66e4]/15"
+          : "text-2 hover:bg-[hsl(var(--muted))]"
       }`}
     >
       {active && !collapsed && (
@@ -57,20 +58,20 @@ function SectionHeader({ label, icon, open, onToggle, admin }) {
     <button
       onClick={onToggle}
       className={`group mt-2 flex w-full items-center gap-2 rounded-md px-3 py-1.5 transition-colors ${
-        admin ? "bg-[#F3F0FF] hover:bg-[#E9E2FF]" : "hover:bg-[#F1F2F4]"
+        admin ? "bg-[#F3F0FF] hover:bg-[#E9E2FF] dark:bg-[#5E4DB2]/15" : "hover:bg-[hsl(var(--muted))]"
       }`}
     >
       {icon}
       <span
         className={`flex-1 text-left text-[10px] font-bold uppercase tracking-wider ${
-          admin ? "text-[#5E4DB2]" : "text-[#8590A2]"
+          admin ? "text-[#5E4DB2]" : "text-3"
         }`}
       >
         {label}
       </span>
       <ChevronDown
         size={13}
-        className={`shrink-0 text-[#8590A2] transition-transform ${open ? "" : "-rotate-90"}`}
+        className={`shrink-0 text-3 transition-transform ${open ? "" : "-rotate-90"}`}
       />
     </button>
   );
@@ -85,7 +86,7 @@ function BoardRow({ b, collapsed, active, starred, onToggleStar }) {
       className={`group relative flex items-center rounded-lg text-sm transition-colors ${
         collapsed ? "h-9 w-9 justify-center mx-auto" : "gap-2.5 px-3 py-2"
       } ${
-        active ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold" : "text-[#44546F] hover:bg-[#F1F2F4]"
+        active ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold dark:bg-[#0c66e4]/15" : "text-2 hover:bg-[hsl(var(--muted))]"
       }`}
     >
       {active && !collapsed && (
@@ -102,12 +103,12 @@ function BoardRow({ b, collapsed, active, starred, onToggleStar }) {
             role="button"
             tabIndex={-1}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleStar(b.id); }}
-            className={`shrink-0 rounded p-0.5 transition-opacity hover:bg-[#091E4224] ${
+            className={`shrink-0 rounded p-0.5 transition-opacity hover:bg-[hsl(var(--accent))] ${
               starred ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             }`}
             title={starred ? "Lepas dari favorit" : "Tambah ke favorit"}
           >
-            <Star size={13} className={starred ? "fill-[#E2B203] text-[#E2B203]" : "text-[#8590A2]"} />
+            <Star size={13} className={starred ? "fill-[#E2B203] text-[#E2B203]" : "text-3"} />
           </span>
         </>
       )}
@@ -117,6 +118,7 @@ function BoardRow({ b, collapsed, active, starred, onToggleStar }) {
 
 export default function Sidebar() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const location = useLocation();
   const uid = user?.id || "anon";
 
@@ -156,6 +158,7 @@ export default function Sidebar() {
   const permSet = new Set(myPerms?.permissions || []);
   const canHari = user?.role === "super_admin" || permSet.has("hari.view");
   const canSkor = user?.role === "super_admin" || permSet.has("skor.view");
+  const canReport = user?.role === "super_admin" || permSet.has("report.view");
 
   const allBoards = boards || [];
   const starredBoards = allBoards.filter((b) => starred.includes(b.id));
@@ -168,21 +171,21 @@ export default function Sidebar() {
   return (
     <aside
       data-testid="app-sidebar"
-      className={`${collapsed ? "w-[60px]" : "w-60"} shrink-0 border-r border-[#DFE1E6] bg-white flex flex-col transition-[width] duration-150`}
+      className={`${collapsed ? "w-[60px]" : "w-60"} shrink-0 border-r border-[hsl(var(--hairline))] bg-[hsl(var(--surface))] flex flex-col transition-[width] duration-150`}
     >
       <div className="flex-1 overflow-y-auto minimal-scrollbar px-2.5 py-3 space-y-0.5">
-        <RailItem to="/" icon={<Home size={16} />} label="Dashboard" testid="nav-dashboard" collapsed={collapsed} active={path === "/"} />
-        <RailItem to="/my-work" icon={<Briefcase size={16} />} label="Pekerjaan Saya" testid="nav-my-work" collapsed={collapsed} active={path === "/my-work"} />
-        <RailItem to="/calendar" icon={<CalendarDays size={16} />} label="Kalender" testid="nav-calendar" collapsed={collapsed} active={path === "/calendar"} />
+        <RailItem to="/" icon={<Home size={16} />} label={t("nav.dashboard")} testid="nav-dashboard" collapsed={collapsed} active={path === "/"} />
+        <RailItem to="/my-work" icon={<Briefcase size={16} />} label={t("nav.myWork")} testid="nav-my-work" collapsed={collapsed} active={path === "/my-work"} />
+        <RailItem to="/calendar" icon={<CalendarDays size={16} />} label={t("nav.calendar")} testid="nav-calendar" collapsed={collapsed} active={path === "/calendar"} />
         {isSupervisorUp && (
-          <RailItem to="/work" icon={<ListChecks size={16} />} label="Semua Pekerjaan" testid="nav-all-work" collapsed={collapsed} active={path === "/work"} />
+          <RailItem to="/work" icon={<ListChecks size={16} />} label={t("nav.allWork")} testid="nav-all-work" collapsed={collapsed} active={path === "/work"} />
         )}
 
         {/* ── FAVORIT ── */}
         {!collapsed && (
           <>
             <SectionHeader
-              label="Board Favorit" icon={<Star size={12} className="text-[#E2B203]" />}
+              label={t("nav.favorites")} icon={<Star size={12} className="text-[#E2B203]" />}
               open={sections.favorites} onToggle={() => toggleSection("favorites")}
             />
             {sections.favorites && (
@@ -192,8 +195,8 @@ export default function Sidebar() {
                     starred onToggleStar={toggleStar} />
                 ))
               ) : (
-                <p className="px-3 py-1.5 text-[11px] leading-snug text-[#8590A2]">
-                  Klik ikon <Star size={10} className="inline -mt-0.5 text-[#8590A2]" /> pada board untuk menyematkannya di sini.
+                <p className="px-3 py-1.5 text-[11px] leading-snug text-3">
+                  {t("nav.favEmptyHint")}
                 </p>
               )
             )}
@@ -206,19 +209,19 @@ export default function Sidebar() {
         {/* ── BOARD SAYA ── */}
         {!collapsed && (
           <SectionHeader
-            label="Board Saya" icon={<LayoutGrid size={12} className="text-[#8590A2]" />}
+            label={t("nav.myBoards")} icon={<LayoutGrid size={12} className="text-3" />}
             open={sections.boards} onToggle={() => toggleSection("boards")}
           />
         )}
         {!collapsed && sections.boards && allBoards.length > 6 && (
-          <div className="my-1 flex items-center gap-1.5 rounded-md border border-[#DFE1E6] px-2">
-            <Search size={13} className="shrink-0 text-[#8590A2]" />
+          <div className="my-1 flex items-center gap-1.5 rounded-md border border-[hsl(var(--hairline))] px-2">
+            <Search size={13} className="shrink-0 text-3" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Cari board…"
+              placeholder={t("nav.searchBoards")}
               data-testid="sidebar-board-filter"
-              className="h-7 flex-1 bg-transparent text-[13px] outline-none"
+              className="h-7 flex-1 bg-transparent text-[13px] text-foreground outline-none"
             />
           </div>
         )}
@@ -231,13 +234,13 @@ export default function Sidebar() {
             />
           ))}
         {!collapsed && sections.boards && filteredBoards.length === 0 && (
-          <p className="px-3 py-1.5 text-[11px] text-[#8590A2]">Tidak ada board cocok.</p>
+          <p className="px-3 py-1.5 text-[11px] text-3">{t("nav.noBoardMatch")}</p>
         )}
 
         {/* ── BANK DATA DIVISI ── */}
         {!collapsed && (
           <SectionHeader
-            label="Bank Data Divisi" icon={<Database size={12} className="text-[#8590A2]" />}
+            label={t("nav.bankData")} icon={<Database size={12} className="text-3" />}
             open={sections.bankdata} onToggle={() => toggleSection("bankdata")}
           />
         )}
@@ -253,7 +256,7 @@ export default function Sidebar() {
                 title={collapsed ? `${d.name}${n ? ` — ${n} menunggu` : ""}` : undefined}
                 className={`group relative flex items-center rounded-lg text-sm transition-colors ${
                   collapsed ? "h-9 w-9 justify-center mx-auto" : "gap-2.5 px-3 py-2"
-                } ${active ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold" : "text-[#44546F] hover:bg-[#F1F2F4]"}`}
+                } ${active ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold dark:bg-[#0c66e4]/15" : "text-2 hover:bg-[hsl(var(--muted))]"}`}
               >
                 {active && !collapsed && (
                   <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-[#0C66E4]" />
@@ -285,31 +288,34 @@ export default function Sidebar() {
           })}
 
         {/* ── PANTAUAN GLOBAL ── */}
-        {(canHari || canSkor) && !collapsed && (
+        {(canHari || canSkor || canReport) && !collapsed && (
           <SectionHeader
-            label="Pantauan Global" icon={<BarChart3 size={12} className="text-[#8590A2]" />}
+            label={t("nav.globalMonitor")} icon={<BarChart3 size={12} className="text-3" />}
             open={sections.global} onToggle={() => toggleSection("global")}
           />
         )}
+        {(collapsed || sections.global) && canReport && (
+          <RailItem to="/reports" icon={<TrendingUp size={16} />} label={t("nav.reports")} testid="nav-reports" collapsed={collapsed} active={path.startsWith("/reports")} />
+        )}
         {(collapsed || sections.global) && canHari && (
-          <RailItem to="/global/hari" icon={<CalendarClock size={16} />} label="Board Harian (Hari 1-7)" testid="nav-global-hari" collapsed={collapsed} active={path === "/global/hari"} />
+          <RailItem to="/global/hari" icon={<CalendarClock size={16} />} label={t("nav.dailyBoard")} testid="nav-global-hari" collapsed={collapsed} active={path === "/global/hari"} />
         )}
         {(collapsed || sections.global) && canSkor && (
-          <RailItem to="/global/skor" icon={<BarChart3 size={16} />} label="Peta Skor Global" testid="nav-global-skor" collapsed={collapsed} active={path === "/global/skor"} />
+          <RailItem to="/global/skor" icon={<BarChart3 size={16} />} label={t("nav.scoreMap")} testid="nav-global-skor" collapsed={collapsed} active={path === "/global/skor"} />
         )}
 
         {/* ── ADMINISTRASI (dipisah visual) ── */}
         {isAdminRole && (
           <>
-            <div className="my-2 border-t-2 border-[#DFE1E6]" />
+            <div className="my-2 border-t-2 border-[hsl(var(--hairline))]" />
             {!collapsed && (
               <SectionHeader
-                label="Administrasi" admin icon={<ShieldCheck size={12} className="text-[#5E4DB2]" />}
+                label={t("nav.administration")} admin icon={<ShieldCheck size={12} className="text-[#5E4DB2]" />}
                 open={sections.admin} onToggle={() => toggleSection("admin")}
               />
             )}
             {(collapsed || sections.admin) && (
-              <RailItem to="/admin" icon={<Settings size={16} />} label="Admin Panel" testid="nav-admin-panel" collapsed={collapsed} active={path.startsWith("/admin")} />
+              <RailItem to="/admin" icon={<Settings size={16} />} label={t("nav.adminPanel")} testid="nav-admin-panel" collapsed={collapsed} active={path.startsWith("/admin")} />
             )}
           </>
         )}
@@ -319,10 +325,10 @@ export default function Sidebar() {
       <button
         onClick={() => setCollapsed((v) => !v)}
         data-testid="sidebar-collapse-toggle"
-        title={collapsed ? "Perlebar sidebar" : "Perkecil sidebar"}
-        className="flex h-9 items-center gap-2 border-t border-[#DFE1E6] px-3 text-[12px] font-medium text-[#8590A2] hover:bg-[#F1F2F4]"
+        title={collapsed ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
+        className="flex h-9 items-center gap-2 border-t border-[hsl(var(--hairline))] px-3 text-[12px] font-medium text-3 hover:bg-[hsl(var(--muted))]"
       >
-        {collapsed ? <PanelLeftOpen size={15} className="mx-auto" /> : (<><PanelLeftClose size={15} /> Perkecil</>)}
+        {collapsed ? <PanelLeftOpen size={15} className="mx-auto" /> : (<><PanelLeftClose size={15} /> {t("nav.collapse")}</>)}
       </button>
     </aside>
   );

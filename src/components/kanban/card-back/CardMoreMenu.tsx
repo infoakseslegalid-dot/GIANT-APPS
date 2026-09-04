@@ -20,10 +20,10 @@ import {
 import type { CardBackProps } from './types';
 
 const menuItem =
-  'flex h-[29px] cursor-pointer items-center gap-[9px] px-[11px] text-[11px] text-[#172b4d] hover:bg-[#f1f2f4]';
+  'flex h-[29px] cursor-pointer items-center gap-[9px] px-[11px] text-[11px] text-foreground hover:bg-[hsl(var(--muted))]';
 
 export default function CardMoreMenu(props: CardBackProps) {
-  const { card, onJoin, onMoveCard, onCopyCard, onMakeTemplate, onArchiveCard, onOpenSend, onDeleteCard, isAssignment } = props;
+  const { card, onJoin, onMoveCard, onOpenMove, onCopyCard, onMakeTemplate, onArchiveCard, onOpenSend, onDeleteCard, isAssignment } = props;
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -48,47 +48,47 @@ export default function CardMoreMenu(props: CardBackProps) {
         title="More"
         aria-pressed={open}
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-6 w-6 items-center justify-center rounded-full border-0 bg-transparent text-[#44546b] transition-colors hover:bg-[#091e4224] hover:text-[#172b4d] ${
-          open ? 'bg-[#091e4224] text-[#172b4d]' : ''
+        className={`flex h-6 w-6 items-center justify-center rounded-full border-0 bg-transparent text-2 transition-colors hover:bg-[hsl(var(--accent))] hover:text-foreground ${
+          open ? 'bg-[hsl(var(--accent))] text-foreground' : ''
         }`}
       >
         <MoreHorizontal size={16} />
       </button>
 
       {open && (
-        <div className="absolute right-[10px] top-[36px] z-20 w-[155px] overflow-hidden rounded-[7px] bg-white shadow-[0_8px_24px_#0005]">
+        <div className="absolute right-[10px] top-[36px] z-20 w-[155px] overflow-hidden rounded-[7px] bg-[hsl(var(--elevated))] shadow-[0_8px_24px_#0005]">
           <div className={menuItem} onClick={pick(onOpenSend)}>
             <Send size={14} className="text-[#0c66e4]" />
             <span className="font-semibold text-[#0c66e4]">Kirim ke Divisi</span>
           </div>
           <div className={menuItem} onClick={pick(onJoin)}>
-            <UserPlus size={14} className="text-[#44546f]" />
+            <UserPlus size={14} className="text-2" />
             <span>Join</span>
           </div>
-          <div className={menuItem} onClick={pick(() => onMoveCard(card.listId, 0))}>
-            <ArrowRight size={14} className="text-[#44546f]" />
-            <span>Move</span>
+          <div className={menuItem} onClick={pick(() => (onOpenMove ? onOpenMove() : onMoveCard(card.listId, 0)))}>
+            <ArrowRight size={14} className="text-2" />
+            <span>Pindahkan…</span>
           </div>
           <div
             className={menuItem}
             onClick={pick(() => onCopyCard({ title: `${card.title} (Salinan)`, listId: card.listId }))}
           >
-            <Copy size={14} className="text-[#44546f]" />
+            <Copy size={14} className="text-2" />
             <span>Copy</span>
           </div>
           <div className={menuItem} onClick={pick(onMakeTemplate)}>
-            <LayoutTemplate size={14} className="text-[#44546f]" />
+            <LayoutTemplate size={14} className="text-2" />
             <span>Make template</span>
           </div>
 
-          <div className="my-1 h-px bg-[#dfe1e6]" />
+          <div className="my-1 h-px bg-[hsl(var(--muted))]" />
 
           <div className={menuItem} onClick={pick()}>
-            <Share2 size={14} className="text-[#44546f]" />
+            <Share2 size={14} className="text-2" />
             <span>Share</span>
           </div>
           <div className={menuItem} onClick={pick(onArchiveCard)}>
-            <Archive size={14} className="text-[#44546f]" />
+            <Archive size={14} className="text-2" />
             <span>{card.isArchived ? 'Send to board' : 'Archive'}</span>
           </div>
           {isAssignment && onDeleteCard && (

@@ -8,12 +8,15 @@ import { streamSSE } from 'hono/streaming';
 import { authApp } from './routes_auth';
 import { adminRouter } from './routes_admin';
 import workRouter from './routes_work';
+import reportRouter from './routes_report';
 import { realtimeBus } from './deps';
 import { syncPermissions, allowedKeysFor } from './permissions';
+import { prefetchDivisions } from './deps';
 
 // Katalog permission disinkronkan sekali saat modul dimuat: aksi kurasi +
 // table.<Model> untuk setiap model Prisma. Model baru → otomatis muncul di matriks.
 syncPermissions().catch((e) => console.error('[permissions] sync gagal:', e));
+prefetchDivisions().catch((e) => console.error('[divisions] prefetch gagal:', e));
 
 const app = new Hono().basePath('/api');
 
@@ -30,6 +33,11 @@ app.use('*', async (c, next) => {
         return next();
     }
     const user = await getCurrentUser(c);
+    // Lampirkan set izin agar helper sinkron (canViewBoard, dll) bisa mengecek
+    // matriks Hak Akses tanpa await.
+    try {
+        (user as any)._perms = new Set(await allowedKeysFor(user));
+    } catch { (user as any)._perms = new Set(); }
     c.set('user', user);
     await next();
 });
@@ -70,6 +78,7 @@ app.get('/my-permissions', async (c) => {
 app.route('/auth', authApp);
 app.route('/', adminRouter);
 app.route('/', workRouter);
+app.route('/', reportRouter);
 
 export { app };
 

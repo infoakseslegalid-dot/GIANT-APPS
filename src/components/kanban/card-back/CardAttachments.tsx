@@ -85,7 +85,7 @@ export default function CardAttachments({
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="ml-auto h-[28px] rounded-[5px] border border-[#dfe1e6] bg-[#f7f8f9] px-[11px] text-[13px] hover:bg-[#e9ebee]"
+          className="ml-auto h-[28px] rounded-[5px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-[11px] text-[13px] hover:bg-[hsl(var(--muted))]"
         >
           Add
         </button>
@@ -103,11 +103,11 @@ export default function CardAttachments({
       </div>
 
       {list.length === 0 ? (
-        <p className="rounded-[6px] bg-[#f7f8f9] p-3 text-[11.5px] text-[#7a869a]">Belum ada lampiran.</p>
+        <p className="rounded-[6px] bg-[hsl(var(--muted))] p-3 text-[11.5px] text-3">Belum ada lampiran.</p>
       ) : (
         <>
           {/* bar aksi bulk / select all */}
-          <div className="mb-2 flex items-center gap-2 text-[11px] text-[#5e6c84]">
+          <div className="mb-2 flex items-center gap-2 text-[11px] text-3">
             <label className="flex cursor-pointer items-center gap-1.5">
               <input
                 type="checkbox"
@@ -119,11 +119,11 @@ export default function CardAttachments({
             </label>
             {selectedList.length > 0 && (
               <>
-                <span className="font-semibold text-[#172b4d]">{selectedList.length} dipilih</span>
+                <span className="font-semibold text-foreground">{selectedList.length} dipilih</span>
                 <button
                   type="button"
                   onClick={bulkDownload}
-                  className="flex items-center gap-1 rounded px-1.5 py-0.5 underline hover:text-[#172b4d]"
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 underline hover:text-foreground"
                 >
                   <Download size={12} /> Download
                 </button>
@@ -137,7 +137,7 @@ export default function CardAttachments({
                 <button
                   type="button"
                   onClick={() => setSelected(new Set())}
-                  className="ml-auto rounded px-1.5 py-0.5 underline hover:text-[#172b4d]"
+                  className="ml-auto rounded px-1.5 py-0.5 underline hover:text-foreground"
                 >
                   Batal
                 </button>
@@ -152,7 +152,7 @@ export default function CardAttachments({
               return (
                 <div
                   key={att.id}
-                  className="group flex items-center gap-2.5 rounded-[6px] border border-[#dfe1e6] bg-white p-2 hover:bg-[#f7f8f9]"
+                  className="group flex items-center gap-2.5 rounded-[6px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-2 hover:bg-[hsl(var(--muted))]"
                 >
                   <input
                     type="checkbox"
@@ -164,7 +164,7 @@ export default function CardAttachments({
                   <button
                     type="button"
                     onClick={() => setPreview(att)}
-                    className="flex h-[44px] w-[58px] shrink-0 items-center justify-center overflow-hidden rounded-[4px] bg-[#091e420f] text-[10px] font-bold text-[#44546f]"
+                    className="flex h-[44px] w-[58px] shrink-0 items-center justify-center overflow-hidden rounded-[4px] bg-[hsl(var(--muted))] text-[10px] font-bold text-2"
                   >
                     {img ? (
                       <img src={att.thumbUrl || att.url} alt={att.fileName} className="h-full w-full object-cover" />
@@ -177,13 +177,13 @@ export default function CardAttachments({
                     <button
                       type="button"
                       onClick={() => setPreview(att)}
-                      className="flex w-full items-baseline text-left text-[12px] font-semibold text-[#172b4d]"
+                      className="flex w-full items-baseline text-left text-[12px] font-semibold text-foreground"
                       title={att.fileName}
                     >
                       <span className="min-w-0 truncate">{base}</span>
                       <span className="shrink-0">{ext}</span>
                     </button>
-                    <div className="mt-0.5 text-[10px] text-[#5e6c84]">
+                    <div className="mt-0.5 text-[10px] text-3">
                       {formatRelativeShort(att.createdAt)}
                       {att.size ? ` · ${formatFileSize(att.size)}` : ''}
                     </div>
@@ -194,7 +194,7 @@ export default function CardAttachments({
                       type="button"
                       title="Preview"
                       onClick={() => setPreview(att)}
-                      className="flex h-7 w-7 items-center justify-center rounded text-[#44546f] hover:bg-[#091e420f]"
+                      className="flex h-7 w-7 items-center justify-center rounded text-2 hover:bg-[hsl(var(--muted))]"
                     >
                       <Eye size={14} />
                     </button>
@@ -203,7 +203,7 @@ export default function CardAttachments({
                         type="button"
                         title="Jadikan cover"
                         onClick={() => onUpdateCard({ coverImageUrl: att.url, coverColor: null })}
-                        className="flex h-7 w-7 items-center justify-center rounded text-[#44546f] hover:bg-[#091e420f]"
+                        className="flex h-7 w-7 items-center justify-center rounded text-2 hover:bg-[hsl(var(--muted))]"
                       >
                         <ImageDown size={14} />
                       </button>
@@ -213,7 +213,7 @@ export default function CardAttachments({
                       target="_blank"
                       rel="noreferrer"
                       title="Open in new tab"
-                      className="flex h-7 w-7 items-center justify-center rounded text-[#44546f] hover:bg-[#091e420f]"
+                      className="flex h-7 w-7 items-center justify-center rounded text-2 hover:bg-[hsl(var(--muted))]"
                     >
                       <ExternalLink size={14} />
                     </a>
@@ -221,7 +221,7 @@ export default function CardAttachments({
                       type="button"
                       title="Download"
                       onClick={() => downloadOne(att)}
-                      className="flex h-7 w-7 items-center justify-center rounded text-[#44546f] hover:bg-[#091e420f]"
+                      className="flex h-7 w-7 items-center justify-center rounded text-2 hover:bg-[hsl(var(--muted))]"
                     >
                       <Download size={14} />
                     </button>
@@ -231,7 +231,7 @@ export default function CardAttachments({
                       onClick={() => {
                         if (confirm(`Hapus "${att.fileName}"?`)) onDeleteAttachments([att.id]);
                       }}
-                      className="flex h-7 w-7 items-center justify-center rounded text-[#44546f] hover:bg-[#091e420f] hover:text-[#e34935]"
+                      className="flex h-7 w-7 items-center justify-center rounded text-2 hover:bg-[hsl(var(--muted))] hover:text-[#e34935]"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -245,7 +245,7 @@ export default function CardAttachments({
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
-              className="mt-2 rounded-[5px] bg-[#f1f2f4] px-3 py-1.5 text-[12px] font-medium text-[#172b4d] hover:bg-[#dcdfe4]"
+              className="mt-2 rounded-[5px] bg-[hsl(var(--muted))] px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-[#dcdfe4]"
             >
               {showAll ? 'Tampilkan lebih sedikit' : `View all attachments (${hiddenCount} lagi)`}
             </button>

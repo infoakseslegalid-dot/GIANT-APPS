@@ -63,7 +63,7 @@ export function DueBadge({ dueDate, status }) {
   const isOverdue = !isDone && dueDate < today;
   const isToday = !isDone && dueDate === today;
   const isSoon = !isDone && !isOverdue && !isToday && dueDate <= soonLimit;
-  let cls = "bg-[#091E420F] text-[#44546F]";
+  let cls = "bg-[hsl(var(--muted))] text-2";
   let text = fmtDate(dueDate);
   if (isDone) {
     cls = "bg-[#22A06B] text-white";

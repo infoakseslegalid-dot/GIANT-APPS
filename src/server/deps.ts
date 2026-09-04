@@ -12,14 +12,15 @@ export const db = new PrismaClient();
 export const JWT_ALGORITHM = "HS256";
 export const ACCESS_MINUTES = 60 * 12;
 
-export const ADMIN_ROLES = new Set(["super_admin", "admin"]);
-export const SUPERVISOR_ROLES = new Set(["super_admin", "admin", "supervisor"]);
+export const ADMIN_ROLES = new Set(["super_admin"]);
+export const SUPERVISOR_ROLES = new Set(["super_admin", "supervisor"]);
 
 export const ROLE_LABELS: Record<string, string> = {
     "super_admin": "Super Admin",
-    "admin": "Admin",
+    "admin": "Admin Operasional",
+    "cs": "Customer Service",
     "supervisor": "Supervisor",
-    "staff": "Staff",
+    "staff": "Staff (Legacy)",
     "viewer": "Viewer",
 };
 
@@ -84,6 +85,8 @@ export function publicUser(u: any): any {
         division_id: u.divisionId,
         avatar_color: u.avatarColor || "#0C66E4",
         is_active: u.isActive !== undefined ? u.isActive : true,
+        theme: u.theme || "system",
+        locale: u.locale || "id",
     };
 }
 
@@ -221,17 +224,93 @@ export async function broadcastItem(item: any) {
 }
 
 export async function getBoard(boardId: string) {
-    const b = await db.board.findUnique({ where: { id: boardId }, include: { members: true } });
+    const b = await db.board.findUnique({ where: { id: boardId }, include: { members: true, division: true } });
     if (!b) {
         throw new HTTPException(404, { message: "Board tidak ditemukan" });
     }
     return b;
 }
 
+let _divCache: Record<string, string> = {};
+export async function prefetchDivisions() {
+    const divs = await db.division.findMany();
+    for (const d of divs) _divCache[d.id] = d.key;
+}
+export function getDivisionKey(divisionId: string | null, board?: any): string | null {
+    if (board?.division?.key) return board.division.key;
+    if (!divisionId) return null;
+    return _divCache[divisionId] || null;
+}
+
+// Grup "Admin Operasional": user di salah satu divisi ini boleh MELIHAT
+// (read-only) board divisi lain dalam grup yang sama. Edit tetap hanya di
+// board divisinya sendiri (lihat canEditBoard).
+export const ADMIN_OPS_KEYS = new Set(["draf", "pajak", "perizinan"]);
+
 export function canViewBoard(user: any, board: any): boolean {
+    const divKey = getDivisionKey(board.divisionId, board);
     if (ADMIN_ROLES.has(user.role)) return true;
+    if (user.role === "supervisor") return true;
+
+    // Pengecualian mutlak: jika user secara eksplisit di-assign sebagai member board, selalu izinkan
     if (board.members && board.members.some((m: any) => m.userId === user.id)) return true;
+
+    // Aturan KETAT untuk CS: HANYA bisa lihat board CS
+    if (user.role === "cs") {
+        if (divKey === "cs") return true;
+        if (board.divisionId && board.divisionId === user.divisionId) return true;
+        return false;
+    }
+
+    // Admin Operasional: HANYA board Admin Draf / Pajak / Perizinan.
+    if (user.role === "admin") {
+        if (divKey && ADMIN_OPS_KEYS.has(divKey)) return true;
+        if (board.divisionId && board.divisionId === user.divisionId) return true;
+        return false;
+    }
+
+    // Untuk role lain (staff legacy, viewer, dll), cek matriks
+    if (user._perms && user._perms.has("board.view_all")) return true;
+
+    // Anggota grup Admin Operasional (berbasis divisi, tanpa peduli peran) →
+    // boleh melihat board grup yang sama.
+    const myKey = user.divisionId ? getDivisionKey(user.divisionId) : null;
+    if (myKey && ADMIN_OPS_KEYS.has(myKey) && divKey && ADMIN_OPS_KEYS.has(divKey)) return true;
+
     if (board.divisionId && board.divisionId === user.divisionId) return true;
+    return false;
+}
+
+/**
+ * Boleh MENGUBAH isi board ini (buat/edit/hapus kartu & list)?
+ * - admin / supervisor: ya.
+ * - anggota board: ya (ini kunci untuk CS → hanya board-nya sendiri).
+ * - se-divisi: ya HANYA untuk divisi non-CS (Admin Draf/Pajak/Perizinan/Desain
+ *   kolaboratif). CS dikecualikan.
+ * `board.division` harus di-include; kalau tidak ada, cek key='cs' dilewati.
+ */
+export function canEditBoard(user: any, board: any): boolean {
+    if (!user || !board) return false;
+    if (ADMIN_ROLES.has(user.role)) return true; // super_admin
+    if (user.role === "supervisor") return true;
+
+    // Matriks Hak Akses: peran yang diberi "board.edit_all" boleh mengubah SEMUA
+    // board lintas divisi (mis. jika admin ingin sebuah peran bisa edit board
+    // Admin Draf/Pajak/Perizinan yang bukan divisinya). Default: mati.
+    if (user._perms && user._perms.has("board.edit_all")) return true;
+
+    const divKey = getDivisionKey(board.divisionId, board);
+
+    // CS hanya bisa edit kalau dia adalah members dari board tersebut
+    // (karena board cs dibuat per-cs dan mereka di-assign sebagai member)
+    if (user.role === "cs") {
+        if (board.members && board.members.some((m: any) => m.userId === user.id)) return true;
+        return false;
+    }
+
+
+    if (board.members && board.members.some((m: any) => m.userId === user.id)) return true;
+    if (board.divisionId && user.divisionId && board.divisionId === user.divisionId && divKey !== "cs") return true;
     return false;
 }
 
@@ -247,7 +326,7 @@ export async function getWorkItem(itemId: string) {
 export async function resolveBoardListForDivision(divisionId: string, preferListName?: string | null) {
     const boards = await db.board.findMany({
         where: { divisionId, isArchived: false, lists: { some: {} } },
-        include: { lists: { orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
+        include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
     });
     boards.sort((a: any, b: any) => b._count.lists - a._count.lists);
     const board = boards[0] || null;
@@ -453,18 +532,36 @@ export async function runAutomation(boardId: string, trigger: string, item: any,
     }
 }
 
+// Satu label status yang jelas untuk user (selaras dengan routes_work.displayStatus).
+function _displayStatus(c) {
+  const isAssignment = !!c.targetDivisionId;
+  if (c.archived) return { code: 'ARCHIVED', label: 'Diarsipkan', tone: 'gray' };
+  if (c.status === 'done' || c.workStatus === 'COMPLETED') return { code: 'DONE', label: 'Selesai', tone: 'green' };
+  if (c.status === 'submitted') return { code: 'REVIEW', label: 'Menunggu persetujuan', tone: 'amber' };
+  if (isAssignment && c.distributionStatus === 'AVAILABLE') return { code: 'WAITING_CLAIM', label: 'Menunggu diambil', tone: 'slate' };
+  if (isAssignment && c.distributionStatus === 'RELEASED') return { code: 'RELEASED', label: 'Dilepas', tone: 'slate' };
+  if (c.workStatus === 'REVISION') return { code: 'REVISION', label: 'Perlu revisi', tone: 'amber' };
+  return { code: 'IN_PROGRESS', label: 'Sedang dikerjakan', tone: 'blue' };
+}
+
 export function formatWorkItem(c) {
   if (!c) return c;
-  
+
   // Parse checklists if it's a string
   let checklists = [];
   try {
     if (typeof c.checklists === 'string') checklists = JSON.parse(c.checklists);
     else if (c.checklists) checklists = c.checklists;
   } catch (e) {}
-  
+
+  const _ds = _displayStatus(c);
+
   return {
     ...c,
+    display_status: _ds.code,
+    display_status_label: _ds.label,
+    display_status_tone: _ds.tone,
+    is_done: _ds.code === 'DONE',
     list_id: c.listId,
     client_name: c.clientName,
     start_date: c.startDate,
@@ -481,6 +578,7 @@ export function formatWorkItem(c) {
     board_id: c.boardId,
     cover_attachment_id: c.coverAttachmentId,
     cover_color: c.coverColor,
+    watcher_ids: c.watcherUserIds || [],
     comment_count: c.commentCount,
     attachment_count: c.attachmentCount,
     checklists: checklists,

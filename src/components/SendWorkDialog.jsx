@@ -5,7 +5,7 @@ import { X, Send } from "lucide-react";
 import { api, errMsg, PRIORITIES } from "../lib/api";
 import { Avatar } from "./common";
 
-const inputCls = "h-9 w-full rounded-lg border border-[#DFE1E6] px-3 text-sm text-[#172B4D] bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]";
+const inputCls = "h-9 w-full rounded-lg border border-[hsl(var(--hairline))] px-3 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
 
 export default function SendWorkDialog({ item, onClose, onDone }) {
   const [divisionId, setDivisionId] = useState("");
@@ -67,42 +67,42 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex justify-center items-start pt-16 overflow-y-auto fade-enter" onClick={onClose} data-testid="send-work-dialog">
-      <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl p-6 mb-16 modal-enter" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-[hsl(var(--elevated))] w-full max-w-lg rounded-xl shadow-2xl p-6 mb-16 modal-enter" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
-          <h2 className="font-heading text-lg font-bold text-[#172B4D]">Kirim / Mirror Pekerjaan</h2>
-          <button aria-label="Tutup" data-testid="send-work-close" onClick={onClose} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]">
+          <h2 className="font-heading text-lg font-bold text-foreground">Kirim / Mirror Pekerjaan</h2>
+          <button aria-label="Tutup" data-testid="send-work-close" onClick={onClose} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2">
             <X size={18} />
           </button>
         </div>
-        <div className="bg-[#F4F5F7] rounded-lg px-3 py-2 mb-4">
-          <p className="text-sm font-semibold text-[#172B4D]">{item.title}</p>
-          {item.client_name && <p className="text-xs text-[#44546F]">{item.client_name}</p>}
+        <div className="bg-[hsl(var(--muted))] rounded-lg px-3 py-2 mb-4">
+          <p className="text-sm font-semibold text-foreground">{item.title}</p>
+          {item.client_name && <p className="text-xs text-2">{item.client_name}</p>}
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-[#44546F]">Catatan untuk penerima</label>
+            <label className="text-xs font-semibold text-2">Catatan untuk penerima</label>
             <textarea
               data-testid="send-note-input"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={2}
               placeholder="mis: Draft akta sudah selesai, mohon dilanjutkan ke notaris."
-              className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none"
+              className="w-full rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none"
             />
-            <p className="text-[11px] text-[#8590A2] mt-1">Dikirim sebagai komentar pertama di kartu penerima — bukan mengubah deskripsi.</p>
+            <p className="text-[11px] text-3 mt-1">Dikirim sebagai komentar pertama di kartu penerima — bukan mengubah deskripsi.</p>
           </div>
 
-          <div className="border-t border-[#DFE1E6] pt-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Kirim ke</p>
-            <label className="text-xs font-semibold text-[#44546F]">Divisi Tujuan *</label>
+          <div className="border-t border-[hsl(var(--hairline))] pt-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">Kirim ke</p>
+            <label className="text-xs font-semibold text-2">Divisi Tujuan *</label>
             <select data-testid="send-division-select" value={divisionId} onChange={(e) => pickDivision(e.target.value)} className={inputCls}>
               <option value="">Pilih divisi...</option>
               {(divisions || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             {divisionId && lists.length > 0 && (
               <div className="mt-2">
-                <label className="text-xs font-semibold text-[#44546F]">Masuk ke list</label>
+                <label className="text-xs font-semibold text-2">Masuk ke list</label>
                 <select data-testid="send-list-select" value={listId} onChange={(e) => setListId(e.target.value)} className={inputCls}>
                   <option value="">(tetap di posisi saat ini)</option>
                   {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -112,29 +112,29 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
           </div>
 
           {divisionId && (
-            <div className="border-t border-[#DFE1E6] pt-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Penanggung Jawab</p>
+            <div className="border-t border-[hsl(var(--hairline))] pt-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">Penanggung Jawab</p>
               <label className="flex items-start gap-2 cursor-pointer mb-1.5" data-testid="send-mode-division">
                 <input type="radio" checked={mode === "division"} onChange={() => setMode("division")} className="mt-1 accent-[#0C66E4]" />
-                <span className="text-sm text-[#172B4D]">Biarkan anggota divisi mengambil sendiri
-                  <span className="block text-[11px] text-[#8590A2]">Masuk Bank Data sebagai "Menunggu Diambil"</span>
+                <span className="text-sm text-foreground">Biarkan anggota divisi mengambil sendiri
+                  <span className="block text-[11px] text-3">Masuk Bank Data sebagai "Menunggu Diambil"</span>
                 </span>
               </label>
               <label className="flex items-start gap-2 cursor-pointer" data-testid="send-mode-user">
                 <input type="radio" checked={mode === "user"} onChange={() => setMode("user")} className="mt-1 accent-[#0C66E4]" />
-                <span className="text-sm text-[#172B4D]">Berikan langsung kepada user tertentu</span>
+                <span className="text-sm text-foreground">Berikan langsung kepada user tertentu</span>
               </label>
               {mode === "user" && (
-                <div className="mt-2 max-h-36 overflow-y-auto minimal-scrollbar space-y-1 border border-[#DFE1E6] rounded-lg p-2">
+                <div className="mt-2 max-h-36 overflow-y-auto minimal-scrollbar space-y-1 border border-[hsl(var(--hairline))] rounded-lg p-2">
                   {workload.map((w) => (
-                    <label key={w.user.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] cursor-pointer" data-testid={`send-user-${w.user.id}`}>
+                    <label key={w.user.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[hsl(var(--muted))] cursor-pointer" data-testid={`send-user-${w.user.id}`}>
                       <input type="checkbox" checked={memberIds.includes(w.user.id)} onChange={() => toggleMember(w.user.id)} className="w-4 h-4 accent-[#0C66E4]" />
                       <Avatar name={w.user.name} color={w.user.avatar_color} size="h-6 w-6 text-[10px]" />
-                      <span className="text-sm text-[#172B4D] flex-1">{w.user.name}</span>
-                      <span className="text-[10px] text-[#8590A2]">{w.total} pekerjaan</span>
+                      <span className="text-sm text-foreground flex-1">{w.user.name}</span>
+                      <span className="text-[10px] text-3">{w.total} pekerjaan</span>
                     </label>
                   ))}
-                  {workload.length === 0 && <p className="text-xs text-[#8590A2] px-1">Belum ada anggota di divisi ini.</p>}
+                  {workload.length === 0 && <p className="text-xs text-3 px-1">Belum ada anggota di divisi ini.</p>}
                 </div>
               )}
             </div>
@@ -147,13 +147,13 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
             {showExtra && (
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
-                  <label className="text-xs font-semibold text-[#44546F]">Prioritas</label>
+                  <label className="text-xs font-semibold text-2">Prioritas</label>
                   <select data-testid="send-priority-select" value={priority} onChange={(e) => setPriority(e.target.value)} className={inputCls}>
                     {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-[#44546F]">Tenggat</label>
+                  <label className="text-xs font-semibold text-2">Tenggat</label>
                   <input data-testid="send-due-input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={inputCls} />
                 </div>
               </div>
@@ -161,7 +161,7 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button data-testid="send-cancel-button" onClick={onClose} className="flex-1 h-10 rounded-lg bg-[#091E420F] hover:bg-[#091E4224] text-[#172B4D] text-sm font-semibold transition-colors">
+            <button data-testid="send-cancel-button" onClick={onClose} className="flex-1 h-10 rounded-lg bg-[hsl(var(--muted))] hover:bg-[hsl(var(--accent))] text-foreground text-sm font-semibold transition-colors">
               Batal
             </button>
             <button

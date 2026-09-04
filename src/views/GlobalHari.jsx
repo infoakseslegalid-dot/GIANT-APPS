@@ -37,10 +37,10 @@ function HariCard({ item, usersById, onClick, overlay, draggable = true }) {
       {...(overlay ? {} : { ...attributes, ...listeners })}
       onClick={onClick}
       data-testid={`hari-card-${item.id}`}
-      className={`bg-white rounded-lg shadow-sm border-b border-gray-300 p-3 cursor-pointer flex flex-col gap-1.5 ${isDragging ? "opacity-40" : ""} ${overlay ? "rotate-2 scale-105 shadow-xl" : "hover:bg-gray-50"}`}
+      className={`bg-[hsl(var(--elevated))] rounded-lg shadow-sm border-b border-gray-300 p-3 cursor-pointer flex flex-col gap-1.5 ${isDragging ? "opacity-40" : ""} ${overlay ? "rotate-2 scale-105 shadow-xl" : "hover:bg-gray-50"}`}
     >
-      <p className="text-sm font-medium text-[#172B4D] leading-snug">{item.title}</p>
-      {item.client_name && <p className="text-xs text-[#44546F]">{item.client_name}</p>}
+      <p className="text-sm font-medium text-foreground leading-snug">{item.title}</p>
+      {item.client_name && <p className="text-xs text-2">{item.client_name}</p>}
       <div className="flex flex-wrap items-center gap-1.5">
         {item.board_name && (
           <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: item.board_background || "#0079bf" }}>
@@ -52,9 +52,9 @@ function HariCard({ item, usersById, onClick, overlay, draggable = true }) {
             <AlertTriangle size={10} /> Mandek {item.days_in_stage} hari
           </span>
         ) : (
-          <span className="text-[10px] font-semibold text-[#44546F] bg-[#F1F2F4] px-1.5 py-0.5 rounded">{item.days_in_stage} hari di tahap ini</span>
+          <span className="text-[10px] font-semibold text-2 bg-[hsl(var(--muted))] px-1.5 py-0.5 rounded">{item.days_in_stage} hari di tahap ini</span>
         )}
-        {item.due_date && <span className="text-[10px] text-[#44546F]">Due {fmtDate(item.due_date)}</span>}
+        {item.due_date && <span className="text-[10px] text-2">Due {fmtDate(item.due_date)}</span>}
       </div>
       <div className="flex -space-x-1.5 justify-end">
         {members.slice(0, 4).map((m) => <Avatar key={m.id} name={m.name} color={m.avatar_color} size="h-6 w-6 text-[10px]" />)}
@@ -69,15 +69,15 @@ function HariColumn({ stage, title, processor, color, gate, count, children }) {
     <div
       ref={setNodeRef}
       data-testid={`hari-column-${stage}`}
-      className={`w-64 shrink-0 rounded-xl flex flex-col max-h-full shadow-sm transition-colors ${isOver ? "bg-[#D6E4FF] ring-2 ring-[#0C66E4]" : "bg-[#f1f2f4]"}`}
+      className={`w-64 shrink-0 rounded-xl flex flex-col max-h-full shadow-sm transition-colors ${isOver ? "bg-[#D6E4FF] ring-2 ring-[#0C66E4]" : "bg-[hsl(var(--muted))]"}`}
     >
       <div className="p-3 pb-2 shrink-0">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-          <h2 className="font-heading font-bold text-sm text-[#172B4D]">{title}</h2>
-          <span className="text-xs text-[#8590A2]">{count}</span>
+          <h2 className="font-heading font-bold text-sm text-foreground">{title}</h2>
+          <span className="text-xs text-3">{count}</span>
         </div>
-        <p className="text-[10px] text-[#44546F] mt-0.5">{processor}</p>
+        <p className="text-[10px] text-2 mt-0.5">{processor}</p>
         {gate && (
           <p className="text-[10px] font-semibold text-[#E56910] mt-0.5 flex items-center gap-1">
             <CheckCircle2 size={10} /> Syarat masuk: {gate}
@@ -132,7 +132,7 @@ export default function GlobalHari() {
   if (isError) {
     return (
       <div className="p-10 text-center" data-testid="global-hari-forbidden">
-        <p className="text-[#44546F]">Halaman ini hanya untuk tim Admin Draf Input, Admin Pajak, Admin Perizinan, Desain & Konten, dan admin.</p>
+        <p className="text-2">Halaman ini hanya untuk tim Admin Draf Input, Admin Pajak, Admin Perizinan, Desain & Konten, dan admin.</p>
       </div>
     );
   }
@@ -158,7 +158,7 @@ export default function GlobalHari() {
           </p>
         </div>
         {!canMove && (
-          <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-white/15 rounded-full px-3 py-1.5">
+          <span className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-[hsl(var(--elevated))]/15 rounded-full px-3 py-1.5">
             <AlertTriangle size={12} /> Hanya lihat
           </span>
         )}
@@ -178,7 +178,7 @@ export default function GlobalHari() {
                   {byStage[s.stage].map((item) => (
                     <HariCard key={item.id} item={item} usersById={usersById} draggable={canMove} onClick={() => setOpenItem(item.id)} />
                   ))}
-                  {byStage[s.stage].length === 0 && <p className="text-[11px] text-[#8590A2] text-center py-3">Kosong</p>}
+                  {byStage[s.stage].length === 0 && <p className="text-[11px] text-3 text-center py-3">Kosong</p>}
                 </HariColumn>
               ))}
             </div>

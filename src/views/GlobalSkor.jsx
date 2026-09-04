@@ -31,7 +31,7 @@ export default function GlobalSkor() {
   if (isError) {
     return (
       <div className="p-10 text-center" data-testid="global-skor-forbidden">
-        <p className="text-[#44546F]">Halaman ini hanya untuk tim CS, supervisor, dan admin.</p>
+        <p className="text-2">Halaman ini hanya untuk tim CS, supervisor, dan admin.</p>
       </div>
     );
   }
@@ -45,7 +45,7 @@ export default function GlobalSkor() {
           </h1>
           <p className="text-xs text-white/70 mt-1">Agregasi posisi setiap pekerjaan lintas board. Kartu yang mandek ≥3 hari ditandai merah.</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-white/15 rounded-full px-3 py-1.5" data-testid="global-skor-readonly-badge">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-[hsl(var(--elevated))]/15 rounded-full px-3 py-1.5" data-testid="global-skor-readonly-badge">
           <Eye size={12} /> Read-only
         </span>
       </div>
@@ -61,14 +61,14 @@ export default function GlobalSkor() {
             {SKOR_COLUMNS.map((col) => {
               const cards = buckets?.[col.key] || [];
               return (
-                <div key={col.key} className="w-72 shrink-0 bg-[#f1f2f4] rounded-xl flex flex-col max-h-full shadow-sm" data-testid={`skor-column-${col.key}`}>
+                <div key={col.key} className="w-72 shrink-0 bg-[hsl(var(--muted))] rounded-xl flex flex-col max-h-full shadow-sm" data-testid={`skor-column-${col.key}`}>
                   <div className="p-3 pb-2 shrink-0">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: col.color }} />
-                      <h2 className="font-heading font-bold text-sm text-[#172B4D]">{col.title}</h2>
-                      <span className="text-xs text-[#8590A2]">{cards.length}</span>
+                      <h2 className="font-heading font-bold text-sm text-foreground">{col.title}</h2>
+                      <span className="text-xs text-3">{cards.length}</span>
                     </div>
-                    <p className="text-[10px] text-[#44546F] mt-0.5">{col.desc}</p>
+                    <p className="text-[10px] text-2 mt-0.5">{col.desc}</p>
                   </div>
                   <div className="flex-1 overflow-y-auto minimal-scrollbar px-2 pb-2 space-y-2">
                     {cards.map((item) => {
@@ -78,10 +78,10 @@ export default function GlobalSkor() {
                           key={item.id}
                           data-testid={`skor-card-${item.id}`}
                           onClick={() => setOpenItem(item.id)}
-                          className="w-full text-left bg-white rounded-lg shadow-sm hover:bg-gray-50 border-b border-gray-300 p-3 flex flex-col gap-1.5 transition-colors"
+                          className="w-full text-left bg-[hsl(var(--elevated))] rounded-lg shadow-sm hover:bg-gray-50 border-b border-gray-300 p-3 flex flex-col gap-1.5 transition-colors"
                         >
-                          <p className="text-sm font-medium text-[#172B4D] leading-snug">{item.title}</p>
-                          {item.client_name && <p className="text-xs text-[#44546F]">{item.client_name}</p>}
+                          <p className="text-sm font-medium text-foreground leading-snug">{item.title}</p>
+                          {item.client_name && <p className="text-xs text-2">{item.client_name}</p>}
                           <div className="flex flex-wrap items-center gap-1.5">
                             {item.board_name && (
                               <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded" style={{ backgroundColor: item.board_background || "#0079bf" }}>
@@ -89,7 +89,7 @@ export default function GlobalSkor() {
                               </span>
                             )}
                             {item.list_name && (
-                              <span className="text-[10px] font-semibold text-[#44546F] bg-[#F1F2F4] px-1.5 py-0.5 rounded">{item.list_name}</span>
+                              <span className="text-[10px] font-semibold text-2 bg-[hsl(var(--muted))] px-1.5 py-0.5 rounded">{item.list_name}</span>
                             )}
                             {item.hari_stage ? (
                               <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded bg-[#E56910]">HARI {item.hari_stage}</span>
@@ -100,7 +100,7 @@ export default function GlobalSkor() {
                               </span>
                             )}
                             <PriorityFlag priority={item.priority} />
-                            {item.due_date && <span className="text-[10px] text-[#44546F]">Due {fmtDate(item.due_date)}</span>}
+                            {item.due_date && <span className="text-[10px] text-2">Due {fmtDate(item.due_date)}</span>}
                           </div>
                           <div className="flex -space-x-1.5 justify-end">
                             {members.slice(0, 4).map((m) => <Avatar key={m.id} name={m.name} color={m.avatar_color} size="h-6 w-6 text-[10px]" />)}
@@ -108,7 +108,7 @@ export default function GlobalSkor() {
                         </button>
                       );
                     })}
-                    {cards.length === 0 && <p className="text-[11px] text-[#8590A2] text-center py-3">Kosong</p>}
+                    {cards.length === 0 && <p className="text-[11px] text-3 text-center py-3">Kosong</p>}
                   </div>
                 </div>
               );

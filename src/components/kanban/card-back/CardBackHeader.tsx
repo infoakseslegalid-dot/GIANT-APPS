@@ -16,7 +16,7 @@ import { labelHex, isImageMime, resolveColor } from './helpers';
 import CardMoreMenu from './CardMoreMenu';
 
 const circleBtn =
-  'flex h-6 w-6 items-center justify-center rounded-full border-0 bg-transparent text-[#44546b] transition-colors hover:bg-[#091e4224] hover:text-[#172b4d]';
+  'flex h-6 w-6 items-center justify-center rounded-full border-0 bg-transparent text-2 transition-colors hover:bg-[hsl(var(--accent))] hover:text-foreground';
 
 const COVER_COLORS: LabelColor[] = ['green', 'yellow', 'orange', 'red', 'purple', 'blue', 'sky', 'lime', 'pink', 'gray'];
 
@@ -51,8 +51,8 @@ export default function CardBackHeader(props: CardBackProps) {
         </button>
 
         {coverOpen && (
-          <div className="absolute right-0 top-[30px] z-30 w-[232px] rounded-[8px] bg-white p-3 shadow-[0_8px_24px_#0005]">
-            <div className="mb-2 text-[12px] font-bold text-[#172b4d]">Cover</div>
+          <div className="absolute right-0 top-[30px] z-30 w-[232px] rounded-[8px] bg-[hsl(var(--elevated))] p-3 shadow-[0_8px_24px_#0005]">
+            <div className="mb-2 text-[12px] font-bold text-foreground">Cover</div>
             <div className="grid grid-cols-5 gap-1.5">
               {COVER_COLORS.map((c) => {
                 const active = card.coverColor === c || resolveColor(card.coverColor) === labelHex(c);
@@ -71,7 +71,7 @@ export default function CardBackHeader(props: CardBackProps) {
 
             {imageAttachments.length > 0 && (
               <>
-                <div className="mb-1.5 mt-3 text-[11px] font-bold text-[#5e6c84]">Dari lampiran</div>
+                <div className="mb-1.5 mt-3 text-[11px] font-bold text-3">Dari lampiran</div>
                 <div className="grid grid-cols-3 gap-1.5">
                   {imageAttachments.map((a) => (
                     <button
@@ -80,7 +80,7 @@ export default function CardBackHeader(props: CardBackProps) {
                       title={a.fileName}
                       onClick={() => onUpdateCard({ coverImageUrl: a.url, coverColor: null })}
                       className={`h-12 overflow-hidden rounded-[4px] border ${
-                        card.coverImageUrl === a.url ? 'border-[#0c66e4] ring-1 ring-[#0c66e4]' : 'border-[#dfe1e6]'
+                        card.coverImageUrl === a.url ? 'border-[#0c66e4] ring-1 ring-[#0c66e4]' : 'border-[hsl(var(--hairline))]'
                       }`}
                     >
                       <img src={a.thumbUrl || a.url} alt={a.fileName} className="h-full w-full object-cover" />
@@ -94,7 +94,7 @@ export default function CardBackHeader(props: CardBackProps) {
               <button
                 type="button"
                 onClick={() => onUpdateCard({ coverColor: null, coverImageUrl: null })}
-                className="mt-3 w-full rounded-[4px] bg-[#f1f2f4] py-1.5 text-[12px] font-medium text-[#172b4d] hover:bg-[#dcdfe4]"
+                className="mt-3 w-full rounded-[4px] bg-[hsl(var(--muted))] py-1.5 text-[12px] font-medium text-foreground hover:bg-[#dcdfe4]"
               >
                 Hapus cover
               </button>

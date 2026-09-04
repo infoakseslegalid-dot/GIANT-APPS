@@ -4,9 +4,11 @@ import { Kanban, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
 import { errMsg } from "../lib/api";
+import { useTranslation } from "react-i18next";
 
 export default function Login() {
   const { login, user } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +25,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      toast.success("Selamat datang kembali!");
+      toast.success(t("dashboard.welcome", { name: "" }).replace(",", "!"));
       navigate("/", { replace: true });
     } catch (err) {
       toast.error(errMsg(err));
@@ -58,17 +60,17 @@ export default function Login() {
         <p className="text-white/50 text-xs relative z-10">Sistem manajemen kerja internal ALI</p>
       </div>
 
-      <div className="flex-1 flex items-center justify-center bg-[#F4F5F7] p-6">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-8 stagger-item" data-testid="login-card">
+      <div className="flex-1 flex items-center justify-center bg-[hsl(var(--surface-2))] p-6">
+        <div className="w-full max-w-sm bg-[hsl(var(--elevated))] rounded-2xl shadow-xl p-8 stagger-item" data-testid="login-card">
           <div className="flex items-center gap-2 mb-2 lg:hidden">
             <Kanban size={22} className="text-[#026aa7]" />
-            <span className="font-heading font-bold text-xl text-[#172B4D]">ALI Workspace</span>
+            <span className="font-heading font-bold text-xl text-foreground">ALI Workspace</span>
           </div>
-          <h2 className="font-heading text-xl font-bold text-[#172B4D]">Masuk ke akun Anda</h2>
-          <p className="text-sm text-[#44546F] mt-1 mb-6">Gunakan email dan kata sandi yang diberikan admin.</p>
+          <h2 className="font-heading text-xl font-bold text-foreground">{t("login.title")}</h2>
+          <p className="text-sm text-2 mt-1 mb-6">Gunakan email dan kata sandi yang diberikan admin.</p>
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="text-xs font-semibold text-[#44546F] uppercase tracking-wide">Email</label>
+              <label className="text-xs font-semibold text-2 uppercase tracking-wide">{t("login.email")}</label>
               <input
                 data-testid="login-email-input"
                 type="email"
@@ -76,11 +78,11 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nama@ali.id"
-                className="mt-1 w-full h-10 px-3 rounded-lg border border-[#DFE1E6] bg-white text-sm text-[#172B4D] outline-none focus:ring-2 focus:ring-[#0C66E4] focus:border-transparent transition-shadow"
+                className="mt-1 w-full h-10 px-3 rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--surface))] text-sm text-foreground outline-none focus:ring-2 focus:ring-[#0C66E4] focus:border-transparent transition-shadow"
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-[#44546F] uppercase tracking-wide">Kata Sandi</label>
+              <label className="text-xs font-semibold text-2 uppercase tracking-wide">{t("login.password")}</label>
               <input
                 data-testid="login-password-input"
                 type="password"
@@ -88,7 +90,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="mt-1 w-full h-10 px-3 rounded-lg border border-[#DFE1E6] bg-white text-sm text-[#172B4D] outline-none focus:ring-2 focus:ring-[#0C66E4] focus:border-transparent transition-shadow"
+                className="mt-1 w-full h-10 px-3 rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--surface))] text-sm text-foreground outline-none focus:ring-2 focus:ring-[#0C66E4] focus:border-transparent transition-shadow"
               />
             </div>
             <button
@@ -98,7 +100,7 @@ export default function Login() {
               className="w-full h-10 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white font-semibold text-sm transition-colors active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 size={16} className="animate-spin" />}
-              Masuk
+              {loading ? t("login.submitting") : t("login.submit")}
             </button>
           </form>
         </div>

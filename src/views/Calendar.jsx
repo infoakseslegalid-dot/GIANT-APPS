@@ -18,13 +18,13 @@ function DayPanel({ dateStr, items, onOpenItem, onClose }) {
   );
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-16" onClick={onClose} data-testid="calendar-day-panel">
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-[#DFE1E6] px-5 py-3.5">
+      <div className="w-full max-w-lg rounded-xl bg-[hsl(var(--elevated))] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-[hsl(var(--hairline))] px-5 py-3.5">
           <div>
-            <h2 className="font-heading text-base font-bold text-[#172B4D]">{label}</h2>
-            <p className="text-xs text-[#8590A2]">{items.length} pekerjaan jatuh tempo</p>
+            <h2 className="font-heading text-base font-bold text-foreground">{label}</h2>
+            <p className="text-xs text-3">{items.length} pekerjaan jatuh tempo</p>
           </div>
-          <button onClick={onClose} className="rounded p-1.5 text-[#44546F] hover:bg-[#F1F2F4]"><X size={18} /></button>
+          <button onClick={onClose} className="rounded p-1.5 text-2 hover:bg-[hsl(var(--muted))]"><X size={18} /></button>
         </div>
         <div className="max-h-[60vh] overflow-y-auto minimal-scrollbar p-3">
           {sorted.map((it) => (
@@ -32,22 +32,22 @@ function DayPanel({ dateStr, items, onOpenItem, onClose }) {
               key={it.id}
               data-testid={`day-panel-item-${it.id}`}
               onClick={() => onOpenItem(it.id)}
-              className="flex w-full gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-[#F1F2F4]"
+              className="flex w-full gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-[hsl(var(--muted))]"
             >
               <span
                 className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: it.status === "done" ? "#22A06B" : PRIO_COLOR[it.priority] || "#8590A2" }}
               />
               <span className="min-w-0 flex-1">
-                <span className={`block text-sm font-semibold text-[#172B4D] ${it.status === "done" ? "line-through opacity-60" : ""}`}>
+                <span className={`block text-sm font-semibold text-foreground ${it.status === "done" ? "line-through opacity-60" : ""}`}>
                   {it.title}
                 </span>
-                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#8590A2]">
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-3">
                   {it.board_name && <span>📋 {it.board_name}</span>}
                   {it.list_name && <span>• {it.list_name}</span>}
                   {it.pic_name && <span>· PIC: {it.pic_name}</span>}
                 </span>
-                {it.client_name && <span className="mt-0.5 block text-xs text-[#44546F]">{it.client_name}</span>}
+                {it.client_name && <span className="mt-0.5 block text-xs text-2">{it.client_name}</span>}
               </span>
               <span className="shrink-0"><PriorityFlag priority={it.priority} /></span>
             </button>
@@ -97,26 +97,26 @@ export default function Calendar() {
     <div className="p-6 max-w-7xl mx-auto" data-testid="calendar-page">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight text-[#172B4D] flex items-center gap-2">
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <CalendarDays size={24} className="text-[#0C66E4]" /> Kalender
           </h1>
-          <p className="text-sm text-[#44546F] mt-1">
+          <p className="text-sm text-2 mt-1">
             Pekerjaan berdasarkan tenggat waktu — {totalMonth} bulan ini. Klik tanggal untuk melihat daftarnya.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button data-testid="calendar-prev" onClick={() => shift(-1)} className="p-2 rounded-lg bg-white border border-[#DFE1E6] hover:bg-[#F1F2F4] transition-colors" aria-label="Bulan sebelumnya">
+          <button data-testid="calendar-prev" onClick={() => shift(-1)} className="p-2 rounded-lg bg-[hsl(var(--elevated))] border border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] transition-colors" aria-label="Bulan sebelumnya">
             <ChevronLeft size={16} />
           </button>
-          <span className="font-heading font-bold text-[#172B4D] w-40 text-center" data-testid="calendar-month-label">{monthLabel}</span>
-          <button data-testid="calendar-next" onClick={() => shift(1)} className="p-2 rounded-lg bg-white border border-[#DFE1E6] hover:bg-[#F1F2F4] transition-colors" aria-label="Bulan berikutnya">
+          <span className="font-heading font-bold text-foreground w-40 text-center" data-testid="calendar-month-label">{monthLabel}</span>
+          <button data-testid="calendar-next" onClick={() => shift(1)} className="p-2 rounded-lg bg-[hsl(var(--elevated))] border border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] transition-colors" aria-label="Bulan berikutnya">
             <ChevronRight size={16} />
           </button>
         </div>
       </div>
 
       {/* legenda prioritas */}
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-[11px] text-[#8590A2]">
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-[11px] text-3">
         {PRIORITIES.filter((p) => p.value !== "none").map((p) => (
           <span key={p.value} className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} /> {p.label}
@@ -133,15 +133,15 @@ export default function Calendar() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm overflow-hidden">
-        <div className="grid grid-cols-7 border-b border-[#DFE1E6]">
+      <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm overflow-hidden">
+        <div className="grid grid-cols-7 border-b border-[hsl(var(--hairline))]">
           {DAY_NAMES.map((d) => (
-            <div key={d} className="px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-[#8590A2] border-r last:border-r-0 border-[#F1F2F4]">{d}</div>
+            <div key={d} className="px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-3 border-r last:border-r-0 border-[hsl(var(--hairline))]">{d}</div>
           ))}
         </div>
         <div className="grid grid-cols-7">
           {Array.from({ length: startOffset }).map((_, i) => (
-            <div key={"x" + i} className="min-h-[112px] border-r border-b border-[#F1F2F4] bg-[#FAFBFC]" />
+            <div key={"x" + i} className="min-h-[112px] border-r border-b border-[hsl(var(--hairline))] bg-[#FAFBFC]" />
           ))}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1;
@@ -157,12 +157,12 @@ export default function Calendar() {
                 key={day}
                 data-testid={`calendar-day-${day}`}
                 onClick={() => hasItems && setDayPanel(dateStr)}
-                className={`min-h-[112px] border-r border-b border-[#F1F2F4] p-1.5 transition-colors ${
-                  isToday ? "bg-[#E9F2FF]" : "bg-white"
-                } ${hasItems ? "cursor-pointer hover:bg-[#F7F8F9]" : ""}`}
+                className={`min-h-[112px] border-r border-b border-[hsl(var(--hairline))] p-1.5 transition-colors ${
+                  isToday ? "bg-[#E9F2FF]" : "bg-[hsl(var(--elevated))]"
+                } ${hasItems ? "cursor-pointer hover:bg-[hsl(var(--muted))]" : ""}`}
               >
                 <div className="mb-1 flex items-center justify-between">
-                  <span className={`text-xs font-bold ${isToday ? "text-[#0C66E4]" : "text-[#44546F]"}`}>{day}</span>
+                  <span className={`text-xs font-bold ${isToday ? "text-[#0C66E4]" : "text-2"}`}>{day}</span>
                   {hasItems && (
                     <span
                       data-testid={`calendar-day-badge-${day}`}

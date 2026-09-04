@@ -8,7 +8,7 @@ import { Avatar } from "../components/common";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
-const inputCls = "h-9 w-full rounded-lg border border-[#DFE1E6] px-3 text-sm text-[#172B4D] bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]";
+const inputCls = "h-9 w-full rounded-lg border border-[hsl(var(--hairline))] px-3 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
 const btnPrimary = "h-9 px-4 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors active:scale-95";
 const DIV_COLORS = ["#0C66E4", "#E56910", "#22A06B", "#9F8FEF", "#E774BB", "#CA3521", "#F5CD47"];
 const BG_COLORS = ["#0079bf", "#519839", "#D29034", "#B04632", "#89609E", "#CD5A91", "#4BBF6B", "#00AECC"];
@@ -53,8 +53,8 @@ function UsersTab({ divisions }) {
 
   return (
     <div className="space-y-6" data-testid="admin-users-tab">
-      <form onSubmit={createUser} className="bg-white rounded-xl border border-[#DFE1E6] p-5 shadow-sm">
-        <h3 className="font-heading font-bold text-[#172B4D] mb-3 flex items-center gap-2"><UserPlus size={16} /> Tambah Pengguna</h3>
+      <form onSubmit={createUser} className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] p-5 shadow-sm">
+        <h3 className="font-heading font-bold text-foreground mb-3 flex items-center gap-2"><UserPlus size={16} /> Tambah Pengguna</h3>
         <div className="grid md:grid-cols-5 gap-2">
           <input data-testid="user-name-input" required placeholder="Nama" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
           <input data-testid="user-email-input" required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputCls} />
@@ -70,30 +70,30 @@ function UsersTab({ divisions }) {
         <button data-testid="user-create-button" type="submit" className={`${btnPrimary} mt-3`}>Buat Pengguna</button>
       </form>
 
-      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm overflow-x-auto">
+      <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm overflow-x-auto">
         <table className="w-full text-sm" data-testid="users-table">
           <thead>
-            <tr className="border-b border-[#DFE1E6] text-left">
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Nama</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Email</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Peran</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Divisi</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Status</th>
+            <tr className="border-b border-[hsl(var(--hairline))] text-left">
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-3">Nama</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-3">Email</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-3">Peran</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-3">Divisi</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-3">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
             {(users || []).map((u) => (
-              <tr key={u.id} className="border-b border-[#F1F2F4]" data-testid={`user-row-${u.id}`}>
+              <tr key={u.id} className="border-b border-[hsl(var(--hairline))]" data-testid={`user-row-${u.id}`}>
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <Avatar name={u.name} color={u.avatar_color} size="h-7 w-7 text-[10px]" />
-                    <span className="font-medium text-[#172B4D]">{u.name}</span>
+                    <span className="font-medium text-foreground">{u.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-[#44546F]">{u.email}</td>
+                <td className="px-4 py-2.5 text-2">{u.email}</td>
                 <td className="px-4 py-2.5"><span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#E9F2FF] text-[#0C66E4]">{ROLE_LABELS[u.role]}</span></td>
-                <td className="px-4 py-2.5 text-[#44546F]">{divName(u.division_id)}</td>
+                <td className="px-4 py-2.5 text-2">{divName(u.division_id)}</td>
                 <td className="px-4 py-2.5">
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${u.is_active ? "bg-[#E3FCEF] text-[#216E4E]" : "bg-[#FFECE8] text-[#CA3521]"}`}>
                     {u.is_active ? "Aktif" : "Nonaktif"}
@@ -103,7 +103,7 @@ function UsersTab({ divisions }) {
                   <button
                     data-testid={`user-edit-${u.id}`}
                     onClick={() => { setEditing(u); setEditForm({ role: u.role, division_id: u.division_id || "", is_active: u.is_active, password: "" }); }}
-                    className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]"
+                    className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2"
                     aria-label="Edit pengguna"
                   >
                     <Pencil size={14} />
@@ -116,29 +116,29 @@ function UsersTab({ divisions }) {
       </div>
 
       <Dialog open={!!editing} onOpenChange={() => setEditing(null)}>
-        <DialogContent className="bg-white" data-testid="user-edit-dialog">
+        <DialogContent className="bg-[hsl(var(--elevated))]" data-testid="user-edit-dialog">
           <DialogHeader>
             <DialogTitle className="font-heading">Edit Pengguna — {editing?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold text-[#44546F]">Peran</label>
+              <label className="text-xs font-semibold text-2">Peran</label>
               <select data-testid="edit-user-role-select" value={editForm.role || "staff"} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} className={inputCls}>
                 {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-[#44546F]">Divisi</label>
+              <label className="text-xs font-semibold text-2">Divisi</label>
               <select data-testid="edit-user-division-select" value={editForm.division_id || ""} onChange={(e) => setEditForm({ ...editForm, division_id: e.target.value })} className={inputCls}>
                 <option value="">Tanpa Divisi</option>
                 {(divisions || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-[#44546F]">Reset Kata Sandi (kosongkan jika tidak diubah)</label>
+              <label className="text-xs font-semibold text-2">Reset Kata Sandi (kosongkan jika tidak diubah)</label>
               <input data-testid="edit-user-password-input" type="text" value={editForm.password || ""} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} className={inputCls} placeholder="Kata sandi baru" />
             </div>
-            <label className="flex items-center gap-2 text-sm text-[#172B4D]">
+            <label className="flex items-center gap-2 text-sm text-foreground">
               <input
                 data-testid="edit-user-active-toggle"
                 type="checkbox"
@@ -186,8 +186,8 @@ function DivisionsTab({ divisions }) {
 
   return (
     <div className="space-y-6" data-testid="admin-divisions-tab">
-      <form onSubmit={create} className="bg-white rounded-xl border border-[#DFE1E6] p-5 shadow-sm">
-        <h3 className="font-heading font-bold text-[#172B4D] mb-3">Tambah Divisi</h3>
+      <form onSubmit={create} className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] p-5 shadow-sm">
+        <h3 className="font-heading font-bold text-foreground mb-3">Tambah Divisi</h3>
         <div className="flex flex-wrap items-center gap-2">
           <input data-testid="division-name-input" required placeholder="Nama divisi" value={name} onChange={(e) => setName(e.target.value)} className={`${inputCls} max-w-xs`} />
           <div className="flex gap-1">
@@ -200,10 +200,10 @@ function DivisionsTab({ divisions }) {
       </form>
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
         {(divisions || []).map((d) => (
-          <div key={d.id} className="bg-white rounded-xl border border-[#DFE1E6] p-4 shadow-sm flex items-center justify-between" data-testid={`division-card-${d.id}`}>
+          <div key={d.id} className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] p-4 shadow-sm flex items-center justify-between" data-testid={`division-card-${d.id}`}>
             <div className="flex items-center gap-3">
               <span className="w-4 h-4 rounded-full" style={{ backgroundColor: d.color }} />
-              <span className="font-semibold text-[#172B4D]">{d.name}</span>
+              <span className="font-semibold text-foreground">{d.name}</span>
             </div>
             <button aria-label="Hapus divisi" data-testid={`division-delete-${d.id}`} onClick={() => remove(d.id)} className="p-1.5 rounded hover:bg-[#FFECE8] text-[#CA3521]">
               <Trash2 size={14} />
@@ -266,8 +266,8 @@ function BoardsTab({ divisions }) {
 
   return (
     <div className="space-y-6" data-testid="admin-boards-tab">
-      <form onSubmit={create} className="bg-white rounded-xl border border-[#DFE1E6] p-5 shadow-sm">
-        <h3 className="font-heading font-bold text-[#172B4D] mb-3">Buat Board Baru</h3>
+      <form onSubmit={create} className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] p-5 shadow-sm">
+        <h3 className="font-heading font-bold text-foreground mb-3">Buat Board Baru</h3>
         <div className="flex flex-wrap items-center gap-2">
           <input data-testid="board-name-input" required placeholder="Nama board" value={name} onChange={(e) => setName(e.target.value)} className={`${inputCls} max-w-xs`} />
           <select data-testid="board-division-select" value={divisionId} onChange={(e) => setDivisionId(e.target.value)} className={`${inputCls} w-48`}>
@@ -292,10 +292,10 @@ function BoardsTab({ divisions }) {
             <p className="font-heading font-bold">{b.name}</p>
             <p className="text-xs opacity-80 mt-1">{b.division_name || "Tanpa divisi"} · {b.card_count} kartu</p>
             <div className="flex justify-end gap-1.5 mt-2">
-              <button data-testid={`board-copy-${b.id}`} onClick={() => copyBoard(b.id, b.name)} className="text-xs bg-white/20 hover:bg-white/30 rounded px-2 py-1 font-semibold transition-colors">
+              <button data-testid={`board-copy-${b.id}`} onClick={() => copyBoard(b.id, b.name)} className="text-xs bg-[hsl(var(--elevated))]/20 hover:bg-[hsl(var(--elevated))]/30 rounded px-2 py-1 font-semibold transition-colors">
                 Salin
               </button>
-              <button data-testid={`board-archive-${b.id}`} onClick={() => archive(b.id)} className="text-xs bg-white/20 hover:bg-white/30 rounded px-2 py-1 font-semibold transition-colors">
+              <button data-testid={`board-archive-${b.id}`} onClick={() => archive(b.id)} className="text-xs bg-[hsl(var(--elevated))]/20 hover:bg-[hsl(var(--elevated))]/30 rounded px-2 py-1 font-semibold transition-colors">
                 Arsipkan
               </button>
             </div>
@@ -303,14 +303,14 @@ function BoardsTab({ divisions }) {
         ))}
       </div>
       {(archivedBoards || []).length > 0 && (
-        <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5" data-testid="archived-boards-section">
-          <h3 className="font-heading font-bold text-[#172B4D] mb-3">Board Diarsipkan</h3>
+        <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5" data-testid="archived-boards-section">
+          <h3 className="font-heading font-bold text-foreground mb-3">Board Diarsipkan</h3>
           <div className="space-y-2">
             {archivedBoards.map((b) => (
-              <div key={b.id} className="flex items-center justify-between bg-[#F4F5F7] rounded-lg px-3 py-2" data-testid={`archived-board-${b.id}`}>
+              <div key={b.id} className="flex items-center justify-between bg-[hsl(var(--muted))] rounded-lg px-3 py-2" data-testid={`archived-board-${b.id}`}>
                 <div className="flex items-center gap-2">
                   <span className="w-4 h-4 rounded" style={{ backgroundColor: b.background }} />
-                  <span className="text-sm font-medium text-[#172B4D]">{b.name}</span>
+                  <span className="text-sm font-medium text-foreground">{b.name}</span>
                 </div>
                 <button data-testid={`board-reopen-${b.id}`} onClick={() => reopen(b.id)} className="text-xs text-[#0C66E4] hover:underline font-semibold">
                   Buka Kembali
@@ -327,21 +327,21 @@ function BoardsTab({ divisions }) {
 function ActivityTab() {
   const { data: activities } = useQuery({ queryKey: ["activities"], queryFn: () => api.get("/activities?limit=80").then((r) => r.data) });
   return (
-    <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5" data-testid="admin-activity-tab">
-      <h3 className="font-heading font-bold text-[#172B4D] mb-4 flex items-center gap-2"><Activity size={16} /> Log Aktivitas Global</h3>
+    <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5" data-testid="admin-activity-tab">
+      <h3 className="font-heading font-bold text-foreground mb-4 flex items-center gap-2"><Activity size={16} /> Log Aktivitas Global</h3>
       <div className="space-y-3">
         {(activities || []).map((a) => (
-          <div key={a.id} className="flex items-start gap-3 border-b border-[#F1F2F4] pb-2.5 last:border-b-0" data-testid={`activity-row-${a.id}`}>
-            <div className="w-7 h-7 rounded-full bg-[#091E420F] flex items-center justify-center shrink-0">
-              <Activity size={13} className="text-[#44546F]" />
+          <div key={a.id} className="flex items-start gap-3 border-b border-[hsl(var(--hairline))] pb-2.5 last:border-b-0" data-testid={`activity-row-${a.id}`}>
+            <div className="w-7 h-7 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center shrink-0">
+              <Activity size={13} className="text-2" />
             </div>
             <div>
-              <p className="text-sm text-[#44546F]"><span className="font-semibold text-[#172B4D]">{a.user_name}</span> {a.action}</p>
-              <p className="text-[11px] text-[#8590A2]">{fmtDateTime(a.created_at)}</p>
+              <p className="text-sm text-2"><span className="font-semibold text-foreground">{a.user_name}</span> {a.action}</p>
+              <p className="text-[11px] text-3">{fmtDateTime(a.created_at)}</p>
             </div>
           </div>
         ))}
-        {(activities || []).length === 0 && <p className="text-sm text-[#8590A2]">Belum ada aktivitas.</p>}
+        {(activities || []).length === 0 && <p className="text-sm text-3">Belum ada aktivitas.</p>}
       </div>
     </div>
   );
@@ -368,29 +368,29 @@ function ListRow({ list, idx, nextName }) {
   };
 
   return (
-    <div className="rounded-xl border border-[#DFE1E6] bg-white p-4" data-testid={`flow-list-${list.id}`}>
+    <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-4" data-testid={`flow-list-${list.id}`}>
       <div className="flex items-center gap-2 mb-3">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#F1F2F4] text-xs font-bold text-[#5E6C84]">{idx + 1}</span>
-        <span className="h-4 w-4 rounded shrink-0 border border-[#DFE1E6]" style={{ backgroundColor: color }} />
-        <span className="font-semibold text-[#172B4D]">{list.name}</span>
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[hsl(var(--muted))] text-xs font-bold text-3">{idx + 1}</span>
+        <span className="h-4 w-4 rounded shrink-0 border border-[hsl(var(--hairline))]" style={{ backgroundColor: color }} />
+        <span className="font-semibold text-foreground">{list.name}</span>
       </div>
 
       <div className="mb-3">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-[#8590A2] mb-1.5">Warna list</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-3 mb-1.5">Warna list</p>
         <div className="flex flex-wrap gap-1.5">
           {LIST_COLORS.map((c) => (
             <button key={c} type="button" onClick={() => { setColor(c); setDirty(true); }}
-              className={`h-7 w-7 rounded ${color === c ? "ring-2 ring-[#0C66E4] ring-offset-1" : "border border-[#DFE1E6]"}`}
+              className={`h-7 w-7 rounded ${color === c ? "ring-2 ring-[#0C66E4] ring-offset-1" : "border border-[hsl(var(--hairline))]"}`}
               style={{ backgroundColor: c }} />
           ))}
         </div>
       </div>
 
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-[#8590A2] mb-1">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-3 mb-1">
           Syarat pindah kartu KE list ini
         </p>
-        <p className="text-[11px] text-[#8590A2] mb-1.5">
+        <p className="text-[11px] text-3 mb-1.5">
           Satu syarat per baris. Kartu tidak bisa dipindah ke <b>{list.name}</b>{nextName ? "" : ""} sebelum item checklist dengan teks berikut tercentang (supervisor bisa paksa).
         </p>
         <textarea
@@ -398,7 +398,7 @@ function ListRow({ list, idx, nextName }) {
           onChange={(e) => { setReqText(e.target.value); setDirty(true); }}
           rows={3}
           placeholder={"mis:\nSK Kemenkumham\nPembayaran DP/Lunas"}
-          className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y font-mono"
+          className="w-full rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y font-mono"
         />
       </div>
 
@@ -422,9 +422,9 @@ function FlowTab() {
 
   return (
     <div className="space-y-4" data-testid="admin-flow-tab">
-      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5">
-        <h3 className="font-heading font-bold text-[#172B4D] mb-1">Alur & Syarat Pindah List</h3>
-        <p className="text-sm text-[#44546F] mb-3">
+      <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5">
+        <h3 className="font-heading font-bold text-foreground mb-1">Alur & Syarat Pindah List</h3>
+        <p className="text-sm text-2 mb-3">
           Pilih board. List dibaca <b>kiri → kanan</b> sesuai urutan. Atur warna & syarat naik ke tiap tahap.
         </p>
         <select value={activeBoardId || ""} onChange={(e) => setBoardId(e.target.value)} className={`${inputCls} max-w-sm`} data-testid="flow-board-select">
@@ -477,21 +477,21 @@ function ChecklistTemplateRow({ tpl }) {
 
   if (!editing) {
     return (
-      <div className="rounded-lg border border-[#DFE1E6] bg-white p-4" data-testid={`tpl-row-${tpl.id}`}>
+      <div className="rounded-lg border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-4" data-testid={`tpl-row-${tpl.id}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="font-semibold text-sm text-[#172B4D]">{tpl.name}</p>
-            <p className="text-xs text-[#8590A2]">{(tpl.items || []).length} item</p>
+            <p className="font-semibold text-sm text-foreground">{tpl.name}</p>
+            <p className="text-xs text-3">{(tpl.items || []).length} item</p>
           </div>
           <div className="flex gap-1 shrink-0">
-            <button onClick={() => setEditing(true)} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]" title="Ubah"><Pencil size={14} /></button>
+            <button onClick={() => setEditing(true)} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2" title="Ubah"><Pencil size={14} /></button>
             <button onClick={remove} className="p-1.5 rounded hover:bg-[#FFEDEB] text-[#CA3521]" title="Hapus"><Trash2 size={14} /></button>
           </div>
         </div>
         {(tpl.items || []).length > 0 && (
           <ul className="mt-2 space-y-0.5">
             {tpl.items.map((it, i) => (
-              <li key={i} className="text-xs text-[#44546F] flex items-center gap-1.5">
+              <li key={i} className="text-xs text-2 flex items-center gap-1.5">
                 <span className="inline-block w-3 h-3 rounded-[3px] border border-[#B3BAC5]" /> {it}
               </li>
             ))}
@@ -502,19 +502,19 @@ function ChecklistTemplateRow({ tpl }) {
   }
 
   return (
-    <div className="rounded-lg border-2 border-[#0C66E4] bg-white p-4">
-      <label className="text-xs font-semibold text-[#44546F]">Nama template</label>
+    <div className="rounded-lg border-2 border-[#0C66E4] bg-[hsl(var(--elevated))] p-4">
+      <label className="text-xs font-semibold text-2">Nama template</label>
       <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
-      <label className="text-xs font-semibold text-[#44546F] mt-2 block">Item (satu per baris)</label>
+      <label className="text-xs font-semibold text-2 mt-2 block">Item (satu per baris)</label>
       <textarea
         value={itemsText}
         onChange={(e) => setItemsText(e.target.value)}
         rows={6}
-        className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
+        className="w-full rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
       />
       <div className="flex gap-2 mt-2">
         <button onClick={save} disabled={busy} className={btnPrimary}>{busy ? "Menyimpan..." : "Simpan"}</button>
-        <button onClick={() => { setEditing(false); setName(tpl.name); setItemsText((tpl.items || []).join("\n")); }} className="h-9 px-4 rounded-lg border border-[#DFE1E6] text-sm text-[#44546F] hover:bg-[#F1F2F4]">Batal</button>
+        <button onClick={() => { setEditing(false); setName(tpl.name); setItemsText((tpl.items || []).join("\n")); }} className="h-9 px-4 rounded-lg border border-[hsl(var(--hairline))] text-sm text-2 hover:bg-[hsl(var(--muted))]">Batal</button>
       </div>
     </div>
   );
@@ -546,26 +546,26 @@ function ChecklistTemplatesTab() {
 
   return (
     <div className="space-y-4" data-testid="admin-checklist-templates-tab">
-      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5">
-        <h3 className="font-heading font-bold text-[#172B4D] mb-1 flex items-center gap-2">
+      <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5">
+        <h3 className="font-heading font-bold text-foreground mb-1 flex items-center gap-2">
           <ListChecks size={16} /> Template Checklist
         </h3>
-        <p className="text-sm text-[#44546F] mb-3">
+        <p className="text-sm text-2 mb-3">
           Template dipakai ulang saat menambah checklist di kartu. Isi item akan disalin ke kartu.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="text-xs font-semibold text-[#44546F]">Nama template baru</label>
+            <label className="text-xs font-semibold text-2">Nama template baru</label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="mis: Dokumen Pendirian PT" className={inputCls} data-testid="tpl-new-name" />
           </div>
           <div className="sm:row-span-2">
-            <label className="text-xs font-semibold text-[#44546F]">Item (satu per baris)</label>
+            <label className="text-xs font-semibold text-2">Item (satu per baris)</label>
             <textarea
               value={itemsText}
               onChange={(e) => setItemsText(e.target.value)}
               rows={5}
               placeholder={"Akta\nSK Kemenkumham\nNPWP\nNIB"}
-              className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
+              className="w-full rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
               data-testid="tpl-new-items"
             />
           </div>
@@ -580,10 +580,36 @@ function ChecklistTemplatesTab() {
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {(templates || []).map((t) => <ChecklistTemplateRow key={t.id} tpl={t} />)}
         {templates && templates.length === 0 && (
-          <p className="text-sm text-[#8590A2] col-span-full">Belum ada template. Buat satu di atas.</p>
+          <p className="text-sm text-3 col-span-full">Belum ada template. Buat satu di atas.</p>
         )}
       </div>
     </div>
+  );
+}
+
+const ROLE_DESC = {
+  super_admin: "Akses penuh ke semua fitur. Tidak bisa dibatasi.",
+  admin: "Kelola pengguna, divisi, board, otomatisasi, dan hak akses.",
+  supervisor: "Mengawasi semua pekerjaan lintas divisi. Tidak mengelola sistem.",
+  staff: "Anggota divisi (CS / Admin Draf / Pajak / Perizinan / Desain).",
+  viewer: "Hanya melihat, tidak bisa mengubah apa pun.",
+};
+
+function Toggle({ on, disabled, onChange, testid }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={disabled}
+      data-testid={testid}
+      onClick={() => !disabled && onChange(!on)}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+        on ? "bg-[#22A06B]" : "bg-[#C1C7D0]"
+      } ${disabled ? "opacity-40" : "hover:brightness-95"}`}
+    >
+      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-[hsl(var(--elevated))] shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`} />
+    </button>
   );
 }
 
@@ -593,31 +619,43 @@ function PermissionsTab() {
     queryKey: ["permissions"],
     queryFn: () => api.get("/permissions").then((r) => r.data),
   });
-  const [savingCell, setSavingCell] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [activeRole, setActiveRole] = useState("staff");
+  const [q, setQ] = useState("");
+  const [collapsed, setCollapsed] = useState({});
+  const [busyKey, setBusyKey] = useState(null);
 
   const roles = data?.roles || [];
   const perms = data?.permissions || [];
-  const categories = [...new Set(perms.map((p) => p.category))];
 
-  const toggle = async (perm, role, next) => {
-    if (role === "super_admin") return;
-    setSavingCell(`${perm.key}:${role}`);
+  const applyMatrix = (m) => qc.setQueryData(["permissions"], m);
+
+  const toggle = async (permKey, next) => {
+    if (activeRole === "super_admin") return;
+    setBusyKey(permKey);
     try {
-      const r = await api.patch("/permissions", { role, key: perm.key, allowed: next });
-      qc.setQueryData(["permissions"], r.data.matrix);
-    } catch (e) {
-      toast.error(errMsg(e));
-    } finally {
-      setSavingCell(null);
-    }
+      const r = await api.patch("/permissions", { role: activeRole, key: permKey, allowed: next });
+      applyMatrix(r.data.matrix);
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusyKey(null); }
   };
 
-  const setRoleAll = async (perm, roleList, value) => {
+  const bulk = async (permKeys, value) => {
+    if (activeRole === "super_admin" || !permKeys.length) return;
     try {
-      const changes = roleList.filter((r) => r !== "super_admin").map((role) => ({ role, key: perm.key, allowed: value }));
+      const r = await api.patch("/permissions", {
+        changes: permKeys.map((key) => ({ role: activeRole, key, allowed: value })),
+      });
+      applyMatrix(r.data.matrix);
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+
+  const copyFromRole = async (srcRole) => {
+    if (!srcRole || activeRole === "super_admin") return;
+    const changes = perms.map((p) => ({ role: activeRole, key: p.key, allowed: !!p.allow[srcRole] }));
+    try {
       const r = await api.patch("/permissions", { changes });
-      qc.setQueryData(["permissions"], r.data.matrix);
+      applyMatrix(r.data.matrix);
+      toast.success(`Disalin dari ${ROLE_LABELS[srcRole] || srcRole}`);
     } catch (e) { toast.error(errMsg(e)); }
   };
 
@@ -625,91 +663,141 @@ function PermissionsTab() {
     setSyncing(true);
     try {
       const r = await api.post("/permissions/sync");
-      qc.setQueryData(["permissions"], r.data.matrix);
-      toast.success(`Sinkron: ${r.data.permissions} izin, ${r.data.newRows} baris baru`);
+      applyMatrix(r.data.matrix);
+      toast.success(`Sinkron: ${r.data.permissions} izin (${r.data.newRows} baris baru)`);
     } catch (e) { toast.error(errMsg(e)); } finally { setSyncing(false); }
   };
 
-  if (isLoading) return <p className="text-sm text-[#8590A2] p-4">Memuat matriks...</p>;
+  if (isLoading) return <p className="text-sm text-3 p-4">Memuat matriks...</p>;
+
+  const isSuper = activeRole === "super_admin";
+  const filtered = q.trim()
+    ? perms.filter((p) => (p.label + " " + p.key).toLowerCase().includes(q.trim().toLowerCase()))
+    : perms;
+  const categories = [...new Set(filtered.map((p) => p.category))];
+  const activeCount = perms.filter((p) => isSuper || p.allow[activeRole]).length;
 
   return (
     <div className="space-y-4" data-testid="admin-permissions-tab">
-      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="font-heading font-bold text-[#172B4D] mb-1 flex items-center gap-2">
-              <ShieldCheck size={16} /> Hak Akses per Peran
-            </h3>
-            <p className="text-sm text-[#44546F]">
-              Centang aksi yang boleh dilakukan tiap peran. <b>Super Admin</b> selalu penuh.
-              Cek kepemilikan lama (PIC / divisi / owner) tetap berlaku di atas matriks ini.
-              Daftar <b>Tabel Database</b> ikut otomatis saat ada model baru.
-            </p>
-          </div>
+      <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3 className="font-heading font-bold text-foreground flex items-center gap-2">
+            <ShieldCheck size={16} /> Hak Akses per Peran
+          </h3>
           <button onClick={sync} disabled={syncing} className={`${btnPrimary} flex items-center gap-1.5 shrink-0`}>
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> Sinkronkan
           </button>
         </div>
+
+        {/* Pilih peran */}
+        <div className="flex flex-wrap gap-1.5">
+          {roles.map((role) => {
+            const n = perms.filter((p) => role === "super_admin" || p.allow[role]).length;
+            return (
+              <button
+                key={role}
+                data-testid={`perm-role-${role}`}
+                onClick={() => setActiveRole(role)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  activeRole === role ? "bg-[#0C66E4] text-white" : "bg-[hsl(var(--muted))] text-2 hover:bg-[#E4E6EA]"
+                }`}
+              >
+                {ROLE_LABELS[role] || role}
+                <span className={`ml-1.5 text-[11px] ${activeRole === role ? "text-white/80" : "text-3"}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="mt-2 text-sm text-2">
+          <b>{ROLE_LABELS[activeRole] || activeRole}</b> — {ROLE_DESC[activeRole] || ""}{" "}
+          <span className="text-3">({activeCount} izin aktif)</span>
+        </p>
+        <p className="mt-1 text-[11px] text-3">
+          Cek kepemilikan (PIC / divisi / pembuat / owner) tetap berlaku di atas matriks — izin di sini hanya bisa memperketat.
+        </p>
+
+        {/* Alat cepat */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-md border border-[hsl(var(--hairline))] px-2">
+            <span className="text-3">🔎</span>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari izin…" className="h-8 w-44 bg-transparent text-[13px] outline-none" />
+          </div>
+          {!isSuper && (
+            <>
+              <button onClick={() => bulk(filtered.map((p) => p.key), true)} className="rounded-md bg-[#E3FCEF] px-2.5 py-1.5 text-[12px] font-semibold text-[#216E4E] hover:brightness-95">Aktifkan semua</button>
+              <button onClick={() => bulk(filtered.map((p) => p.key), false)} className="rounded-md bg-[hsl(var(--muted))] px-2.5 py-1.5 text-[12px] font-semibold text-2 hover:brightness-95">Kosongkan semua</button>
+              <select
+                defaultValue=""
+                onChange={(e) => { copyFromRole(e.target.value); e.target.value = ""; }}
+                className="h-8 rounded-md border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 text-[12px] font-semibold text-2 outline-none"
+              >
+                <option value="">Salin dari peran…</option>
+                {roles.filter((r) => r !== activeRole).map((r) => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+              </select>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm overflow-x-auto">
-        <table className="w-full text-sm min-w-[720px]">
-          <thead className="sticky top-0 bg-[#F7F8F9] border-b border-[#DFE1E6]">
-            <tr>
-              <th className="text-left font-semibold text-[#44546F] px-4 py-2.5 w-[40%]">Aksi</th>
-              {roles.map((role) => (
-                <th key={role} className="text-center font-semibold text-[#44546F] px-2 py-2.5 whitespace-nowrap">
-                  {ROLE_LABELS[role] || role}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {categories.flatMap((cat) => [
-                <tr key={`cat-${cat}`} className="bg-[#FAFBFC]">
-                  <td colSpan={roles.length + 1} className="px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#8590A2]">{cat}</td>
-                </tr>,
-                ...perms.filter((p) => p.category === cat).map((perm) => (
-                  <tr key={perm.key} className="border-b border-[#F1F2F4] hover:bg-[#F7F8F9]">
-                    <td className="px-4 py-2 text-[#172B4D]">
-                      <div className="flex items-center gap-2">
-                        <span>{perm.label}</span>
-                        <button
-                          title="Aktifkan semua peran"
-                          onClick={() => setRoleAll(perm, roles, true)}
-                          className="text-[10px] text-[#0C66E4] hover:underline"
-                        >semua</button>
-                        <button
-                          title="Matikan semua peran"
-                          onClick={() => setRoleAll(perm, roles, false)}
-                          className="text-[10px] text-[#8590A2] hover:underline"
-                        >nihil</button>
+      {isSuper && (
+        <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] p-4 text-sm text-2">
+          Super Admin selalu punya akses penuh dan tidak dapat dibatasi.
+        </div>
+      )}
+
+      {categories.map((cat) => {
+        const rows = filtered.filter((p) => p.category === cat);
+        const onCount = rows.filter((p) => isSuper || p.allow[activeRole]).length;
+        const open = !collapsed[cat];
+        return (
+          <div key={cat} className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] shadow-sm overflow-hidden">
+            <button
+              onClick={() => setCollapsed((s) => ({ ...s, [cat]: !s[cat] }))}
+              className="flex w-full items-center gap-2 bg-[hsl(var(--muted))] px-4 py-2.5 text-left hover:bg-[#EEF0F2]"
+            >
+              <span className={`text-3 transition-transform ${open ? "" : "-rotate-90"}`}>▾</span>
+              <span className="flex-1 text-[13px] font-bold text-foreground">{cat}</span>
+              <span className="rounded-full bg-[hsl(var(--elevated))] px-2 py-0.5 text-[11px] font-bold text-2">{onCount}/{rows.length}</span>
+              {!isSuper && (
+                <>
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); bulk(rows.map((p) => p.key), true); }}
+                    className="text-[11px] font-semibold text-[#0C66E4] hover:underline"
+                  >semua</span>
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); bulk(rows.map((p) => p.key), false); }}
+                    className="text-[11px] font-semibold text-3 hover:underline"
+                  >nihil</span>
+                </>
+              )}
+            </button>
+            {open && (
+              <div className="divide-y divide-[#F1F2F4]">
+                {rows.map((perm) => {
+                  const on = isSuper || !!perm.allow[activeRole];
+                  return (
+                    <div key={perm.key} className="flex items-center gap-3 px-4 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] text-foreground">{perm.label}</p>
+                        <code className="text-[10px] text-3">{perm.key}</code>
                       </div>
-                      <code className="text-[10px] text-[#8590A2]">{perm.key}</code>
-                    </td>
-                    {roles.map((role) => {
-                      const on = !!perm.allow[role];
-                      const isSuper = role === "super_admin";
-                      const busy = savingCell === `${perm.key}:${role}`;
-                      return (
-                        <td key={role} className="text-center px-2 py-2">
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            disabled={isSuper || busy}
-                            onChange={(e) => toggle(perm, role, e.target.checked)}
-                            className="w-4 h-4 accent-[#0C66E4] disabled:opacity-40"
-                            data-testid={`perm-${perm.key}-${role}`}
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                )),
-            ])}
-          </tbody>
-        </table>
-      </div>
+                      <Toggle
+                        on={on}
+                        disabled={isSuper || busyKey === perm.key}
+                        onChange={(v) => toggle(perm.key, v)}
+                        testid={`perm-${perm.key}-${activeRole}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -717,13 +805,13 @@ function PermissionsTab() {
 export default function AdminPanel() {
   const { user } = useAuth();
   const { data: divisions } = useQuery({ queryKey: ["divisions"], queryFn: () => api.get("/divisions").then((r) => r.data) });
-  const isAdmin = ["super_admin", "admin"].includes(user?.role);
-  const isSupervisorUp = ["super_admin", "admin", "supervisor"].includes(user?.role);
+  const isAdmin = ["super_admin"].includes(user?.role);
+  const isSupervisorUp = ["super_admin", "supervisor"].includes(user?.role);
 
   if (!isSupervisorUp) {
     return (
       <div className="p-10 text-center" data-testid="admin-forbidden">
-        <p className="text-[#44546F]">Halaman ini hanya untuk supervisor dan admin.</p>
+        <p className="text-2">Halaman ini hanya untuk supervisor dan admin.</p>
       </div>
     );
   }
@@ -731,11 +819,11 @@ export default function AdminPanel() {
   return (
     <div className="p-6 max-w-6xl mx-auto" data-testid="admin-panel-page">
       <div className="mb-6">
-        <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight text-[#172B4D]">Admin Panel</h1>
-        <p className="text-sm text-[#44546F] mt-1">Kelola pengguna, divisi, board, dan pantau aktivitas.</p>
+        <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Admin Panel</h1>
+        <p className="text-sm text-2 mt-1">Kelola pengguna, divisi, board, dan pantau aktivitas.</p>
       </div>
       <Tabs defaultValue={isAdmin ? "users" : "activity"}>
-        <TabsList className="bg-white border border-[#DFE1E6]" data-testid="admin-tabs">
+        <TabsList className="bg-[hsl(var(--elevated))] border border-[hsl(var(--hairline))]" data-testid="admin-tabs">
           {isAdmin && <TabsTrigger value="users" data-testid="tab-trigger-users">Pengguna</TabsTrigger>}
           {isAdmin && <TabsTrigger value="divisions" data-testid="tab-trigger-divisions">Divisi</TabsTrigger>}
           {isAdmin && <TabsTrigger value="boards" data-testid="tab-trigger-boards">Board</TabsTrigger>}

@@ -61,11 +61,13 @@ export default function BoardView() {
   });
   const { data: divisions } = useQuery({ queryKey: ["divisions"], queryFn: () => api.get("/divisions").then((r) => r.data) });
   const { data: allBoards } = useQuery({ queryKey: ["boards"], queryFn: () => api.get("/boards").then((r) => r.data) });
-  const { data: archivedCards } = useQuery({
+  const { data: archivedData } = useQuery({
     queryKey: ["board-archived", boardId],
     queryFn: () => api.get(`/boards/${boardId}/archived`).then((r) => r.data),
     enabled: showArchive,
   });
+  const archivedCards = archivedData?.cards || [];
+  const archivedLists = archivedData?.lists || [];
 
   useEffect(() => {
     if (!data) return;
@@ -99,6 +101,9 @@ export default function BoardView() {
   const usersById = Object.fromEntries((users || []).map((u) => [u.id, u]));
   const isSupervisorUp = ["super_admin", "admin", "supervisor"].includes(user?.role);
   const isAdmin = ["super_admin", "admin"].includes(user?.role);
+  // Board read-only untuk user ini? (mis. CS lain membuka board CS bukan miliknya)
+  const boardReadOnly = data ? data.can_edit === false : false;
+  const canEditBoard = !boardReadOnly;
   const today = new Date().toISOString().slice(0, 10);
 
   const passesFilter = (c) => {
@@ -115,12 +120,14 @@ export default function BoardView() {
     Object.keys(state).find((k) => state[k].some((c) => c.id === id));
 
   const onDragStart = (e) => {
+    if (!canEditBoard) return; // board read-only: jangan mulai drag
     const d = e.active.data.current;
     if (d?.type === "card") setActiveDrag({ type: "card", card: d.card });
     else if (d?.type === "list") setActiveDrag({ type: "list" });
   };
 
   const onDragOver = (e) => {
+    if (!canEditBoard) return; // board read-only: jangan geser apa pun
     const { active, over } = e;
     if (!over || active.data.current?.type !== "card") return;
     const activeList = findListOfCard(active.id);
@@ -140,6 +147,7 @@ export default function BoardView() {
   };
 
   const onDragEnd = (e) => {
+    if (!canEditBoard) { setActiveDrag(null); return; }
     const { active, over } = e;
     setActiveDrag(null);
     if (active.data.current?.type === "list") {
@@ -246,8 +254,9 @@ export default function BoardView() {
     if (!window.confirm("Arsipkan list ini? Kartu di dalamnya tetap tersimpan.")) return;
     try {
       await api.patch(`/lists/${listId}`, { archived: true });
-      toast.success("List diarsipkan");
+      toast.success("List diarsipkan — lihat di menu Arsip");
       qc.invalidateQueries({ queryKey: ["board", boardId] });
+      qc.invalidateQueries({ queryKey: ["board-archived", boardId] });
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -321,11 +330,18 @@ export default function BoardView() {
       data-testid="board-view"
     >
       {bgImg && <div className="pointer-events-none absolute inset-0 bg-black/35" />}
+      {/* Scrim gelap agar kolom & teks tetap kontras di mode gelap */}
+      <div className="pointer-events-none absolute inset-0 hidden dark:block bg-black/50" />
       <div className="relative z-10 h-14 w-full flex items-center px-4 bg-black/10 backdrop-blur-sm shrink-0 text-white justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="font-heading text-lg font-bold truncate" data-testid="board-title">{board.name}</h1>
+          {boardReadOnly && (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[hsl(var(--elevated))]/20 px-2.5 py-1 text-[11px] font-bold" data-testid="board-readonly-badge">
+              👁 Hanya lihat
+            </span>
+          )}
           {division && (
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/20 shrink-0" data-testid="board-division-badge">
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[hsl(var(--elevated))]/20 shrink-0" data-testid="board-division-badge">
               {division.name}
             </span>
           )}
@@ -333,26 +349,26 @@ export default function BoardView() {
         <div className="flex items-center gap-2 shrink-0">
           <Popover>
             <PopoverTrigger asChild>
-              <button data-testid="board-filter-button" className="flex items-center gap-1.5 h-8 px-3 rounded bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors active:scale-95">
+              <button data-testid="board-filter-button" className="flex items-center gap-1.5 h-8 px-3 rounded bg-[hsl(var(--elevated))]/15 hover:bg-[hsl(var(--elevated))]/25 text-sm font-medium transition-colors active:scale-95">
                 <Filter size={14} /> {FILTERS.find((f) => f.value === filter)?.label}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 bg-white shadow-lg p-2" align="end">
+            <PopoverContent className="w-64 bg-[hsl(var(--elevated))] shadow-lg p-2" align="end">
               {FILTERS.map((f) => (
                 <button
                   key={f.value}
                   data-testid={`filter-${f.value}`}
                   onClick={() => setFilter(f.value)}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${filter === f.value ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold" : "text-[#172B4D] hover:bg-[#F1F2F4]"}`}
+                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${filter === f.value ? "bg-[#E9F2FF] text-[#0C66E4] font-semibold" : "text-foreground hover:bg-[hsl(var(--muted))]"}`}
                 >
                   {f.label}
                 </button>
               ))}
-              <div className="border-t border-[#DFE1E6] mt-2 pt-2 px-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2] px-2 mb-1">Label</p>
+              <div className="border-t border-[hsl(var(--hairline))] mt-2 pt-2 px-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-3 px-2 mb-1">Label</p>
                 <div className="max-h-32 overflow-y-auto minimal-scrollbar space-y-0.5">
                   {(labels || []).map((l) => (
-                    <label key={l.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#F1F2F4] cursor-pointer" data-testid={`filter-label-${l.id}`}>
+                    <label key={l.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[hsl(var(--muted))] cursor-pointer" data-testid={`filter-label-${l.id}`}>
                       <input
                         type="checkbox"
                         checked={filterLabels.includes(l.id)}
@@ -360,16 +376,16 @@ export default function BoardView() {
                         className="w-3.5 h-3.5 accent-[#0C66E4]"
                       />
                       <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
-                      <span className="text-xs text-[#172B4D]">{l.name}</span>
+                      <span className="text-xs text-foreground">{l.name}</span>
                     </label>
                   ))}
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8590A2] px-2 mt-2 mb-1">Anggota</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-3 px-2 mt-2 mb-1">Anggota</p>
                 <select
                   data-testid="filter-member-select"
                   value={filterMember}
                   onChange={(e) => setFilterMember(e.target.value)}
-                  className="w-full h-8 rounded border border-[#DFE1E6] px-2 text-xs text-[#172B4D] bg-white outline-none"
+                  className="w-full h-8 rounded border border-[hsl(var(--hairline))] px-2 text-xs text-foreground bg-[hsl(var(--elevated))] outline-none"
                 >
                   <option value="">Semua anggota</option>
                   {(users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -389,13 +405,13 @@ export default function BoardView() {
 
           <Popover>
             <PopoverTrigger asChild>
-              <button data-testid="board-share-button" className="flex items-center gap-1.5 h-8 px-3 rounded bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors active:scale-95">
+              <button data-testid="board-share-button" className="flex items-center gap-1.5 h-8 px-3 rounded bg-[hsl(var(--elevated))]/15 hover:bg-[hsl(var(--elevated))]/25 text-sm font-medium transition-colors active:scale-95">
                 <Users size={14} /> Bagikan
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 bg-white shadow-lg" align="end">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Anggota Board</p>
-              {!isAdmin && <p className="text-xs text-[#8590A2] mb-2">Hanya admin yang dapat mengubah anggota.</p>}
+            <PopoverContent className="w-64 bg-[hsl(var(--elevated))] shadow-lg" align="end">
+              <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">Anggota Board</p>
+              {!isAdmin && <p className="text-xs text-3 mb-2">Hanya admin yang dapat mengubah anggota.</p>}
               <div className="max-h-56 overflow-y-auto minimal-scrollbar">
                 {(users || []).map((u) => (
                   <button
@@ -403,10 +419,10 @@ export default function BoardView() {
                     data-testid={`board-member-${u.id}`}
                     disabled={!isAdmin}
                     onClick={() => toggleBoardMember(u.id)}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] text-left disabled:cursor-default"
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[hsl(var(--muted))] text-left disabled:cursor-default"
                   >
                     <Avatar name={u.name} color={u.avatar_color} size="h-6 w-6 text-[10px]" />
-                    <span className="text-sm text-[#172B4D] flex-1">{u.name}</span>
+                    <span className="text-sm text-foreground flex-1">{u.name}</span>
                     {(board.member_ids || []).includes(u.id) && <span className="text-[#22A06B] text-xs font-bold">✓</span>}
                   </button>
                 ))}
@@ -417,7 +433,7 @@ export default function BoardView() {
           <button
             data-testid="board-copy-link-button"
             onClick={copyBoardLink}
-            className="flex items-center gap-1.5 h-8 px-3 rounded bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors active:scale-95"
+            className="flex items-center gap-1.5 h-8 px-3 rounded bg-[hsl(var(--elevated))]/15 hover:bg-[hsl(var(--elevated))]/25 text-sm font-medium transition-colors active:scale-95"
           >
             Salin Link
           </button>
@@ -426,7 +442,7 @@ export default function BoardView() {
             <button
               data-testid="board-automation-button"
               onClick={() => setShowAutomation(true)}
-              className="flex items-center gap-1.5 h-8 px-3 rounded bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors active:scale-95"
+              className="flex items-center gap-1.5 h-8 px-3 rounded bg-[hsl(var(--elevated))]/15 hover:bg-[hsl(var(--elevated))]/25 text-sm font-medium transition-colors active:scale-95"
             >
               <Zap size={14} /> Otomasi
             </button>
@@ -434,7 +450,7 @@ export default function BoardView() {
           <button
             data-testid="board-archive-button"
             onClick={() => setShowArchive(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors active:scale-95"
+            className="flex items-center gap-1.5 h-8 px-3 rounded bg-[hsl(var(--elevated))]/15 hover:bg-[hsl(var(--elevated))]/25 text-sm font-medium transition-colors active:scale-95"
           >
             <Archive size={14} /> Arsip ({data.archived_count || 0})
           </button>
@@ -450,7 +466,7 @@ export default function BoardView() {
       <div
         ref={canvasRef}
         onPointerDown={pan.onPointerDown}
-        className={`relative z-10 flex-1 overflow-x-auto overflow-y-hidden p-3 ${pan.panning ? "cursor-grabbing" : "cursor-grab"} [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/40 hover:[&::-webkit-scrollbar-thumb]:bg-white/60`}
+        className={`relative z-10 flex-1 overflow-x-auto overflow-y-hidden p-3 ${pan.panning ? "cursor-grabbing" : "cursor-grab"} [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--elevated))]/40 hover:[&::-webkit-scrollbar-thumb]:bg-[hsl(var(--elevated))]/60`}
         data-testid="board-canvas"
       >
         <DndContext
@@ -480,13 +496,15 @@ export default function BoardView() {
                   onMoveList={moveListToBoard}
                   onArchiveList={archiveList}
                   allBoards={allBoards}
-                  canManage={isSupervisorUp}
+                  canManage={isSupervisorUp && canEditBoard}
+                  canAddCard={canEditBoard}
+                  readOnly={boardReadOnly}
                 />
               ))}
             </SortableContext>
             <div className="w-72 shrink-0">
-              {addingList ? (
-                <div className="bg-[#f1f2f4] rounded-xl p-2 space-y-2" data-testid="add-list-form">
+              {!canEditBoard ? null : addingList ? (
+                <div className="bg-[hsl(var(--muted))] rounded-xl p-2 space-y-2" data-testid="add-list-form">
                   <input
                     data-testid="add-list-name-input"
                     autoFocus
@@ -500,7 +518,7 @@ export default function BoardView() {
                     <button data-testid="add-list-submit" onClick={addList} className="h-8 px-3 rounded bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold active:scale-95">
                       Tambah list
                     </button>
-                    <button aria-label="Batal" data-testid="add-list-cancel" onClick={() => setAddingList(false)} className="p-1.5 rounded hover:bg-black/10 text-[#44546F]">
+                    <button aria-label="Batal" data-testid="add-list-cancel" onClick={() => setAddingList(false)} className="p-1.5 rounded hover:bg-black/10 text-2">
                       <X size={16} />
                     </button>
                   </div>
@@ -509,7 +527,7 @@ export default function BoardView() {
                 <button
                   data-testid="add-list-open"
                   onClick={() => setAddingList(true)}
-                  className="w-full flex items-center gap-2 h-11 px-3 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold transition-colors active:scale-95"
+                  className="w-full flex items-center gap-2 h-11 px-3 rounded-xl bg-[hsl(var(--elevated))]/20 hover:bg-[hsl(var(--elevated))]/30 text-white text-sm font-semibold transition-colors active:scale-95"
                 >
                   <Plus size={16} /> Tambah list
                 </button>
@@ -529,14 +547,14 @@ export default function BoardView() {
       {openCardId && <CardModal itemId={openCardId} onClose={closeCard} />}
       {reqList && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-24 fade-enter" onClick={() => setReqList(null)} data-testid="requirements-modal">
-          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl p-6 modal-enter" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[hsl(var(--elevated))] w-full max-w-md rounded-xl shadow-2xl p-6 modal-enter" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
-              <h2 className="font-heading text-lg font-bold text-[#172B4D]">Syarat Masuk List</h2>
-              <button aria-label="Tutup" data-testid="requirements-close" onClick={() => setReqList(null)} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]">
+              <h2 className="font-heading text-lg font-bold text-foreground">Syarat Masuk List</h2>
+              <button aria-label="Tutup" data-testid="requirements-close" onClick={() => setReqList(null)} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2">
                 <X size={18} />
               </button>
             </div>
-            <p className="text-sm text-[#44546F] mb-3">
+            <p className="text-sm text-2 mb-3">
               Kartu hanya bisa dipindah ke <span className="font-semibold">{reqList.name}</span> jika item checklist berikut sudah dicentang. Satu item per baris.
             </p>
             <textarea
@@ -545,7 +563,7 @@ export default function BoardView() {
               onChange={(e) => setReqText(e.target.value)}
               rows={5}
               placeholder={"KTP\nNPWP"}
-              className="w-full rounded-lg border border-[#DFE1E6] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
+              className="w-full rounded-lg border border-[hsl(var(--hairline))] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
             />
             <button
               data-testid="requirements-save-button"
@@ -562,33 +580,105 @@ export default function BoardView() {
       )}
       {showArchive && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-20 fade-enter" onClick={() => setShowArchive(false)} data-testid="archive-modal">
-          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl p-6 modal-enter" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[hsl(var(--elevated))] w-full max-w-lg rounded-xl shadow-2xl p-6 modal-enter" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-heading text-lg font-bold text-[#172B4D]">Kartu Diarsipkan</h2>
-              <button aria-label="Tutup" data-testid="archive-close" onClick={() => setShowArchive(false)} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]">
+              <h2 className="font-heading text-lg font-bold text-foreground">Arsip Board</h2>
+              <button aria-label="Tutup" data-testid="archive-close" onClick={() => setShowArchive(false)} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2">
                 <X size={18} />
               </button>
             </div>
-            <div className="space-y-2 max-h-96 overflow-y-auto minimal-scrollbar">
-              {(archivedCards || []).length === 0 && <p className="text-sm text-[#44546F]">Tidak ada kartu di arsip.</p>}
-              {(archivedCards || []).map((c) => (
-                <div key={c.id} className="flex items-center justify-between bg-[#F4F5F7] rounded-lg px-3 py-2" data-testid={`archived-card-${c.id}`}>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[#172B4D] truncate">{c.title}</p>
-                    {c.client_name && <p className="text-xs text-[#44546F]">{c.client_name}</p>}
+            <div className="space-y-2 max-h-[70vh] overflow-y-auto minimal-scrollbar">
+
+              {/* ── LIST DIARSIPKAN ── */}
+              <p className="text-[11px] font-bold uppercase tracking-wider text-3">List Diarsipkan ({archivedLists.length})</p>
+              {archivedLists.length === 0 && <p className="text-sm text-3 mb-2">Tidak ada list di arsip.</p>}
+              {archivedLists.map((l) => (
+                <div key={l.id} className="flex items-center justify-between rounded-lg bg-[hsl(var(--muted))] px-3 py-2" data-testid={`archived-list-${l.id}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="h-4 w-4 shrink-0 rounded-[4px]" style={{ backgroundColor: l.color || "#c1c7d0" }} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{l.name}</p>
+                      <p className="text-xs text-3">{l.card_count} kartu di dalamnya</p>
+                    </div>
                   </div>
-                  <button
-                    data-testid={`restore-card-${c.id}`}
-                    onClick={async () => {
-                      await api.post(`/work-items/${c.id}/unarchive`);
-                      qc.invalidateQueries({ queryKey: ["board", boardId] });
-                      qc.invalidateQueries({ queryKey: ["board-archived", boardId] });
-                      toast.success("Kartu dikembalikan");
-                    }}
-                    className="text-xs text-[#0C66E4] hover:underline font-semibold shrink-0 ml-3"
-                  >
-                    Kembalikan
-                  </button>
+                  <div className="flex items-center gap-3 shrink-0 ml-3">
+                    <button
+                      data-testid={`restore-list-${l.id}`}
+                      onClick={async () => {
+                        try {
+                          await api.patch(`/lists/${l.id}`, { archived: false });
+                          qc.invalidateQueries({ queryKey: ["board", boardId] });
+                          qc.invalidateQueries({ queryKey: ["board-archived", boardId] });
+                          toast.success("List dikembalikan");
+                        } catch (e) { toast.error(errMsg(e)); }
+                      }}
+                      className="text-xs font-semibold text-[#0C66E4] hover:underline"
+                    >
+                      Kembalikan
+                    </button>
+                    <button
+                      data-testid={`delete-list-${l.id}`}
+                      onClick={async () => {
+                        if (!confirm(`Hapus permanen list "${l.name}"?\n${l.card_count} kartu di dalamnya akan ikut diarsipkan. Tindakan ini tidak bisa dibatalkan.`)) return;
+                        try {
+                          await api.delete(`/lists/${l.id}`);
+                          qc.invalidateQueries({ queryKey: ["board", boardId] });
+                          qc.invalidateQueries({ queryKey: ["board-archived", boardId] });
+                          toast.success("List dihapus permanen");
+                        } catch (e) { toast.error(errMsg(e)); }
+                      }}
+                      className="text-xs font-semibold text-[#CA3521] hover:underline"
+                    >
+                      Hapus permanen
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* ── KARTU DIARSIPKAN ── */}
+              <p className="pt-3 text-[11px] font-bold uppercase tracking-wider text-3">Kartu Diarsipkan ({archivedCards.length})</p>
+              {archivedCards.length === 0 && <p className="text-sm text-3">Tidak ada kartu di arsip.</p>}
+              <p className="text-xs text-3 mb-1">
+                Untuk menghapus kartu (termasuk Master Card) permanen: arsipkan dulu, lalu hapus dari sini. Master Card yang dihapus menghapus semua assignment turunannya.
+              </p>
+              {(archivedCards || []).map((c) => (
+                <div key={c.id} className="flex items-center justify-between bg-[hsl(var(--muted))] rounded-lg px-3 py-2" data-testid={`archived-card-${c.id}`}>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{c.title}</p>
+                    {c.client_name && <p className="text-xs text-2">{c.client_name}</p>}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-3">
+                    <button
+                      data-testid={`restore-card-${c.id}`}
+                      onClick={async () => {
+                        await api.post(`/work-items/${c.id}/unarchive`);
+                        qc.invalidateQueries({ queryKey: ["board", boardId] });
+                        qc.invalidateQueries({ queryKey: ["board-archived", boardId] });
+                        toast.success("Kartu dikembalikan");
+                      }}
+                      className="text-xs text-[#0C66E4] hover:underline font-semibold"
+                    >
+                      Kembalikan
+                    </button>
+                    <button
+                      data-testid={`delete-card-${c.id}`}
+                      onClick={async () => {
+                        if (!confirm(`Hapus permanen "${c.title}"?\nTindakan ini tidak bisa dibatalkan${c.master_card_id && !c.target_division_id ? " dan akan menghapus semua assignment turunannya" : ""}.`)) return;
+                        try {
+                          const r = await api.delete(`/work-items/${c.id}`);
+                          qc.invalidateQueries({ queryKey: ["board", boardId] });
+                          qc.invalidateQueries({ queryKey: ["board-archived", boardId] });
+                          qc.invalidateQueries({ queryKey: ["bank-data"] });
+                          qc.invalidateQueries({ queryKey: ["bank-data-summary"] });
+                          const n = r?.data?.removed_assignments || 0;
+                          toast.success(n ? `Kartu & ${n} assignment dihapus` : "Kartu dihapus permanen");
+                        } catch (e) { toast.error(errMsg(e)); }
+                      }}
+                      className="text-xs text-[#CA3521] hover:underline font-semibold"
+                    >
+                      Hapus permanen
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

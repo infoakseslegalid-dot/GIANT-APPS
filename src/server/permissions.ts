@@ -13,7 +13,7 @@ import { Prisma } from '@prisma/client';
 import { HTTPException } from 'hono/http-exception';
 import { db } from './deps';
 
-export const ROLES = ['super_admin', 'admin', 'supervisor', 'staff', 'viewer'];
+export const ROLES = ['super_admin', 'admin', 'cs', 'supervisor', 'staff', 'viewer'];
 
 export const FEATURE_PERMISSIONS = [
   // Administrasi
@@ -23,6 +23,8 @@ export const FEATURE_PERMISSIONS = [
   { key: 'checklist_template.manage', label: 'Kelola template checklist', category: 'Administrasi' },
   { key: 'permission.manage', label: 'Kelola matriks hak akses ini', category: 'Administrasi' },
   // Board & List
+  { key: 'board.view_all', label: 'Lihat SEMUA board (hanya-baca, lintas divisi)', category: 'Board & List' },
+  { key: 'board.edit_all', label: 'Ubah SEMUA board (lintas divisi) — bukan hanya-baca', category: 'Board & List' },
   { key: 'board.manage', label: 'Buat / ubah / hapus board', category: 'Board & List' },
   { key: 'board.manage_members', label: 'Atur anggota board', category: 'Board & List' },
   { key: 'list.manage', label: 'Buat / ubah / hapus / urutkan list', category: 'Board & List' },
@@ -47,6 +49,9 @@ export const FEATURE_PERMISSIONS = [
   { key: 'hari.view', label: 'Buka halaman Board Harian (Hari 1-7)', category: 'Halaman' },
   { key: 'hari.advance', label: 'Majukan tahap HARI pada Board Harian', category: 'Halaman' },
   { key: 'skor.view', label: 'Buka halaman Peta Skor Global', category: 'Halaman' },
+  { key: 'report.view', label: 'Buka halaman Rekap & Performa (per user, per divisi, keuangan)', category: 'Halaman' },
+  // Keuangan
+  { key: 'finance.manage', label: 'Input harga job & catat pembayaran (DP / lunas)', category: 'Keuangan' },
 ].map((p) => ({ ...p, kind: 'feature' }));
 
 /** table.<Model> untuk tiap model Prisma. */
@@ -67,19 +72,28 @@ export function allPermissionDefs() {
 // Tujuan: TIDAK mengubah perilaku yang sudah berjalan; admin lalu bebas mengetatkan.
 function defaultAllowed(role: string, def: { key: string; kind: string }): boolean {
   if (role === 'super_admin') return true;
-  if (def.kind === 'table') return role === 'admin'; // tabel: hanya admin, sisanya deny
+  if (def.kind === 'table') return false; // Hanya super_admin (yg di atas) yg bisa akses tabel secara default
   const key = def.key;
-  if (role === 'admin') return true;
   if (role === 'viewer') return key === 'hari.view' || key === 'skor.view';
-  // supervisor & staff: samakan dengan perilaku hardcoded saat ini
+
+  // supervisor, admin (operasional), cs, staff
   const adminOnly = new Set([
     'user.manage', 'division.manage', 'board.manage', 'automation.manage',
     'list.entry_requirements', 'permission.manage',
   ]);
   if (adminOnly.has(key)) return false;
   if (role === 'supervisor') return true;
-  // staff
-  const staffDenied = new Set(['list.manage']);
+
+  // Keuangan: CS / staff PIC boleh input harga & pembayaran, TAPI route
+  // `canManageFinance` tetap membatasi ke PIC / pembuat / owner kartu itu.
+  // admin (operasional) & viewer tidak. Super admin & supervisor bebas (di atas).
+  if (key === 'finance.manage') return role === 'cs' || role === 'staff';
+
+  // default OFF untuk hal lintas-divisi, struktur list, & rekap global
+  const staffDenied = new Set([
+    'list.manage', 'board.view_all', 'board.edit_all', 'board.manage_members',
+    'report.view',
+  ]);
   return !staffDenied.has(key);
 }
 

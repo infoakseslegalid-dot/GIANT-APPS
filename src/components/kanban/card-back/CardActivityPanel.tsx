@@ -87,23 +87,23 @@ function CollapsedGroup({ activities }: { activities: CardActivity[] }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start gap-1 text-left text-[11px] leading-[1.5] text-[#5e6c84]"
+        className="flex w-full items-start gap-1 text-left text-[11px] leading-[1.5] text-3"
       >
         <span className="min-w-0 flex-1">
-          <strong className="font-semibold text-[#172b4d]">{a0.author.name}</strong>{' '}
+          <strong className="font-semibold text-foreground">{a0.author.name}</strong>{' '}
           <span dangerouslySetInnerHTML={{ __html: a0.body }} />{' '}
-          <span className="text-[#8590a2]">dan {activities.length - 1} pembaruan lain</span>
+          <span className="text-3">dan {activities.length - 1} pembaruan lain</span>
         </span>
         <ChevronDown size={12} className={`mt-[2px] shrink-0 ${open ? 'rotate-180' : ''} transition-transform`} />
-        <span className="ml-1 shrink-0 whitespace-nowrap text-[10px] text-[#8590a2]">
+        <span className="ml-1 shrink-0 whitespace-nowrap text-[10px] text-3">
           · {formatRelativeShort(a0.createdAt)}
         </span>
       </button>
       {open && (
-        <div className="mt-1 space-y-1 border-l border-[#dfe1e6] pl-2">
+        <div className="mt-1 space-y-1 border-l border-[hsl(var(--hairline))] pl-2">
           {activities.map((a) => (
-            <p key={a.id} className="text-[11px] leading-[1.5] text-[#5e6c84]">
-              <strong className="font-semibold text-[#172b4d]">{a.author.name}</strong>{' '}
+            <p key={a.id} className="text-[11px] leading-[1.5] text-3">
+              <strong className="font-semibold text-foreground">{a.author.name}</strong>{' '}
               <span dangerouslySetInnerHTML={{ __html: a.body }} />
             </p>
           ))}
@@ -254,7 +254,7 @@ export default function CardActivityPanel(props: CardBackProps) {
     resetComposer();
   };
 
-  const tbBtn = 'flex h-6 w-6 cursor-pointer items-center justify-center rounded text-[#44546f] hover:bg-[#091e420f]';
+  const tbBtn = 'flex h-6 w-6 cursor-pointer items-center justify-center rounded text-2 hover:bg-[hsl(var(--muted))]';
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -265,7 +265,7 @@ export default function CardActivityPanel(props: CardBackProps) {
         <button
           type="button"
           onClick={() => setHideDetails((v) => !v)}
-          className="ml-auto flex items-center gap-1 rounded-[4px] border border-[#dfe1e6] bg-[#f7f8f9] px-2 py-1 text-[11px] font-medium text-[#44546f] hover:bg-[#e9ebee]"
+          className="ml-auto flex items-center gap-1 rounded-[4px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-2 py-1 text-[11px] font-medium text-2 hover:bg-[hsl(var(--muted))]"
         >
           {hideDetails ? <Eye size={12} /> : <EyeOff size={12} />}
           {hideDetails ? 'Show details' : 'Hide details'}
@@ -284,22 +284,22 @@ export default function CardActivityPanel(props: CardBackProps) {
         )}
 
         {!canComment ? (
-          <div className="rounded-[6px] border border-dashed border-[#dfe1e6] px-[10px] py-3 text-[11px] text-[#7a869a]">
+          <div className="rounded-[6px] border border-dashed border-[hsl(var(--hairline))] px-[10px] py-3 text-[11px] text-3">
             Anda tidak punya akses untuk berkomentar di kartu ini.
           </div>
         ) : !composing ? (
           <div
             onClick={() => setComposing(true)}
-            className="flex min-h-[40px] cursor-text items-center rounded-[6px] border border-[#dfe1e6] px-[10px] py-3 text-[11px] text-[#7a869a] shadow-[0_1px_2px_#091e4226] hover:bg-[#f4f5f7]"
+            className="flex min-h-[40px] cursor-text items-center rounded-[6px] border border-[hsl(var(--hairline))] px-[10px] py-3 text-[11px] text-3 shadow-[0_1px_2px_#091e4226] hover:bg-[hsl(var(--muted))]"
           >
             Write a comment...
           </div>
         ) : (
           <>
-            <div className="relative overflow-visible rounded-[6px] border-2 border-[#0c66e4] bg-white shadow-[0_1px_2px_#091e4226]">
+            <div className="relative overflow-visible rounded-[6px] border-2 border-[#0c66e4] bg-[hsl(var(--elevated))] shadow-[0_1px_2px_#091e4226]">
               {/* Toolbar */}
-              <div className="relative flex flex-wrap items-center gap-[2px] border-b border-[#dfe1e6] px-2 py-1">
-                <span className="flex h-6 items-center gap-[2px] rounded px-1.5 text-[11px] text-[#44546f]">
+              <div className="relative flex flex-wrap items-center gap-[2px] border-b border-[hsl(var(--hairline))] px-2 py-1">
+                <span className="flex h-6 items-center gap-[2px] rounded px-1.5 text-[11px] text-2">
                   <Type size={13} /><ChevronDown size={10} />
                 </span>
                 <button type="button" title="Bold" className={tbBtn} onClick={() => applyEdit((el) => wrapSelection(el, '**'))}>
@@ -308,7 +308,7 @@ export default function CardActivityPanel(props: CardBackProps) {
                 <button type="button" title="Italic" className={tbBtn} onClick={() => applyEdit((el) => wrapSelection(el, '*'))}>
                   <Italic size={13} />
                 </button>
-                <span className="mx-1 h-3 w-px bg-[#dfe1e6]" />
+                <span className="mx-1 h-3 w-px bg-[hsl(var(--muted))]" />
                 <button type="button" title="Bullet list" className={tbBtn} onClick={() => applyEdit((el) => prefixLines(el, '- '))}>
                   <List size={13} />
                 </button>
@@ -342,7 +342,7 @@ export default function CardActivityPanel(props: CardBackProps) {
                 </label>
 
                 {linkOpen && (
-                  <div className="absolute left-2 top-[34px] z-20 flex items-center gap-1 rounded-[6px] border border-[#dfe1e6] bg-white p-1.5 shadow-[0_8px_24px_#0004]">
+                  <div className="absolute left-2 top-[34px] z-20 flex items-center gap-1 rounded-[6px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-1.5 shadow-[0_8px_24px_#0004]">
                     <input
                       autoFocus
                       value={linkUrl}
@@ -360,7 +360,7 @@ export default function CardActivityPanel(props: CardBackProps) {
                         }
                       }}
                       placeholder="https://…"
-                      className="h-7 w-[200px] rounded border border-[#dfe1e6] px-2 text-[12px] outline-none focus:border-[#0c66e4]"
+                      className="h-7 w-[200px] rounded border border-[hsl(var(--hairline))] px-2 text-[12px] outline-none focus:border-[#0c66e4]"
                     />
                     <button
                       type="button"
@@ -380,18 +380,18 @@ export default function CardActivityPanel(props: CardBackProps) {
               </div>
 
               {mOpen && mSuggestions.length > 0 && (
-                <div className="absolute left-2 z-40 mt-1 w-[220px] overflow-hidden rounded-[6px] border border-[#dfe1e6] bg-white shadow-[0_8px_24px_#0004]">
+                <div className="absolute left-2 z-40 mt-1 w-[220px] overflow-hidden rounded-[6px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] shadow-[0_8px_24px_#0004]">
                   {mSuggestions.map((u, i) => (
                     <button
                       key={u.id}
                       type="button"
                       onMouseDown={(e) => { e.preventDefault(); pickMention(u.name); }}
-                      className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] ${i === mIdx ? 'bg-[#e9f2ff]' : 'hover:bg-[#f1f2f4]'}`}
+                      className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] ${i === mIdx ? 'bg-[#e9f2ff]' : 'hover:bg-[hsl(var(--muted))]'}`}
                     >
                       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: u.avatarColor || '#0c66e4' }}>
                         {u.initials}
                       </span>
-                      <span className="truncate text-[#172b4d]">{u.name}</span>
+                      <span className="truncate text-foreground">{u.name}</span>
                     </button>
                   ))}
                 </div>
@@ -418,21 +418,21 @@ export default function CardActivityPanel(props: CardBackProps) {
                   }
                 }}
                 placeholder="Tulis komentar…  ketik @ untuk sebut orang  ·  Ctrl+Enter kirim"
-                className="h-[76px] w-full resize-none p-[9px] text-[12px] text-[#172b4d] outline-none placeholder:text-[#7a869a]"
+                className="h-[76px] w-full resize-none p-[9px] text-[12px] text-foreground outline-none placeholder:text-3"
               />
 
               {/* Preview file yang akan diupload */}
               {commentFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 border-t border-[#dfe1e6] bg-[#f4f5f7] px-2 py-2">
+                <div className="flex flex-wrap gap-2 border-t border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-2 py-2">
                   {commentFiles.map((cf, idx) => (
                     <div
                       key={idx}
-                      className="group relative flex flex-col max-w-[200px] gap-1.5 rounded border border-[#dfe1e6] bg-white p-1 text-[11px] text-[#172b4d] shadow-sm"
+                      className="group relative flex flex-col max-w-[200px] gap-1.5 rounded border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-1 text-[11px] text-foreground shadow-sm"
                     >
                       {cf.preview ? (
                         <img src={cf.preview} alt={cf.name} className="h-24 w-full shrink-0 rounded object-cover" />
                       ) : (
-                        <div className="flex h-24 w-full shrink-0 items-center justify-center rounded bg-[#091e420f] text-[10px] font-bold text-[#44546f]">
+                        <div className="flex h-24 w-full shrink-0 items-center justify-center rounded bg-[hsl(var(--muted))] text-[10px] font-bold text-2">
                           {cf.ext}
                         </div>
                       )}
@@ -440,7 +440,7 @@ export default function CardActivityPanel(props: CardBackProps) {
                       <button
                         type="button"
                         onClick={() => removeCommentFile(idx)}
-                        className="flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-full bg-[#091e420f] text-[#44546f] hover:bg-red-100 hover:text-red-600"
+                        className="flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded-full bg-[hsl(var(--muted))] text-2 hover:bg-red-100 hover:text-red-600"
                       >
                         <X size={10} />
                       </button>
@@ -462,12 +462,12 @@ export default function CardActivityPanel(props: CardBackProps) {
               <button
                 type="button"
                 onClick={resetComposer}
-                className="rounded-[4px] border border-[#dfe1e6] bg-transparent px-[13px] py-[7px] text-[13px] text-[#44546f] hover:bg-[#f1f2f4]"
+                className="rounded-[4px] border border-[hsl(var(--hairline))] bg-transparent px-[13px] py-[7px] text-[13px] text-2 hover:bg-[hsl(var(--muted))]"
               >
                 Cancel
               </button>
               {commentFiles.length > 0 && (
-                <span className="ml-auto text-[11px] text-[#7a869a]">{commentFiles.length} file terpilih</span>
+                <span className="ml-auto text-[11px] text-3">{commentFiles.length} file terpilih</span>
               )}
             </div>
           </>
@@ -477,7 +477,7 @@ export default function CardActivityPanel(props: CardBackProps) {
       {/* timeline gabungan comment + activity (item G) */}
       <div ref={feedRef} className={`mt-[9px] min-h-0 flex-1 overflow-y-auto pr-[2px] ${SCROLL}`}>
         {rows.length === 0 ? (
-          <p className="py-4 text-center text-[11px] text-[#7a869a]">
+          <p className="py-4 text-center text-[11px] text-3">
             {hideDetails && commentCount === 0 ? 'Belum ada komentar.' : 'Belum ada aktivitas.'}
           </p>
         ) : (
@@ -488,6 +488,8 @@ export default function CardActivityPanel(props: CardBackProps) {
               <CardActivityItem
                 key={row.activity.id}
                 activity={row.activity}
+                mentionables={mentionables}
+                onUploadInline={props.onUploadInline}
                 onUpdateComment={onUpdateComment}
                 onDeleteComment={onDeleteComment}
                 onReply={(name) => {

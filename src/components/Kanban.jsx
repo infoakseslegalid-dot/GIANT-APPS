@@ -8,16 +8,19 @@ import {
 } from "lucide-react";
 import { Avatar, LabelChip, DueBadge, PriorityFlag, StatusBadge } from "./common";
 import { API } from "../lib/api";
+import { useTheme } from "../lib/theme";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem,
   DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
 
-export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
+export function CardTile({ card, labelsById, usersById, onClick, isMirror, readOnly = false }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: { type: "card", card },
+    disabled: readOnly,
   });
+  const dragProps = readOnly ? {} : { ...attributes, ...listeners };
   const [labelsCollapsed, setLabelsCollapsed] = useState(false);
   const style = {
     transform: isDragging ? `${CSS.Transform.toString(transform)} rotate(3deg)` : CSS.Transform.toString(transform),
@@ -34,11 +37,10 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...dragProps}
       onClick={onClick}
       data-testid={`card-tile-${card.id}`}
-      className="bg-white rounded-lg shadow-sm hover:shadow-lg hover:-translate-y-px border border-transparent hover:border-[#0C66E4]/30 transition-all duration-150 cursor-pointer group flex flex-col relative overflow-hidden"
+      className="bg-[hsl(var(--elevated))] rounded-lg shadow-sm hover:shadow-lg hover:-translate-y-px border border-transparent hover:border-[#0C66E4]/30 transition-all duration-150 cursor-pointer group flex flex-col relative overflow-hidden"
     >
       {card.cover_attachment_id ? (
         <img src={`${API}/attachments/${card.cover_attachment_id}/download`} alt="" className="w-full h-28 object-cover" />
@@ -50,13 +52,13 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
           aria-label="Edit Kartu"
           data-testid={`card-quick-edit-${card.id}`}
           onClick={(e) => { e.stopPropagation(); onClick(); }}
-          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-white/80 hover:bg-gray-200 text-[#44546F] z-10"
+          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-[hsl(var(--elevated))]/80 hover:bg-gray-200 text-2 z-10"
         >
           <Pencil size={12} />
         </button>
         {card.is_assignment && card.master_board_name && (
           <span
-            className="inline-flex w-fit items-center gap-1 rounded border border-[#DFE1E6] bg-[#F4F5F7] px-1.5 py-0.5 text-[10px] font-medium text-[#5E6C84]"
+            className="inline-flex w-fit items-center gap-1 rounded border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-1.5 py-0.5 text-[10px] font-medium text-3"
             title={`Mirror dari ${card.master_board_name}${card.master_list_name ? " / " + card.master_list_name : ""}`}
           >
             <Link2 size={11} className="text-[#2684FF]" />
@@ -75,8 +77,8 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
           </div>
         )}
         <div>
-          <p className="text-sm font-medium text-[#172B4D] leading-snug pr-4">{card.title}</p>
-          {card.client_name && <p className="text-xs text-[#44546F] mt-0.5">{card.client_name}</p>}
+          <p className="text-sm font-medium text-foreground leading-snug pr-4">{card.title}</p>
+          {card.client_name && <p className="text-xs text-2 mt-0.5">{card.client_name}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusBadge status={card.status} />
@@ -89,7 +91,7 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror }) {
           )}
         </div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[#44546F]">
+          <div className="flex items-center gap-2 text-2">
             {card.description ? <AlignLeft size={13} /> : null}
             {isMirror && <Link2 size={13} className="text-[#2684FF]" aria-label="Kartu mirror" />}
             {clTotal > 0 && (
@@ -136,7 +138,7 @@ export function AddCardComposer({ onAdd, testidPrefix }) {
       <button
         data-testid={`${testidPrefix}-add-card-open`}
         onClick={() => setOpen(true)}
-        className="m-2 mt-1 flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#44546F] hover:bg-[#091E4224] transition-colors w-[calc(100%-16px)] text-left"
+        className="m-2 mt-1 flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-2 hover:bg-[hsl(var(--accent))] transition-colors w-[calc(100%-16px)] text-left"
       >
         <Plus size={14} /> Tambahkan kartu
       </button>
@@ -151,7 +153,7 @@ export function AddCardComposer({ onAdd, testidPrefix }) {
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } if (e.key === "Escape") setOpen(false); }}
         placeholder="Judul pekerjaan, mis: PT ABC - Pengurusan NIB"
-        className="w-full rounded-lg border border-[#DFE1E6] p-2 text-sm text-[#172B4D] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none bg-white shadow-sm"
+        className="w-full rounded-lg border border-[hsl(var(--hairline))] p-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none bg-[hsl(var(--elevated))] shadow-sm"
         rows={2}
       />
       <input
@@ -159,7 +161,7 @@ export function AddCardComposer({ onAdd, testidPrefix }) {
         value={client}
         onChange={(e) => setClient(e.target.value)}
         placeholder="Nama klien (opsional)"
-        className="w-full h-8 rounded-lg border border-[#DFE1E6] px-2 text-sm text-[#172B4D] outline-none focus:ring-2 focus:ring-[#0C66E4] bg-white"
+        className="w-full h-8 rounded-lg border border-[hsl(var(--hairline))] px-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-[#0C66E4] bg-[hsl(var(--elevated))]"
       />
       <div className="flex items-center gap-2">
         <button
@@ -169,7 +171,7 @@ export function AddCardComposer({ onAdd, testidPrefix }) {
         >
           Tambah kartu
         </button>
-        <button aria-label="Batal" data-testid={`${testidPrefix}-add-card-cancel`} onClick={() => setOpen(false)} className="p-1.5 rounded hover:bg-[#091E4224] text-[#44546F]">
+        <button aria-label="Batal" data-testid={`${testidPrefix}-add-card-cancel`} onClick={() => setOpen(false)} className="p-1.5 rounded hover:bg-[hsl(var(--accent))] text-2">
           <X size={16} />
         </button>
       </div>
@@ -184,15 +186,26 @@ const SORTS = [
   { value: "due", label: "Tenggat terdekat" },
 ];
 
-export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardId, allBoards, onCardClick, onAddCard, onRenameList, onDeleteList, onSetRequirements, onArchiveAllCards, onCopyList, onMoveList, onArchiveList, canManage }) {
+export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardId, allBoards, onCardClick, onAddCard, onRenameList, onDeleteList, onSetRequirements, onArchiveAllCards, onCopyList, onMoveList, onArchiveList, canManage, canAddCard = true, readOnly = false }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: list.id,
     data: { type: "list", list },
+    disabled: readOnly,
   });
+  const handleDragProps = readOnly ? {} : { ...attributes, ...listeners };
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(list.name);
   const [collapsed, setCollapsed] = useState(false);
   const [sortMode, setSortMode] = useState("default");
+  const { theme } = useTheme();
+  const isDark =
+    theme === "dark" ||
+    (theme === "system" &&
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+  // Warna list adalah pastel (untuk latar terang). Di mode gelap jangan dipakai
+  // sebagai latar penuh — tampilkan sebagai garis aksen di atas kolom saja.
+  const listBgStyle = list.color && !isDark ? { backgroundColor: list.color } : {};
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -219,12 +232,12 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
         ref={setNodeRef}
         style={style}
         data-testid={`list-column-${list.id}`}
-        className="w-12 shrink-0 bg-[#f1f2f4] rounded-xl flex flex-col items-center py-3 gap-2 shadow-sm cursor-pointer hover:bg-[#e4e6ea] transition-colors max-h-full"
+        className="w-12 shrink-0 bg-[hsl(var(--muted))] rounded-xl flex flex-col items-center py-3 gap-2 shadow-sm cursor-pointer hover:bg-[hsl(var(--accent))] transition-colors max-h-full"
         onClick={() => setCollapsed(false)}
       >
-        <ChevronRight size={14} className="text-[#44546F]" />
-        <span className="text-xs font-semibold text-[#172B4D] [writing-mode:vertical-rl] rotate-180 truncate max-h-48">{list.name}</span>
-        <span className="text-[10px] font-bold text-[#8590A2] bg-white rounded-full px-1.5 py-0.5">{cards.length}</span>
+        <ChevronRight size={14} className="text-2" />
+        <span className="text-xs font-semibold text-foreground [writing-mode:vertical-rl] rotate-180 truncate max-h-48">{list.name}</span>
+        <span className="text-[10px] font-bold text-3 bg-[hsl(var(--elevated))] rounded-full px-1.5 py-0.5">{cards.length}</span>
       </div>
     );
   }
@@ -232,11 +245,17 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
   return (
     <div
       ref={setNodeRef}
-      style={{ ...style, backgroundColor: list.color || "#f1f2f4" }}
+      style={{ ...style, ...listBgStyle }}
       data-testid={`list-column-${list.id}`}
-      className="w-72 shrink-0 rounded-xl flex flex-col max-h-full shadow-sm"
+      className="w-72 shrink-0 rounded-xl flex flex-col max-h-full shadow-sm bg-[hsl(var(--muted))] overflow-hidden"
     >
-      <div className="p-3 pb-2 flex justify-between items-center shrink-0 cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
+      {list.color && isDark && (
+        <div className="h-1 w-full shrink-0" style={{ backgroundColor: list.color }} />
+      )}
+      <div
+        className={`p-3 pb-2 flex justify-between items-center shrink-0 ${readOnly ? "" : "cursor-grab active:cursor-grabbing"}`}
+        {...handleDragProps}
+      >
         {editing ? (
           <input
             data-testid={`list-rename-input-${list.id}`}
@@ -246,11 +265,11 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
             onBlur={saveName}
             onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") { setName(list.name); setEditing(false); } }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="h-7 w-full rounded border border-[#0C66E4] px-2 text-sm font-semibold text-[#172B4D] outline-none"
+            className="h-7 w-full rounded border border-[#0C66E4] px-2 text-sm font-semibold text-foreground outline-none"
           />
         ) : (
           <h2
-            className="font-semibold text-sm text-[#172B4D] truncate flex-1 flex items-center gap-1"
+            className="font-semibold text-sm text-foreground truncate flex-1 flex items-center gap-1"
             onDoubleClick={() => setEditing(true)}
             data-testid={`list-title-${list.id}`}
           >
@@ -258,7 +277,7 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
             {(list.entry_requirements || []).length > 0 && (
               <ShieldCheck size={13} className="text-[#E56910] shrink-0" aria-label="Punya syarat masuk" />
             )}
-            <span className="ml-1 text-xs font-normal text-[#8590A2]">{cards.length}</span>
+            <span className="ml-1 text-xs font-normal text-3">{cards.length}</span>
           </h2>
         )}
         <div className="flex items-center shrink-0">
@@ -267,7 +286,7 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
             data-testid={`list-collapse-${list.id}`}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setCollapsed(true)}
-            className="p-1 rounded hover:bg-[#091E4224] text-[#44546F] transition-colors"
+            className="p-1 rounded hover:bg-[hsl(var(--accent))] text-2 transition-colors"
           >
             <ChevronDown size={15} />
           </button>
@@ -277,12 +296,12 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
                 aria-label="Menu List"
                 data-testid={`list-menu-${list.id}`}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="p-1 rounded hover:bg-[#091E4224] text-[#44546F] transition-colors"
+                className="p-1 rounded hover:bg-[hsl(var(--accent))] text-2 transition-colors"
               >
                 <MoreHorizontal size={16} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-white shadow-lg w-56">
+            <DropdownMenuContent align="end" className="bg-[hsl(var(--elevated))] shadow-lg w-56">
               <DropdownMenuItem data-testid={`list-rename-${list.id}`} onClick={() => setEditing(true)} className="cursor-pointer">
                 <Pencil size={14} className="mr-2" /> Ubah nama
               </DropdownMenuItem>
@@ -295,7 +314,7 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
                 <DropdownMenuSubTrigger data-testid={`list-sort-${list.id}`} className="cursor-pointer">
                   <ChevronDown size={14} className="mr-2" /> Urutkan kartu
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="bg-white shadow-lg">
+                <DropdownMenuSubContent className="bg-[hsl(var(--elevated))] shadow-lg">
                   {SORTS.map((s) => (
                     <DropdownMenuItem key={s.value} data-testid={`list-sort-${s.value}-${list.id}`} onClick={() => setSortMode(s.value)} className={`cursor-pointer ${sortMode === s.value ? "font-bold text-[#0C66E4]" : ""}`}>
                       {s.label}
@@ -312,7 +331,7 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
                   <DropdownMenuSubTrigger data-testid={`list-move-${list.id}`} className="cursor-pointer">
                     <FolderInput size={14} className="mr-2" /> Pindah ke board
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="bg-white shadow-lg">
+                  <DropdownMenuSubContent className="bg-[hsl(var(--elevated))] shadow-lg">
                     {(allBoards || []).filter((b) => b.id !== currentBoardId).map((b) => (
                       <DropdownMenuItem key={b.id} data-testid={`list-move-to-${b.id}`} onClick={() => onMoveList(list.id, b.id)} className="cursor-pointer">
                         {b.name}
@@ -347,11 +366,12 @@ export function KanbanColumn({ list, cards, labelsById, usersById, currentBoardI
               usersById={usersById}
               isMirror={card.board_id !== currentBoardId}
               onClick={() => onCardClick(card)}
+              readOnly={readOnly}
             />
           ))}
         </SortableContext>
       </div>
-      <AddCardComposer testidPrefix={`list-${list.id}`} onAdd={(t, c) => onAddCard(list.id, t, c)} />
+      {canAddCard && <AddCardComposer testidPrefix={`list-${list.id}`} onAdd={(t, c) => onAddCard(list.id, t, c)} />}
     </div>
   );
 }

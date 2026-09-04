@@ -30,7 +30,7 @@ function Row({ n, onOpen, onMarkRead }) {
       data-testid={`notification-item-${n.id}`}
       onClick={() => onOpen(n)}
       className={`group relative flex w-full gap-3 px-3.5 py-3 text-left transition-colors ${
-        n.is_read ? "hover:bg-[#F7F8F9]" : "bg-[#F0F6FF] hover:bg-[#E4EFFF]"
+        n.is_read ? "hover:bg-[hsl(var(--muted))]" : "bg-[#F0F6FF] hover:bg-[#E4EFFF]"
       }`}
     >
       {!n.is_read && <span className="absolute left-0 top-0 h-full w-[3px] bg-[#0C66E4]" />}
@@ -42,15 +42,15 @@ function Row({ n, onOpen, onMarkRead }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-start gap-2">
-          <span className={`flex-1 text-[13.5px] leading-snug ${n.is_read ? "font-medium text-[#44546F]" : "font-bold text-[#172B4D]"}`}>
+          <span className={`flex-1 text-[13.5px] leading-snug ${n.is_read ? "font-medium text-2" : "font-bold text-foreground"}`}>
             {n.title}
           </span>
-          <span className="shrink-0 whitespace-nowrap pt-0.5 text-[11px] text-[#8590A2]" title={fmtDateTime(n.created_at)}>
+          <span className="shrink-0 whitespace-nowrap pt-0.5 text-[11px] text-3" title={fmtDateTime(n.created_at)}>
             {timeAgo(n.created_at)}
           </span>
         </span>
         {n.body && (
-          <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-relaxed text-[#5E6C84]">
+          <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-relaxed text-3">
             {n.body}
           </span>
         )}
@@ -69,7 +69,7 @@ function Row({ n, onOpen, onMarkRead }) {
           title="Tandai dibaca"
           onClick={(e) => { e.stopPropagation(); onMarkRead(n); }}
           onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onMarkRead(n); } }}
-          className="absolute right-2 top-2 hidden h-6 w-6 items-center justify-center rounded-full text-[#44546F] hover:bg-[#091E4224] group-hover:flex"
+          className="absolute right-2 top-2 hidden h-6 w-6 items-center justify-center rounded-full text-2 hover:bg-[hsl(var(--accent))] group-hover:flex"
         >
           <Check size={13} />
         </span>
@@ -116,7 +116,7 @@ export default function NotificationsMenu() {
         <button
           data-testid="notifications-bell-button"
           aria-label="Notifikasi"
-          className="relative flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors hover:bg-white/20 active:scale-95"
+          className="relative flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors hover:bg-[hsl(var(--elevated))]/20 active:scale-95"
         >
           <Bell size={18} />
           {unread > 0 && (
@@ -132,12 +132,12 @@ export default function NotificationsMenu() {
       <DropdownMenuContent
         align="end"
         sideOffset={10}
-        className="w-[min(440px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-[#DFE1E6] bg-white p-0 shadow-[0_12px_40px_rgba(9,30,66,0.24)]"
+        className="w-[min(440px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-0 shadow-[0_12px_40px_rgba(9,30,66,0.24)]"
       >
         {/* header */}
         <div className="flex items-center justify-between gap-2 border-b border-[#EBECF0] px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="font-heading text-[15px] font-bold text-[#172B4D]">Notifikasi</span>
+            <span className="font-heading text-[15px] font-bold text-foreground">Notifikasi</span>
             {unread > 0 && (
               <span className="rounded-full bg-[#CA3521] px-2 py-0.5 text-[11px] font-bold text-white">{unread} baru</span>
             )}
@@ -157,12 +157,12 @@ export default function NotificationsMenu() {
         <div className="max-h-[min(560px,70vh)] overflow-y-auto minimal-scrollbar">
           {items.length === 0 ? (
             <div className="flex flex-col items-center gap-3 px-6 py-12 text-center" data-testid="notifications-empty">
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#F1F2F4] text-[#8590A2]">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(var(--muted))] text-3">
                 <BellOff size={24} />
               </span>
               <div>
-                <p className="text-sm font-semibold text-[#172B4D]">Belum ada notifikasi</p>
-                <p className="mt-0.5 text-xs text-[#8590A2]">Aktivitas yang melibatkan Anda akan muncul di sini.</p>
+                <p className="text-sm font-semibold text-foreground">Belum ada notifikasi</p>
+                <p className="mt-0.5 text-xs text-3">Aktivitas yang melibatkan Anda akan muncul di sini.</p>
               </div>
             </div>
           ) : (
@@ -170,7 +170,7 @@ export default function NotificationsMenu() {
               {unreadItems.length > 0 && (
                 <>
                   {readItems.length > 0 && (
-                    <p className="bg-white px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-[#8590A2]">
+                    <p className="bg-[hsl(var(--elevated))] px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-3">
                       Belum dibaca
                     </p>
                   )}
@@ -184,7 +184,7 @@ export default function NotificationsMenu() {
               {readItems.length > 0 && (
                 <>
                   {unreadItems.length > 0 && (
-                    <p className="border-t border-[#EBECF0] bg-white px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-[#8590A2]">
+                    <p className="border-t border-[#EBECF0] bg-[hsl(var(--elevated))] px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-3">
                       Sebelumnya
                     </p>
                   )}

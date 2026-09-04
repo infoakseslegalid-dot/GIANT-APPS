@@ -14,8 +14,8 @@ const abbr = (name) => {
   return (name || "?").split(" ")[0].slice(0, 8).toUpperCase();
 };
 
-const inputCls = "h-9 w-full rounded-lg border border-[#DFE1E6] px-3 text-sm text-[#172B4D] bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]";
-const filterCls = "h-8 rounded-lg border border-[#DFE1E6] px-2 text-xs text-[#172B4D] bg-white outline-none focus:ring-2 focus:ring-[#0C66E4]";
+const inputCls = "h-9 w-full rounded-lg border border-[hsl(var(--hairline))] px-3 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
+const filterCls = "h-8 rounded-lg border border-[hsl(var(--hairline))] px-2 text-xs text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
 
 // Ambang "umur pekerjaan" (PRD §16 default): merah setelah 2 jam.
 const AGE_YELLOW_MIN = 60;
@@ -28,7 +28,7 @@ function ageMinutes(iso) {
 
 function umurInfo(iso) {
   const mins = ageMinutes(iso);
-  if (mins == null) return { text: "-", cls: "text-[#8590A2]", mins: 0 };
+  if (mins == null) return { text: "-", cls: "text-3", mins: 0 };
   let text;
   if (mins < 60) text = `${mins} mnt`;
   else if (mins < 1440) text = `${Math.floor(mins / 60)} jam ${mins % 60} mnt`;
@@ -186,10 +186,10 @@ export default function BankData() {
   return (
     <div className="p-6 max-w-7xl mx-auto" data-testid="bank-data-page">
       <div className="mb-5">
-        <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight text-[#172B4D] flex items-center gap-2">
+        <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <Database size={24} className="text-[#0C66E4]" /> Bank Data Pekerjaan
         </h1>
-        <p className="text-sm text-[#44546F] mt-1">Ruang tunggu pekerjaan divisi — ambil pekerjaan, atau kirim pekerjaan baru ke divisi.</p>
+        <p className="text-sm text-2 mt-1">Ruang tunggu pekerjaan divisi — ambil pekerjaan, atau kirim pekerjaan baru ke divisi.</p>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4" data-testid="bank-data-division-tabs">
@@ -199,12 +199,12 @@ export default function BankData() {
           return (
             <button key={d.id} data-testid={`bankdata-tab-${d.id}`} onClick={() => navigate(`/bank-data/${d.id}`)}
               className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors active:scale-95 flex items-center gap-1.5 ${
-                on ? "text-white" : "bg-white text-[#44546F] border border-[#DFE1E6] hover:bg-[#F1F2F4]"
+                on ? "text-white" : "bg-[hsl(var(--elevated))] text-2 border border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))]"
               }`}
               style={on ? { backgroundColor: d.color } : {}}>
               {d.name}
               {wc > 0 && (
-                <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${on ? "bg-white/25" : wc >= 5 ? "bg-[#CA3521] text-white" : "bg-[#F5CD47] text-[#946F00]"}`} data-testid={`bankdata-tab-badge-${d.id}`}>
+                <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${on ? "bg-[hsl(var(--elevated))]/25" : wc >= 5 ? "bg-[#CA3521] text-white" : "bg-[#F5CD47] text-[#946F00]"}`} data-testid={`bankdata-tab-badge-${d.id}`}>
                   {wc}
                 </span>
               )}
@@ -216,34 +216,34 @@ export default function BankData() {
       {/* Filter Bank Data (§9.4) */}
       <div className="mb-5" data-testid="bank-data-filters">
         <button onClick={() => setShowFilters((v) => !v)}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[#DFE1E6] bg-white text-xs font-semibold text-[#44546F] hover:bg-[#F1F2F4]">
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-xs font-semibold text-2 hover:bg-[hsl(var(--muted))]">
           <Filter size={13} /> Filter {activeFilterCount > 0 && <span className="bg-[#0C66E4] text-white rounded-full px-1.5">{activeFilterCount}</span>}
         </button>
         {showFilters && (
-          <div className="mt-2 flex flex-wrap items-end gap-2 rounded-xl border border-[#DFE1E6] bg-white p-3">
-            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-[#8590A2]">Status</span>
+          <div className="mt-2 flex flex-wrap items-end gap-2 rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-3">
+            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-3">Status</span>
               <select className={filterCls} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
                 <option value="all">Semua</option><option value="waiting">Menunggu diambil</option><option value="taken">Sedang dikerjakan</option><option value="done">Selesai</option>
               </select></label>
-            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-[#8590A2]">PIC</span>
+            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-3">PIC</span>
               <select className={filterCls} value={filters.pic} onChange={(e) => setFilters({ ...filters, pic: e.target.value })}>
                 <option value="all">Semua</option>{picOptions.map((n) => <option key={n} value={n}>{n}</option>)}
               </select></label>
-            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-[#8590A2]">Pengirim</span>
+            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-3">Pengirim</span>
               <select className={filterCls} value={filters.sender} onChange={(e) => setFilters({ ...filters, sender: e.target.value })}>
                 <option value="all">Semua</option>{senderOptions.map((n) => <option key={n} value={n}>{n}</option>)}
               </select></label>
-            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-[#8590A2]">Prioritas</span>
+            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-3">Prioritas</span>
               <select className={filterCls} value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}>
                 <option value="all">Semua</option>{PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select></label>
-            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-[#8590A2]">Umur</span>
+            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-3">Umur</span>
               <select className={filterCls} value={filters.age} onChange={(e) => setFilters({ ...filters, age: e.target.value })}>
                 {AGE_FILTERS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select></label>
-            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-[#8590A2]">Dari tanggal</span>
+            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-3">Dari tanggal</span>
               <input type="date" className={filterCls} value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} /></label>
-            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-[#8590A2]">Sampai</span>
+            <label className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase text-3">Sampai</span>
               <input type="date" className={filterCls} value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} /></label>
             {activeFilterCount > 0 && (
               <button onClick={() => setFilters({ status: "all", pic: "all", sender: "all", priority: "all", age: "all", from: "", to: "" })}
@@ -253,13 +253,13 @@ export default function BankData() {
         )}
       </div>
 
-      {isLoading && <p className="text-sm text-[#44546F]">Memuat...</p>}
+      {isLoading && <p className="text-sm text-2">Memuat...</p>}
 
       {data && (
         <>
-          <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm mb-5 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[#DFE1E6] bg-[#FFF8E6]">
-              <h2 className="font-heading font-bold text-[#172B4D]" data-testid="bank-data-waiting-title">
+          <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm mb-5 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[hsl(var(--hairline))] bg-[#FFF8E6]">
+              <h2 className="font-heading font-bold text-foreground" data-testid="bank-data-waiting-title">
                 Menunggu Diambil — {division?.name}
                 <span className="ml-2 text-xs font-bold text-[#946F00] bg-[#F5CD47]/40 rounded-full px-2 py-0.5">{waiting.length}{activeFilterCount ? ` / ${allWaiting.length}` : ""} pekerjaan</span>
               </h2>
@@ -271,33 +271,33 @@ export default function BankData() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="bank-data-waiting-table">
                 <thead>
-                  <tr className="border-b border-[#DFE1E6] text-left bg-[#F8F9FA]">
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2] w-12">No</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Pekerjaan</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Owner</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Dari</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">List</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Prioritas</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Umur</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Aksi</th>
+                  <tr className="border-b border-[hsl(var(--hairline))] text-left bg-[hsl(var(--muted))]">
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3 w-12">No</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Pekerjaan</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Owner</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Dari</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">List</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Prioritas</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Umur</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {waiting.map((item, idx) => {
                     const umur = umurInfo(item.created_at);
                     return (
-                      <tr key={item.id} className="border-b border-[#F1F2F4] hover:bg-[#F8F9FA] transition-colors" data-testid={`bankdata-row-${item.id}`}>
-                        <td className="px-4 py-2.5 text-[#8590A2]">{idx + 1}</td>
+                      <tr key={item.id} className="border-b border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] transition-colors" data-testid={`bankdata-row-${item.id}`}>
+                        <td className="px-4 py-2.5 text-3">{idx + 1}</td>
                         <td className="px-4 py-2.5 max-w-[280px]">
                           <button onClick={() => setOpenItem(item.id)} className="text-left" data-testid={`bankdata-open-${item.id}`}>
-                            <p className="font-medium text-[#172B4D] hover:text-[#0C66E4] line-clamp-2">{item.title}</p>
-                            {item.client_name && <p className="text-xs text-[#44546F]">{item.client_name}</p>}
+                            <p className="font-medium text-foreground hover:text-[#0C66E4] line-clamp-2">{item.title}</p>
+                            {item.client_name && <p className="text-xs text-2">{item.client_name}</p>}
                           </button>
                         </td>
-                        <td className="px-4 py-2.5 text-[#44546F] text-xs">{item.owner_user_name || <span className="text-[#8590A2] italic">belum ditetapkan</span>}</td>
-                        <td className="px-4 py-2.5 text-[#44546F] text-xs">{item.source_user_name || item.created_by_name || "—"}</td>
+                        <td className="px-4 py-2.5 text-2 text-xs">{item.owner_user_name || <span className="text-3 italic">belum ditetapkan</span>}</td>
+                        <td className="px-4 py-2.5 text-2 text-xs">{item.source_user_name || item.created_by_name || "—"}</td>
                         <td className="px-4 py-2.5">
-                          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[#F1F2F4] text-[#44546F]">{item.list_name}</span>
+                          <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[hsl(var(--muted))] text-2">{item.list_name}</span>
                         </td>
                         <td className="px-4 py-2.5"><PriorityFlag priority={item.priority} /></td>
                         <td className={`px-4 py-2.5 text-xs font-semibold ${umur.cls}`} data-testid={`bankdata-umur-${item.id}`}>{umur.text}</td>
@@ -308,14 +308,14 @@ export default function BankData() {
                               <Hand size={12} /> AMBIL PEKERJAAN
                             </button>
                           ) : (
-                            <span className="text-[11px] text-[#8590A2]">Hanya anggota divisi</span>
+                            <span className="text-[11px] text-3">Hanya anggota divisi</span>
                           )}
                         </td>
                       </tr>
                     );
                   })}
                   {waiting.length === 0 && (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-[#8590A2]">
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-3">
                       {activeFilterCount ? "Tidak ada yang cocok dengan filter." : "Tidak ada pekerjaan yang menunggu — semua sudah ada PIC."}
                     </td></tr>
                   )}
@@ -324,25 +324,25 @@ export default function BankData() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm mb-5 overflow-hidden">
-            <div className="px-5 py-3 border-b border-[#DFE1E6]">
-              <h2 className="font-heading font-bold text-[#172B4D]" data-testid="bank-data-taken-title">
+          <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm mb-5 overflow-hidden">
+            <div className="px-5 py-3 border-b border-[hsl(var(--hairline))]">
+              <h2 className="font-heading font-bold text-foreground" data-testid="bank-data-taken-title">
                 Sedang Dikerjakan / Selesai
-                <span className="ml-2 text-xs font-normal text-[#8590A2]">{taken.length}{activeFilterCount ? ` / ${allTaken.length}` : ""} pekerjaan</span>
+                <span className="ml-2 text-xs font-normal text-3">{taken.length}{activeFilterCount ? ` / ${allTaken.length}` : ""} pekerjaan</span>
               </h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="bank-data-taken-table">
                 <thead>
-                  <tr className="border-b border-[#DFE1E6] text-left bg-[#F8F9FA]">
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2] w-12">No</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Pekerjaan</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Owner</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Dari</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">PIC</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Umur klaim</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Status</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#8590A2]">Aksi</th>
+                  <tr className="border-b border-[hsl(var(--hairline))] text-left bg-[hsl(var(--muted))]">
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3 w-12">No</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Pekerjaan</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Owner</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Dari</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">PIC</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Umur klaim</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Status</th>
+                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -351,7 +351,7 @@ export default function BankData() {
                       onOpen={() => setOpenItem(item.id)} onTakeover={() => takeover(item.id)} />
                   ))}
                   {taken.length === 0 && (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-[#8590A2]">
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-3">
                       {activeFilterCount ? "Tidak ada yang cocok dengan filter." : "Belum ada pekerjaan yang diambil."}
                     </td></tr>
                   )}
@@ -360,32 +360,32 @@ export default function BankData() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-[#DFE1E6] shadow-sm p-5" data-testid="bank-data-workload">
-            <h2 className="font-heading font-bold text-[#172B4D] mb-4">Beban Kerja Anggota {division?.name}</h2>
+          <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5" data-testid="bank-data-workload">
+            <h2 className="font-heading font-bold text-foreground mb-4">Beban Kerja Anggota {division?.name}</h2>
 
             {/* Ringkasan management (§30) */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" data-testid="bank-data-kpi">
               {[
-                { label: "Pekerjaan masuk", val: allWaiting.length + allTaken.length, cls: "text-[#172B4D]" },
+                { label: "Pekerjaan masuk", val: allWaiting.length + allTaken.length, cls: "text-foreground" },
                 { label: "Belum diambil", val: allWaiting.length, cls: allWaiting.length ? "text-[#CA3521]" : "text-[#22A06B]" },
                 { label: "Sedang dikerjakan", val: allTaken.filter((i) => !isDone(i)).length, cls: "text-[#0C66E4]" },
                 { label: "Anggota belum dapat", val: workload.filter((w) => w.total === 0).length, cls: workload.some((w) => w.total === 0) ? "text-[#946F00]" : "text-[#22A06B]" },
               ].map((k) => (
-                <div key={k.label} className="rounded-xl bg-[#F8F9FA] border border-[#DFE1E6] p-3 text-center">
+                <div key={k.label} className="rounded-xl bg-[hsl(var(--muted))] border border-[hsl(var(--hairline))] p-3 text-center">
                   <p className={`text-2xl font-bold ${k.cls}`}>{k.val}</p>
-                  <p className="text-[11px] text-[#8590A2] mt-0.5">{k.label}</p>
+                  <p className="text-[11px] text-3 mt-0.5">{k.label}</p>
                 </div>
               ))}
             </div>
 
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
               {workload.map((w) => (
-                <div key={w.user.id} className="rounded-xl border border-[#DFE1E6] p-4 hover:shadow-sm transition-shadow" data-testid={`workload-${w.user.id}`}>
+                <div key={w.user.id} className="rounded-xl border border-[hsl(var(--hairline))] p-4 hover:shadow-sm transition-shadow" data-testid={`workload-${w.user.id}`}>
                   <div className="flex items-center gap-2.5 mb-2">
                     <Avatar name={w.user.name} color={w.user.avatar_color} size="h-8 w-8 text-xs" />
                     <div>
-                      <p className="text-sm font-semibold text-[#172B4D]">{w.user.name}</p>
-                      <p className="text-[11px] text-[#8590A2]">
+                      <p className="text-sm font-semibold text-foreground">{w.user.name}</p>
+                      <p className="text-[11px] text-3">
                         {w.total} sedang dikerjakan
                         {typeof w.available_in_bank === "number" && <> · {w.available_in_bank} menunggu di Bank Data</>}
                       </p>
@@ -397,11 +397,11 @@ export default function BankData() {
                         {abbr(lname)}: {count}
                       </span>
                     ))}
-                    {Object.keys(w.by_list || {}).length === 0 && <span className="text-[11px] text-[#8590A2]">Tidak ada pekerjaan aktif</span>}
+                    {Object.keys(w.by_list || {}).length === 0 && <span className="text-[11px] text-3">Tidak ada pekerjaan aktif</span>}
                   </div>
                 </div>
               ))}
-              {workload.length === 0 && <p className="text-sm text-[#8590A2]">Belum ada anggota di divisi ini.</p>}
+              {workload.length === 0 && <p className="text-sm text-3">Belum ada anggota di divisi ini.</p>}
             </div>
           </div>
         </>
@@ -409,67 +409,67 @@ export default function BankData() {
 
       {showCreate && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-start pt-14 overflow-y-auto fade-enter" onClick={() => setShowCreate(false)} data-testid="bankdata-create-modal">
-          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl p-6 mb-16 modal-enter" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[hsl(var(--elevated))] w-full max-w-lg rounded-xl shadow-2xl p-6 mb-16 modal-enter" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-heading text-lg font-bold text-[#172B4D]">Kirim Pekerjaan ke Bank Data</h2>
-              <button aria-label="Tutup" data-testid="bankdata-create-close" onClick={() => setShowCreate(false)} className="p-1.5 rounded hover:bg-[#F1F2F4] text-[#44546F]">
+              <h2 className="font-heading text-lg font-bold text-foreground">Kirim Pekerjaan ke Bank Data</h2>
+              <button aria-label="Tutup" data-testid="bankdata-create-close" onClick={() => setShowCreate(false)} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2">
                 <X size={18} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-[#44546F]">Judul Pekerjaan *</label>
+                <label className="text-xs font-semibold text-2">Judul Pekerjaan *</label>
                 <input data-testid="bankdata-form-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="mis: PT ABC - Pengurusan NIB" className={inputCls} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-[#44546F]">Nama Client</label>
+                <label className="text-xs font-semibold text-2">Nama Client</label>
                 <input data-testid="bankdata-form-client" value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} placeholder="mis: PT ABC" className={inputCls} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-[#44546F]">Catatan</label>
-                <textarea data-testid="bankdata-form-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={2} placeholder="mis: Pendirian PT + NPWP" className="w-full rounded-lg border border-[#DFE1E6] px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none" />
+                <label className="text-xs font-semibold text-2">Catatan</label>
+                <textarea data-testid="bankdata-form-note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} rows={2} placeholder="mis: Pendirian PT + NPWP" className="w-full rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-none" />
               </div>
-              <div className="border-t border-[#DFE1E6] pt-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Kirim ke</p>
-                <label className="text-xs font-semibold text-[#44546F]">Divisi Tujuan</label>
+              <div className="border-t border-[hsl(var(--hairline))] pt-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">Kirim ke</p>
+                <label className="text-xs font-semibold text-2">Divisi Tujuan</label>
                 <select data-testid="bankdata-form-division" value={formDivId || ""} onChange={(e) => setForm({ ...form, targetDivId: e.target.value, list_id: "", member_ids: [] })} className={inputCls}>
                   {(divisions || []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
                 {formLists.length > 0 && (
                   <div className="mt-2">
-                    <label className="text-xs font-semibold text-[#44546F]">Masuk ke list</label>
+                    <label className="text-xs font-semibold text-2">Masuk ke list</label>
                     <select data-testid="bankdata-form-list" value={form.list_id} onChange={(e) => setForm({ ...form, list_id: e.target.value })} className={inputCls}>
                       {formLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   </div>
                 )}
               </div>
-              <div className="border-t border-[#DFE1E6] pt-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#8590A2] mb-2">Penanggung Jawab</p>
+              <div className="border-t border-[hsl(var(--hairline))] pt-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-3 mb-2">Penanggung Jawab</p>
                 <label className="flex items-start gap-2 cursor-pointer mb-1.5" data-testid="bankdata-mode-division">
                   <input type="radio" checked={form.mode === "division"} onChange={() => setForm({ ...form, mode: "division" })} className="mt-1 accent-[#0C66E4]" />
-                  <span className="text-sm text-[#172B4D]">Biarkan anggota divisi mengambil sendiri</span>
+                  <span className="text-sm text-foreground">Biarkan anggota divisi mengambil sendiri</span>
                 </label>
                 <label className="flex items-start gap-2 cursor-pointer" data-testid="bankdata-mode-user">
                   <input type="radio" checked={form.mode === "user"} onChange={() => setForm({ ...form, mode: "user" })} className="mt-1 accent-[#0C66E4]" />
-                  <span className="text-sm text-[#172B4D]">Berikan langsung kepada user tertentu</span>
+                  <span className="text-sm text-foreground">Berikan langsung kepada user tertentu</span>
                 </label>
                 {form.mode === "user" && (
-                  <div className="mt-2 max-h-32 overflow-y-auto minimal-scrollbar space-y-1 border border-[#DFE1E6] rounded-lg p-2">
+                  <div className="mt-2 max-h-32 overflow-y-auto minimal-scrollbar space-y-1 border border-[hsl(var(--hairline))] rounded-lg p-2">
                     {formWorkload.map((w) => (
-                      <label key={w.user.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#F1F2F4] cursor-pointer" data-testid={`bankdata-assign-${w.user.id}`}>
+                      <label key={w.user.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[hsl(var(--muted))] cursor-pointer" data-testid={`bankdata-assign-${w.user.id}`}>
                         <input type="checkbox" checked={form.member_ids.includes(w.user.id)}
                           onChange={() => setForm((f) => ({ ...f, member_ids: f.member_ids.includes(w.user.id) ? f.member_ids.filter((x) => x !== w.user.id) : [...f.member_ids, w.user.id] }))}
                           className="w-4 h-4 accent-[#0C66E4]" />
                         <Avatar name={w.user.name} color={w.user.avatar_color} size="h-6 w-6 text-[10px]" />
-                        <span className="text-sm text-[#172B4D] flex-1">{w.user.name}</span>
-                        <span className="text-[10px] text-[#8590A2]">{w.total} pekerjaan</span>
+                        <span className="text-sm text-foreground flex-1">{w.user.name}</span>
+                        <span className="text-[10px] text-3">{w.total} pekerjaan</span>
                       </label>
                     ))}
                   </div>
                 )}
               </div>
-              <div className="border-t border-[#DFE1E6] pt-3">
+              <div className="border-t border-[hsl(var(--hairline))] pt-3">
                 <button type="button" data-testid="bankdata-extra-toggle" onClick={() => setShowExtra((v) => !v)}
                   className="text-xs font-semibold text-[#0C66E4] hover:underline">
                   {showExtra ? "▾" : "▸"} Opsi Tambahan
@@ -477,13 +477,13 @@ export default function BankData() {
                 {showExtra && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs font-semibold text-[#44546F]">Prioritas</label>
+                      <label className="text-xs font-semibold text-2">Prioritas</label>
                       <select data-testid="bankdata-form-priority" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} className={inputCls}>
                         {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-[#44546F]">Tenggat</label>
+                      <label className="text-xs font-semibold text-2">Tenggat</label>
                       <input data-testid="bankdata-form-due" type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className={inputCls} />
                     </div>
                   </div>
@@ -506,7 +506,7 @@ const DIST_LABEL = {
   CLAIMED: { t: "Sudah diambil", c: "bg-[#E3FCEF] text-[#216E4E]" },
   DIRECT_ASSIGNED: { t: "Ditugaskan langsung", c: "bg-[#EAE6FF] text-[#5E4DB2]" },
   RELEASED: { t: "Dilepaskan", c: "bg-[#FFF0B3] text-[#946F00]" },
-  AVAILABLE: { t: "Menunggu", c: "bg-[#F1F2F4] text-[#44546F]" },
+  AVAILABLE: { t: "Menunggu", c: "bg-[hsl(var(--muted))] text-2" },
 };
 
 function TakenRow({ item, idx, user, isSupervisorUp, onOpen, onTakeover }) {
@@ -519,23 +519,23 @@ function TakenRow({ item, idx, user, isSupervisorUp, onOpen, onTakeover }) {
   const claimAge = umurInfo(item.claimed_at);
   const dist = DIST_LABEL[item.distribution_status] || DIST_LABEL.CLAIMED;
   return (
-    <tr className="border-b border-[#F1F2F4] hover:bg-[#F8F9FA] transition-colors" data-testid={`bankdata-taken-row-${item.id}`}>
-      <td className="px-4 py-2.5 text-[#8590A2]">{idx + 1}</td>
+    <tr className="border-b border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] transition-colors" data-testid={`bankdata-taken-row-${item.id}`}>
+      <td className="px-4 py-2.5 text-3">{idx + 1}</td>
       <td className="px-4 py-2.5 max-w-[260px]">
         <button onClick={onOpen} className="text-left" data-testid={`bankdata-open-${item.id}`}>
-          <p className="font-medium text-[#172B4D] hover:text-[#0C66E4] line-clamp-2">{item.title}</p>
-          {item.client_name && <p className="text-xs text-[#44546F]">{item.client_name}</p>}
+          <p className="font-medium text-foreground hover:text-[#0C66E4] line-clamp-2">{item.title}</p>
+          {item.client_name && <p className="text-xs text-2">{item.client_name}</p>}
         </button>
       </td>
-      <td className="px-4 py-2.5 text-[#44546F] text-xs">{item.owner_user_name || "—"}</td>
-      <td className="px-4 py-2.5 text-[#44546F] text-xs">{item.source_user_name || item.created_by_name || "—"}</td>
+      <td className="px-4 py-2.5 text-2 text-xs">{item.owner_user_name || "—"}</td>
+      <td className="px-4 py-2.5 text-2 text-xs">{item.source_user_name || item.created_by_name || "—"}</td>
       <td className="px-4 py-2.5">
         {picName ? (
-          <span className="inline-flex items-center gap-1 bg-[#F1F2F4] rounded-full pl-0.5 pr-2 py-0.5">
+          <span className="inline-flex items-center gap-1 bg-[hsl(var(--muted))] rounded-full pl-0.5 pr-2 py-0.5">
             <Avatar name={picName} color={pic?.avatar_color} size="h-5 w-5 text-[9px]" />
-            <span className="text-[11px] font-medium text-[#172B4D]">{picName}</span>
+            <span className="text-[11px] font-medium text-foreground">{picName}</span>
           </span>
-        ) : <span className="text-[11px] text-[#8590A2]">—</span>}
+        ) : <span className="text-[11px] text-3">—</span>}
       </td>
       <td className={`px-4 py-2.5 text-xs font-semibold ${claimAge.cls}`}>{item.claimed_at ? claimAge.text : "—"}</td>
       <td className="px-4 py-2.5">
@@ -551,7 +551,7 @@ function TakenRow({ item, idx, user, isSupervisorUp, onOpen, onTakeover }) {
             <Swords size={12} /> Ambil Alih
           </button>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[11px] text-[#8590A2]"><Lock size={11} /> {picName ? `Dikerjakan ${picName}` : "—"}</span>
+          <span className="inline-flex items-center gap-1 text-[11px] text-3"><Lock size={11} /> {picName ? `Dikerjakan ${picName}` : "—"}</span>
         )}
       </td>
     </tr>

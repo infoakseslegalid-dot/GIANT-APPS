@@ -50,7 +50,7 @@ export default function CardDescription({ card, onUpdateCard }: CardBackProps) {
           <button
             type="button"
             onClick={open}
-            className="ml-auto h-[28px] rounded-[5px] border border-[#dfe1e6] bg-[#f7f8f9] px-[11px] text-[13px] hover:bg-[#e9ebee]"
+            className="ml-auto h-[28px] rounded-[5px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-[11px] text-[13px] hover:bg-[hsl(var(--muted))]"
           >
             Edit
           </button>
@@ -83,13 +83,13 @@ export default function CardDescription({ card, onUpdateCard }: CardBackProps) {
                 }
               }
             }}
-            className={`${RICH} min-h-[120px] max-h-[420px] overflow-y-auto w-full rounded-[6px] border-2 border-[#0c66e4] p-[10px] outline-none cursor-text bg-white`}
+            className={`${RICH} min-h-[120px] max-h-[420px] overflow-y-auto w-full rounded-[6px] border-2 border-[#0c66e4] p-[10px] outline-none cursor-text bg-[hsl(var(--elevated))]`}
           />
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={commit} className="rounded-[4px] bg-[#0c66e4] px-[12px] py-[6px] text-[12px] font-semibold text-white hover:bg-[#0052cc]">
               Simpan
             </button>
-            <button type="button" onClick={() => setEditing(false)} className="rounded-[4px] px-[12px] py-[6px] text-[12px] font-medium text-[#44546f] hover:bg-[#091e420f]">
+            <button type="button" onClick={() => setEditing(false)} className="rounded-[4px] px-[12px] py-[6px] text-[12px] font-medium text-2 hover:bg-[hsl(var(--muted))]">
               Batal
             </button>
           </div>
@@ -98,7 +98,7 @@ export default function CardDescription({ card, onUpdateCard }: CardBackProps) {
         <button
           type="button"
           onClick={open}
-          className="w-full rounded-[6px] bg-[#f7f8f9] p-3 text-left text-[11.5px] text-[#7a869a] hover:bg-[#e9ebee]"
+          className="w-full rounded-[6px] bg-[hsl(var(--muted))] p-3 text-left text-[11.5px] text-3 hover:bg-[hsl(var(--muted))]"
         >
           Tambahkan deskripsi yang lebih detail...
         </button>
@@ -119,7 +119,7 @@ export default function CardDescription({ card, onUpdateCard }: CardBackProps) {
                 }
               }
             }}
-          className={`${RICH} cursor-text rounded-[6px] p-1 -m-1 hover:bg-[#f7f8f9]`}
+          className={`${RICH} cursor-text rounded-[6px] p-1 -m-1 hover:bg-[hsl(var(--muted))]`}
           dangerouslySetInnerHTML={{ __html: card.description }}
         />
       )}

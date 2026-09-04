@@ -62,6 +62,15 @@ export interface AssignmentSummary {
   distributionStatus: string;
   workStatus?: string | null;
   listName?: string | null;
+  displayStatus?: string;
+  displayStatusLabel?: string;
+  displayStatusTone?: string;
+  isDone?: boolean;
+}
+
+export interface GroupProgress {
+  done: number;
+  total: number;
 }
 
 export interface ChecklistItem {
@@ -79,7 +88,10 @@ export interface Checklist {
 export interface TrelloCard {
   id: string;
   title: string;
+  clientName?: string | null;   // nama klien (info klien)
   isComplete: boolean;
+  statusLabel?: string;         // label status yang jelas: "Selesai" / "Sedang dikerjakan" / …
+  statusTone?: string;          // green | blue | amber | slate | gray
   listId: string;
   listName: string;
   description: string;          // HTML editor
@@ -106,11 +118,19 @@ export interface CardBackProps {
   /** Hak akses (dari backend). Default true kalau tak diberi. */
   canEdit?: boolean;
   canComment?: boolean;
-  /** Info PIC assignment ini + apakah kartu ini Master Card. */
+  /** Info kepemilikan kartu. */
   picName?: string | null;
+  picUserId?: string | null;
+  ownerName?: string | null;
+  /** Jadikan diri sendiri sebagai PIC (kartu CS biasa). */
+  onTakePic?: () => Promise<void>;
+  /** Oper kepemilikan (Owner + PIC) ke user lain. */
+  onTransferOwner?: (userId: string) => Promise<void>;
   isMasterCard?: boolean;
   /** Ringkasan assignment turunan (hanya di Master Card). */
   assignments?: AssignmentSummary[];
+  /** Ringkasan progres grup: berapa divisi sudah selesai. */
+  groupProgress?: GroupProgress | null;
   onOpenAssignment?: (id: string) => void;
 
   /** Penanda "kartu mirror": kartu ini adalah Assignment dari Master Card di board lain. */
@@ -128,6 +148,8 @@ export interface CardBackProps {
 
   /** Komentar. `files` = lampiran, `mentionIds` = user yang di-@mention. */
   onAddComment: (html: string, files?: File[], mentionIds?: string[]) => Promise<void>;
+  /** Unggah satu berkas & kembalikan URL absolut — dipakai saat MENGEDIT komentar. */
+  onUploadInline?: (f: File) => Promise<{ url: string; fileName: string; isImage: boolean } | null>;
   onUpdateComment: (id: string, html: string) => Promise<void>;
   onDeleteComment: (id: string) => Promise<void>;
 
@@ -157,6 +179,8 @@ export interface CardBackProps {
   onReorderChecklistItems: (checklistId: string, orderedItemIds: string[]) => Promise<void>;
 
   onMoveCard: (listId: string, position: number) => Promise<void>;
+  /** Buka dialog pindah kartu (pilih board + list tujuan). */
+  onOpenMove?: () => void;
   onCopyCard: (payload: { title: string; listId: string }) => Promise<void>;
   onArchiveCard: () => Promise<void>;
   /** Hapus kartu ini. Untuk assignment/mirror: hanya baris ini yang hilang, Master Card tetap. */

@@ -7,7 +7,7 @@ import {
 import {
   zValidator } from '@hono/zod-validator'
 import {
-  db, requireAdmin, requireSupervisor, canViewBoard, broadcastBoard, getBoard, hashPassword, todayStr
+  db, requireAdmin, requireSupervisor, canViewBoard, canEditBoard, broadcastBoard, getBoard, hashPassword, todayStr
 } from './deps'
 import { fullMatrix, syncPermissions, invalidatePermCache, requirePerm } from './permissions'
 import { can } from './permissions'
@@ -92,7 +92,7 @@ adminRouter.post('/users', zValidator('json', CreateUserBody), async (c) => {
     return c.json({ error: "Email sudah terdaftar" }, 400)
   }
   
-  if (!["super_admin", "admin", "supervisor", "staff", "viewer"].includes(body.role)) {
+  if (!["super_admin", "admin", "cs", "supervisor", "staff", "viewer"].includes(body.role)) {
     return c.json({ error: "Peran tidak valid" }, 400)
   }
   
@@ -129,7 +129,7 @@ adminRouter.patch('/users/:user_id', zValidator('json', UpdateUserBody), async (
   const updates: any = {}
   if (body.name !== undefined) updates.name = body.name
   if (body.role !== undefined) {
-    if (!["super_admin", "admin", "supervisor", "staff", "viewer"].includes(body.role)) {
+    if (!["super_admin", "admin", "cs", "supervisor", "staff", "viewer"].includes(body.role)) {
       return c.json({ error: "Peran tidak valid" }, 400)
     }
     updates.role = body.role
@@ -220,7 +220,7 @@ adminRouter.get('/boards', async (c) => {
   const boards = await db.board.findMany({
     where: { isArchived: false },
     take: 500,
-    include: { members: true, workItems: { where: { archived: false } } }
+    include: { members: true, division: true, workItems: { where: { archived: false } } }
   })
   
   const visible = boards.filter(b => canViewBoard(user, b))
@@ -530,7 +530,7 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
     return c.json({ error: "Anda tidak memiliki akses ke board ini" }, 403)
   }
   
-  const lists = await db.list.findMany({ where: { boardId }, orderBy: { position: 'asc' } })
+  const lists = await db.list.findMany({ where: { boardId, archived: false }, orderBy: { position: 'asc' } })
   const labels = await db.label.findMany({ where: { boardId } })
   
   const cards = await db.workItem.findMany({
@@ -585,6 +585,7 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
     division,
     users,
     archived_count: archivedCount,
+    can_edit: canEditBoard(user, board), // false → board hanya bisa dilihat (read-only)
   })
 })
 
@@ -596,7 +597,15 @@ adminRouter.get('/boards/:board_id/archived', async (c) => {
     return c.json({ error: "Anda tidak memiliki akses ke board ini" }, 403)
   }
   const cards = await db.workItem.findMany({ where: { boardId, archived: true }, take: 500 })
-  return c.json(cards.map(formatWorkItem))
+  const arcLists = await db.list.findMany({ where: { boardId, archived: true }, orderBy: { archivedAt: 'desc' } })
+  const lists = [] as any[]
+  for (const l of arcLists) {
+    lists.push({
+      id: l.id, name: l.name, color: l.color, archived_at: l.archivedAt,
+      card_count: await db.workItem.count({ where: { listId: l.id, archived: false } }),
+    })
+  }
+  return c.json({ cards: cards.map(formatWorkItem), lists })
 })
 
 // ---------- LISTS ----------
@@ -633,23 +642,32 @@ const UpdateListBody = z.object({
   name: z.string().optional(),
   color: z.string().optional().nullable(),
   entryRequirements: z.array(z.string()).optional(),
+  archived: z.boolean().optional(),
 })
 
 adminRouter.patch('/lists/:list_id', zValidator('json', UpdateListBody), async (c) => {
   const user = c.get('user')
   const listId = c.req.param('list_id')
   const body = c.req.valid('json')
-  const lst = await db.list.findUnique({ where: { id: listId } })
+  const lst = await db.list.findUnique({ where: { id: listId }, include: { board: { include: { members: true, division: true } } } })
   if (!lst) return c.json({ error: "List tidak ditemukan" }, 404)
 
-  // Ubah syarat masuk list hanya boleh admin (diatur dari Admin Panel).
+  // Ubah syarat masuk / warna list → izin khusus.
   if (body.entryRequirements !== undefined || body.color !== undefined) await requirePerm(c, 'list.entry_requirements')
+  // Arsip / pulihkan / rename list → izin kelola list.
+  if (body.archived !== undefined || body.name !== undefined) {
+    if (!canEditBoard(user, lst.board)) await requirePerm(c, 'list.manage')
+  }
 
   const updates: any = {}
   if (body.name !== undefined) updates.name = body.name
   if (body.color !== undefined) updates.color = body.color
   if (body.entryRequirements !== undefined) updates.entryRequirements = body.entryRequirements as any
-  
+  if (body.archived !== undefined) {
+    updates.archived = body.archived
+    updates.archivedAt = body.archived ? new Date() : null
+  }
+
   if (Object.keys(updates).length > 0) {
     await db.list.update({ where: { id: listId }, data: updates })
     await broadcastBoard(lst.boardId)
@@ -899,63 +917,62 @@ adminRouter.get('/activities', async (c) => {
 })
 
 adminRouter.get('/stats', async (c) => {
+  const user = c.get('user')
+  const isOverseer = ["super_admin", "supervisor"].includes(user?.role)
+
+  // Non-supervisor: dashboard hanya menampilkan data DIRINYA + DIVISINYA.
+  // CS and Staff get their own division. Admin Operasional gets all non-CS divisions.
+  const scope: any = isOverseer ? {} : user?.role === "admin" ? {
+    OR: [
+      { members: { some: { userId: user.id } } },
+      { currentPicId: user.id },
+      { createdById: user.id },
+      { board: { division: { key: { not: "cs" } } } },
+      { divisionIds: { some: { division: { key: { not: "cs" } } } } }
+    ]
+  } : {
+    OR: [
+      { members: { some: { userId: user.id } } },
+      { currentPicId: user.id },
+      { createdById: user.id },
+      ...(user.divisionId ? [
+        { board: { divisionId: user.divisionId } },
+        { divisionIds: { some: { divisionId: user.divisionId } } },
+      ] : []),
+    ],
+  }
+  const withScope = (w: any) => (isOverseer ? w : { AND: [w, scope] })
+
   const activeFilter = { archived: false, status: { not: "done" } }
+
+  const totalActive = await db.workItem.count({ where: withScope(activeFilter) })
   
-  const totalActive = await db.workItem.count({ where: activeFilter })
+  const unassigned = await db.workItem.count({ where: withScope({ ...activeFilter, members: { none: {} } }) })
   
-  const unassigned = await db.workItem.count({
-    where: {
-      ...activeFilter,
-      members: { none: {} }
-    }
-  })
-  
-  const inProgress = await db.workItem.count({
-    where: {
-      ...activeFilter,
-      members: { some: {} }
-    }
-  })
+  const inProgress = await db.workItem.count({ where: withScope({ ...activeFilter, members: { some: {} } }) })
   
   const today = todayStr()
-  const overdue = await db.workItem.count({
-    where: {
-      ...activeFilter,
-      dueDate: { not: null, lt: today }
-    }
-  })
+  const overdue = await db.workItem.count({ where: withScope({ ...activeFilter, dueDate: { not: null, lt: today } }) })
   
-  const submitted = await db.workItem.count({
-    where: { archived: false, status: "submitted" }
-  })
+  const submitted = await db.workItem.count({ where: withScope({ archived: false, status: "submitted" }) })
   
   // Use Prisma client to get doneToday. Since completedAt is DateTime:
   const startOfToday = new Date()
   startOfToday.setHours(0,0,0,0)
-  const doneToday = await db.workItem.count({
-    where: {
-      completedAt: { gte: startOfToday }
-    }
-  })
+  const doneToday = await db.workItem.count({ where: withScope({ completedAt: { gte: startOfToday } }) })
   
-  const divisions = await db.division.findMany({ orderBy: { name: 'asc' }, take: 100 })
+  const divisions = isOverseer
+    ? await db.division.findMany({ orderBy: { name: 'asc' }, take: 100 })
+    : await db.division.findMany({ where: user.divisionId ? { id: user.divisionId } : { id: '__none__' }, take: 5 })
   const byDivision = []
   for (const d of divisions) {
-    const c = await db.workItem.count({
-      where: {
-        ...activeFilter,
-        divisionIds: { some: { divisionId: d.id } }
-      }
-    })
+    const c = await db.workItem.count({ where: withScope({ ...activeFilter, divisionIds: { some: { divisionId: d.id } } }) })
     byDivision.push({ id: d.id, name: d.name, color: d.color, count: c })
   }
   
   // To replace MongoDB aggregate:
   // get all members for active tasks and aggregate in code for simplicity
-  const activeItemsWithMembers = await db.workItem.findMany({
-    where: activeFilter,
-    include: { members: true }
-  })
+  const activeItemsWithMembers = await db.workItem.findMany({ where: withScope(activeFilter), include: { members: true } })
   
   const userCountMap = new Map<string, number>()
   for (const item of activeItemsWithMembers) {
@@ -988,7 +1005,9 @@ adminRouter.get('/stats', async (c) => {
     submitted,
     done_today: doneToday,
     by_division: byDivision,
-    by_user: byUser
+    by_user: byUser,
+    scoped: !isOverseer,
+    scope_label: isOverseer ? 'Ringkasan Global' : 'Ringkasan Anda & Divisi',
   })
 })
 

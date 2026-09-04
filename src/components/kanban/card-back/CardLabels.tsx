@@ -54,7 +54,7 @@ export default function CardLabels(
 
   return (
     <div className="mb-6">
-      <div className="mb-2 text-xs font-semibold text-[#5e6c84]">Labels</div>
+      <div className="mb-2 text-xs font-semibold text-3">Labels</div>
       <div className="flex flex-wrap gap-1.5">
         {card.labels?.map((l) => (
           <span
@@ -71,20 +71,20 @@ export default function CardLabels(
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="flex h-8 w-8 items-center justify-center rounded bg-[#091e420f] text-[#42526e] transition-colors hover:bg-[#091e4224]"
+              className="flex h-8 w-8 items-center justify-center rounded bg-[hsl(var(--muted))] text-2 transition-colors hover:bg-[hsl(var(--accent))]"
             >
               <Plus size={16} />
             </button>
           </PopoverTrigger>
           {/* @ts-expect-error JS interop children missing */}
-          <PopoverContent align="start" className="w-80 p-0 shadow-lg rounded-[8px] overflow-hidden border-[#dfe1e6]" sideOffset={8}>
+          <PopoverContent align="start" className="w-80 p-0 shadow-lg rounded-[8px] overflow-hidden border-[hsl(var(--hairline))]" sideOffset={8}>
             
             {/* LIST VIEW */}
             {view === 'list' && (
-              <div className="flex flex-col text-[#172b4d]">
-                <div className="relative flex h-10 items-center justify-center border-b border-[#091e4224] px-4">
-                  <span className="text-sm font-semibold text-[#5e6c84]">Labels</span>
-                  <button onClick={() => setOpen(false)} className="absolute right-2 text-[#6b778c] hover:text-[#172b4d]"><X size={16}/></button>
+              <div className="flex flex-col text-foreground">
+                <div className="relative flex h-10 items-center justify-center border-b border-[hsl(var(--hairline))] px-4">
+                  <span className="text-sm font-semibold text-3">Labels</span>
+                  <button onClick={() => setOpen(false)} className="absolute right-2 text-3 hover:text-foreground"><X size={16}/></button>
                 </div>
                 <div className="p-3">
                   <input
@@ -92,9 +92,9 @@ export default function CardLabels(
                     placeholder="Search labels..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="mb-3 w-full rounded-[4px] border-2 border-[#dfe1e6] bg-[#fafbfc] px-3 py-1.5 text-sm outline-none transition-colors focus:border-[#4c9aff]"
+                    className="mb-3 w-full rounded-[4px] border-2 border-[hsl(var(--hairline))] bg-[#fafbfc] px-3 py-1.5 text-sm outline-none transition-colors focus:border-[#4c9aff]"
                   />
-                  <div className="mb-2 text-xs font-semibold text-[#5e6c84]">Labels</div>
+                  <div className="mb-2 text-xs font-semibold text-3">Labels</div>
                   <div className="flex max-h-[260px] flex-col gap-1.5 overflow-y-auto minimal-scrollbar pr-1">
                     {filtered.map(l => (
                       <div key={l.id} className="flex items-center gap-1">
@@ -112,19 +112,19 @@ export default function CardLabels(
                         </button>
                         <button
                           onClick={() => openEdit(l)}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[4px] text-[#6b778c] hover:bg-[#091e420f] hover:text-[#172b4d]"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[4px] text-3 hover:bg-[hsl(var(--muted))] hover:text-foreground"
                           title="Edit label"
                         >
                           <Pencil size={14} />
                         </button>
                       </div>
                     ))}
-                    {filtered.length === 0 && <div className="text-center text-sm text-[#5e6c84] py-4">No labels found.</div>}
+                    {filtered.length === 0 && <div className="text-center text-sm text-3 py-4">No labels found.</div>}
                   </div>
                   
                   <button
                     onClick={openCreate}
-                    className="mt-3 w-full rounded-[4px] bg-[#091e420f] py-2 text-sm font-medium text-[#172b4d] transition-colors hover:bg-[#091e4224]"
+                    className="mt-3 w-full rounded-[4px] bg-[hsl(var(--muted))] py-2 text-sm font-medium text-foreground transition-colors hover:bg-[hsl(var(--accent))]"
                   >
                     Create a new label
                   </button>
@@ -134,29 +134,29 @@ export default function CardLabels(
 
             {/* CREATE / EDIT VIEW */}
             {view !== 'list' && (
-              <div className="flex flex-col text-[#172b4d]">
-                <div className="relative flex h-10 items-center justify-center border-b border-[#091e4224] px-4">
-                  <button onClick={goBack} className="absolute left-2 text-[#6b778c] hover:text-[#172b4d]">
+              <div className="flex flex-col text-foreground">
+                <div className="relative flex h-10 items-center justify-center border-b border-[hsl(var(--hairline))] px-4">
+                  <button onClick={goBack} className="absolute left-2 text-3 hover:text-foreground">
                     <ChevronLeft size={16} />
                   </button>
-                  <span className="text-sm font-semibold text-[#5e6c84]">{view === 'create' ? 'Create label' : 'Edit label'}</span>
-                  <button onClick={() => setOpen(false)} className="absolute right-2 text-[#6b778c] hover:text-[#172b4d]"><X size={16}/></button>
+                  <span className="text-sm font-semibold text-3">{view === 'create' ? 'Create label' : 'Edit label'}</span>
+                  <button onClick={() => setOpen(false)} className="absolute right-2 text-3 hover:text-foreground"><X size={16}/></button>
                 </div>
                 <div className="p-3">
-                  <div className="mb-4 flex justify-center bg-[#f4f5f7] rounded-[4px] p-8">
+                  <div className="mb-4 flex justify-center bg-[hsl(var(--muted))] rounded-[4px] p-8">
                     <div className="flex h-8 w-full max-w-[240px] items-center rounded-[4px] px-3 text-sm font-semibold text-white" style={{ background: resolveColor(newColor as string) || undefined }}>
                       {newName || 'Label name'}
                     </div>
                   </div>
-                  <div className="mb-1 text-xs font-semibold text-[#5e6c84]">Title</div>
+                  <div className="mb-1 text-xs font-semibold text-3">Title</div>
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    className="mb-4 w-full rounded-[4px] border-2 border-[#dfe1e6] bg-[#fafbfc] px-3 py-1.5 text-sm outline-none transition-colors focus:border-[#4c9aff]"
+                    className="mb-4 w-full rounded-[4px] border-2 border-[hsl(var(--hairline))] bg-[#fafbfc] px-3 py-1.5 text-sm outline-none transition-colors focus:border-[#4c9aff]"
                     autoFocus
                   />
-                  <div className="mb-2 text-xs font-semibold text-[#5e6c84]">Select a color</div>
+                  <div className="mb-2 text-xs font-semibold text-3">Select a color</div>
                   <div className="mb-4 grid grid-cols-5 gap-2">
                     {COLORS.map(c => (
                       <button

@@ -63,13 +63,13 @@ export default function BoardBackgroundMenu({ board, boardId }) {
       <PopoverTrigger asChild>
         <button
           data-testid="board-bg-button"
-          className="flex items-center gap-1.5 h-8 px-3 rounded bg-white/15 hover:bg-white/25 text-sm font-medium transition-colors active:scale-95"
+          className="flex items-center gap-1.5 h-8 px-3 rounded bg-[hsl(var(--elevated))]/15 hover:bg-[hsl(var(--elevated))]/25 text-sm font-medium transition-colors active:scale-95"
         >
           <ImageIcon size={14} /> Latar
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 bg-white shadow-lg p-3" align="end">
-        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#8590A2]">Warna Solid</p>
+      <PopoverContent className="w-64 bg-[hsl(var(--elevated))] shadow-lg p-3" align="end">
+        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-3">Warna Solid</p>
         <div className="mb-3 grid grid-cols-6 gap-1.5">
           {PRESET.map((c) => (
             <button
@@ -90,12 +90,12 @@ export default function BoardBackgroundMenu({ board, boardId }) {
           disabled={busy}
           data-testid="board-bg-upload-button"
           onClick={() => fileRef.current?.click()}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#DFE1E6] py-2 text-sm font-semibold text-[#172B4D] hover:bg-[#F1F2F4] disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[hsl(var(--hairline))] py-2 text-sm font-semibold text-foreground hover:bg-[hsl(var(--muted))] disabled:opacity-50"
         >
           <Upload size={14} /> Unggah Gambar
         </button>
         <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={onFile} />
-        <p className="mt-1.5 text-[11px] leading-snug text-[#8590A2]">
+        <p className="mt-1.5 text-[11px] leading-snug text-3">
           JPG / PNG / WEBP / GIF, maks 5 MB. Overlay gelap otomatis ditambahkan agar teks & kartu tetap terbaca.
         </p>
 

@@ -14,20 +14,39 @@ import CardDescription from './CardDescription';
 import CardChecklist from './CardChecklist';
 import CardAttachments from './CardAttachments';
 import CardActivityPanel from './CardActivityPanel';
+import CardFinancePanel from './CardFinancePanel';
 import { resolveColor } from './helpers';
 
 const DIST_LABEL: Record<string, { t: string; c: string }> = {
-  AVAILABLE: { t: 'Menunggu diambil', c: 'bg-[#f1f2f4] text-[#44546f]' },
+  AVAILABLE: { t: 'Menunggu diambil', c: 'bg-[hsl(var(--muted))] text-2' },
   CLAIMED: { t: 'Dikerjakan', c: 'bg-[#e3fcef] text-[#216e4e]' },
   DIRECT_ASSIGNED: { t: 'Ditugaskan', c: 'bg-[#eae6ff] text-[#5e4db2]' },
   RELEASED: { t: 'Dilepaskan', c: 'bg-[#fff0b3] text-[#946f00]' },
 };
 
+/** Badge status besar & jelas (banyak user usia lanjut). */
+const STATUS_TONE: Record<string, { cls: string; icon: string }> = {
+  green: { cls: 'bg-[#DCFFF1] text-[#164B35] border-[#7EE2B8]', icon: '✓' },
+  blue: { cls: 'bg-[#E9F2FF] text-[#0C459A] border-[#8FB8F6]', icon: '•' },
+  amber: { cls: 'bg-[#FFF3D6] text-[#7A4100] border-[#F5CD8B]', icon: '!' },
+  slate: { cls: 'bg-[hsl(var(--muted))] text-2 border-[hsl(var(--hairline))]', icon: '…' },
+  gray: { cls: 'bg-[hsl(var(--muted))] text-[#626F86] border-[hsl(var(--hairline))]', icon: '—' },
+};
+function StatusBadge({ tone, label }: { tone?: string; label?: string }) {
+  const t = STATUS_TONE[tone || 'blue'] || STATUS_TONE.blue;
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-bold ${t.cls}`}>
+      <span aria-hidden>{t.icon}</span>{label || '—'}
+    </span>
+  );
+}
+
 const SCROLL =
   '[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-[10px] [&::-webkit-scrollbar-thumb]:bg-[#a5adba]';
 
 export default function CardBack(props: CardBackProps) {
-  const { card, open, onOpenChange, canEdit = true, picName, isMasterCard, assignments = [], onOpenAssignment, isAssignment, master } = props;
+  const { card, open, onOpenChange, canEdit = true, picName, picUserId, ownerName, onTakePic, currentUser, isMasterCard, assignments = [], groupProgress, onOpenAssignment, isAssignment, master } = props;
+  const iAmPic = !!picUserId && currentUser?.id === picUserId;
   const overlayRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState(620);
@@ -75,13 +94,13 @@ export default function CardBack(props: CardBackProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby={`card-title-${card.id}`}
-      className={`fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/[0.55] py-[3vh] text-[#172b4d] max-[760px]:p-[10px] ${
+      className={`fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/[0.55] py-[3vh] text-foreground max-[760px]:p-[10px] ${
         isDragging ? 'cursor-col-resize select-none' : ''
       }`}
     >
       <div
         ref={gridRef}
-        className="relative grid h-[94vh] max-h-[900px] w-[min(1180px,94vw)] overflow-hidden rounded-[10px] bg-white shadow-[0_12px_40px_rgba(0,0,0,0.4)] max-[760px]:!grid-cols-1 max-[760px]:h-[calc(100vh-20px)] max-[760px]:w-full max-[760px]:overflow-auto"
+        className="relative grid h-[94vh] max-h-[900px] w-[min(1180px,94vw)] overflow-hidden rounded-[10px] bg-[hsl(var(--elevated))] shadow-[0_12px_40px_rgba(0,0,0,0.4)] max-[760px]:!grid-cols-1 max-[760px]:h-[calc(100vh-20px)] max-[760px]:w-full max-[760px]:overflow-auto"
         style={{ gridTemplateColumns: `minmax(0, ${leftWidth}px) 5px minmax(0, 1fr)` }}
       >
         {/* LEFT */}
@@ -104,7 +123,7 @@ export default function CardBack(props: CardBackProps) {
                     type="button"
                     title="Buka Master Card"
                     onClick={() => onOpenAssignment?.(master.id)}
-                    className="inline-flex items-center gap-1 rounded-[4px] bg-[#dfe1e6] px-2 py-1 font-medium text-[#42526e] hover:bg-[#c1c7d0]"
+                    className="inline-flex items-center gap-1 rounded-[4px] bg-[hsl(var(--muted))] px-2 py-1 font-medium text-2 hover:bg-[#c1c7d0]"
                   >
                     {master.boardName || 'Master Card'}
                     <span className="text-[9px]">↗</span>
@@ -112,7 +131,7 @@ export default function CardBack(props: CardBackProps) {
                   {master.listName && (
                     <span className="rounded-[4px] bg-[#e8d7ef] px-2 py-1 font-medium text-[#403152]">{master.listName}</span>
                   )}
-                  <span className="text-[#8590a2]">·</span>
+                  <span className="text-3">·</span>
                 </>
               )}
               <button
@@ -128,7 +147,7 @@ export default function CardBack(props: CardBackProps) {
 
             {/* Banner "kartu mirror" */}
             {isAssignment && master && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[6px] bg-[#f4f5f7] px-3 py-2 text-[11.5px] text-[#44546f]">
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[6px] bg-[hsl(var(--muted))] px-3 py-2 text-[11.5px] text-2">
                 <span>
                   Ini <strong>mirror</strong> dari Master Card <strong>“{master.title}”</strong> — board <strong>{master.boardName}</strong>
                   {master.listName ? <> · list <strong>{master.listName}</strong></> : null}.
@@ -136,7 +155,7 @@ export default function CardBack(props: CardBackProps) {
                 <button
                   type="button"
                   onClick={() => onOpenAssignment?.(master.id)}
-                  className="ml-auto rounded-[4px] border border-[#dfe1e6] bg-white px-2 py-1 font-semibold text-[#172b4d] hover:bg-[#f1f2f4]"
+                  className="ml-auto rounded-[4px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 py-1 font-semibold text-foreground hover:bg-[hsl(var(--muted))]"
                 >
                   Buka Master Card
                 </button>
@@ -145,46 +164,155 @@ export default function CardBack(props: CardBackProps) {
 
             <CardTitle {...props} />
 
-            {/* Banner status PIC / mode pantau */}
-            {(picName || !canEdit) && (
-              <div className={`mb-3 flex items-center gap-2 rounded-[6px] px-3 py-2 text-[11.5px] ${
-                canEdit ? 'bg-[#e3fcef] text-[#216e4e]' : 'bg-[#fff7d6] text-[#7f5f01]'
-              }`}>
-                {picName ? (
-                  <span><strong>Dikerjakan {picName}</strong></span>
-                ) : (
-                  <span>Belum ada PIC.</span>
-                )}
-                {!canEdit && <span className="ml-auto font-semibold">Mode pantau — hanya PIC/anggota divisi yang bisa mengubah</span>}
+            {/* Status pekerjaan + tombol Tandai Selesai — besar & jelas */}
+            {(() => {
+              const submitted = card.statusLabel === 'Menunggu persetujuan';
+              const done = card.isComplete;
+              // Master Card yang punya assignment → status TURUNAN dari divisi,
+              // tidak ada tombol manual. Selesai otomatis saat semua divisi selesai.
+              const derivedMaster = isMasterCard && assignments.length > 0;
+              return (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-3 py-2.5">
+                  <span className="text-[13px] font-semibold text-3">Status:</span>
+                  <StatusBadge tone={card.statusTone} label={card.statusLabel || (done ? 'Selesai' : 'Sedang dikerjakan')} />
+                  {derivedMaster ? (
+                    <span className="ml-auto text-[11.5px] text-3">Selesai otomatis saat semua divisi selesai ↓</span>
+                  ) : canEdit ? (
+                    <button
+                      type="button"
+                      data-testid="card-mark-done-button"
+                      onClick={() => props.onUpdateCard({ isComplete: !(done || submitted) })}
+                      className={`ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[13px] font-bold transition-colors active:scale-95 ${
+                        done || submitted
+                          ? 'border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-2 hover:bg-[hsl(var(--muted))]'
+                          : 'bg-[#22a06b] text-white hover:bg-[#1f845a] shadow-sm'
+                      }`}
+                    >
+                      {done || submitted ? '↩  Buka Kembali' : '✓  Tandai Selesai'}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })()}
+
+            {/* Di kartu Assignment: tampilkan progres legalitas keseluruhan */}
+            {isAssignment && groupProgress && groupProgress.total > 0 && (
+              <div className="mb-3 rounded-[8px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-3 py-2 text-[12px] text-2">
+                Progres legalitas keseluruhan:{' '}
+                <strong className="text-foreground">
+                  {groupProgress.done} dari {groupProgress.total} divisi selesai
+                </strong>
               </div>
             )}
+
+            {/* Kepemilikan: Pemilik (Owner) + PIC — jelas & besar */}
+            <div className="mb-3 rounded-[8px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-3 py-2.5 text-[13px]">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-[64px] shrink-0 font-semibold text-3">Pemilik</span>
+                <span className="font-semibold text-foreground">{ownerName || '—'}</span>
+                {canEdit && props.onTransferOwner && (props.allUsers?.length ?? 0) > 0 && (
+                  <select
+                    data-testid="card-transfer-owner"
+                    defaultValue=""
+                    onChange={(e) => {
+                      const uid = e.target.value;
+                      e.target.value = '';
+                      if (!uid) return;
+                      const u = (props.allUsers || []).find((x) => x.id === uid);
+                      if (window.confirm(`Oper kepemilikan kartu ini ke ${u?.name || 'orang tsb'}? Dia akan jadi Pemilik + PIC.`)) {
+                        props.onTransferOwner!(uid);
+                      }
+                    }}
+                    className="ml-auto h-8 rounded-lg border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 text-[12px] font-semibold text-2 outline-none hover:bg-[hsl(var(--muted))]"
+                  >
+                    <option value="">Pindahkan kepemilikan…</option>
+                    {(props.allUsers || []).map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <span className="w-[64px] shrink-0 font-semibold text-3">PIC</span>
+                {iAmPic ? (
+                  <span className="font-semibold text-foreground">{picName} <span className="font-normal text-3">(Anda)</span></span>
+                ) : picName ? (
+                  <span className="font-semibold text-foreground">{picName}</span>
+                ) : (
+                  <span className="italic text-3">Belum ada</span>
+                )}
+                {canEdit && !iAmPic && onTakePic && (
+                  <button
+                    type="button"
+                    data-testid="card-take-pic-button"
+                    onClick={() => onTakePic()}
+                    className={`ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-colors active:scale-95 ${
+                      picName
+                        ? 'border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-2 hover:bg-[hsl(var(--muted))]'
+                        : 'bg-[#0c66e4] text-white hover:bg-[#0052cc] shadow-sm'
+                    }`}
+                  >
+                    {picName ? 'Ambil alih sebagai PIC' : '✋  Saya yang kerjakan'}
+                  </button>
+                )}
+              </div>
+              {!canEdit && (
+                <p className="mt-2 rounded bg-[#fff7d6] px-2 py-1 text-[11.5px] font-semibold text-[#7f5f01]">
+                  Mode pantau — hanya PIC / anggota divisi terkait yang bisa mengubah.
+                </p>
+              )}
+            </div>
+
+            {/* Harga job & pembayaran (rekap Finance) */}
+            <CardFinancePanel cardId={card.id} />
 
             <CardQuickActions {...props} onLabels={() => setLabelsOpen(true)} />
             <CardLabels {...props} open={labelsOpen} onOpenChange={setLabelsOpen} />
 
-            {/* Panel assignment turunan (di Master Card) */}
+            {/* Panel status pengerjaan per divisi (di Master Card) */}
             {isMasterCard && assignments.length > 0 && (
-              <div className="mb-5 rounded-[8px] border border-[#dfe1e6] bg-[#f7f8f9] p-3">
-                <div className="mb-2 text-[12px] font-bold text-[#172b4d]">Assignment ke Divisi ({assignments.length})</div>
-                <div className="flex flex-col gap-1.5">
-                  {assignments.map((a) => {
-                    const d = DIST_LABEL[a.distributionStatus] || DIST_LABEL.CLAIMED;
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => onOpenAssignment?.(a.id)}
-                        className="flex items-center gap-2 rounded-[6px] border border-[#dfe1e6] bg-white px-2.5 py-2 text-left text-[11.5px] hover:border-[#0c66e4]"
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="font-semibold text-[#172b4d]">{a.divisionName}</span>
-                          <span className="text-[#5e6c84]"> · {a.picName || 'belum diambil'}</span>
-                          {a.listName && <span className="text-[#8590a2]"> · {a.listName}</span>}
+              <div className="mb-5 rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] p-4">
+                <div className="mb-1 text-[13px] font-bold text-foreground">Status Pengerjaan per Divisi</div>
+
+                {groupProgress && groupProgress.total > 0 && (
+                  <div className="mb-3">
+                    <div className="mb-1 text-[14px] font-bold text-foreground">
+                      {groupProgress.done === groupProgress.total
+                        ? '✓ Semua divisi sudah selesai'
+                        : `${groupProgress.done} dari ${groupProgress.total} divisi selesai`}
+                    </div>
+                    <div className="h-3 w-full overflow-hidden rounded-full bg-[hsl(var(--muted))]">
+                      <div
+                        className="h-full rounded-full bg-[#22a06b] transition-[width] duration-300"
+                        style={{ width: `${Math.round((groupProgress.done / groupProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  {assignments.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => onOpenAssignment?.(a.id)}
+                      className={`flex items-center gap-3 rounded-[8px] border px-3 py-2.5 text-left transition-colors hover:border-[#0c66e4] ${
+                        a.isDone ? 'border-[#7EE2B8] bg-[#f2fdf8]' : 'border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))]'
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13.5px] font-bold text-foreground">{a.divisionName}</span>
+                        <span className="block text-[12px] text-3">
+                          {a.picName ? `PIC: ${a.picName}` : 'Belum ada PIC'}
+                          {a.listName ? ` · ${a.listName}` : ''}
                         </span>
-                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${d.c}`}>{d.t}</span>
-                      </button>
-                    );
-                  })}
+                      </span>
+                      <StatusBadge
+                        tone={a.displayStatusTone}
+                        label={a.displayStatusLabel || DIST_LABEL[a.distributionStatus]?.t || 'Sedang dikerjakan'}
+                      />
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -197,7 +325,7 @@ export default function CardBack(props: CardBackProps) {
 
         {/* RESIZER */}
         <div
-          className="relative z-10 cursor-col-resize bg-[#f1f2f4] transition-colors hover:bg-[#0c66e4] max-[760px]:hidden"
+          className="relative z-10 cursor-col-resize bg-[hsl(var(--muted))] transition-colors hover:bg-[#0c66e4] max-[760px]:hidden"
           style={{ backgroundColor: isDragging ? '#0c66e4' : undefined }}
           onMouseDown={(e) => {
             e.preventDefault();
@@ -206,7 +334,7 @@ export default function CardBack(props: CardBackProps) {
         />
 
         {/* RIGHT */}
-        <div className="flex min-h-0 flex-col overflow-hidden border-l border-[#dfe1e6] bg-[#f7f8f9] pb-[18px] pl-[15px] pr-[15px] pt-[46px] max-[760px]:h-[560px] max-[760px]:border-l-0 max-[760px]:border-t">
+        <div className="flex min-h-0 flex-col overflow-hidden border-l border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] pb-[18px] pl-[15px] pr-[15px] pt-[46px] max-[760px]:h-[560px] max-[760px]:border-l-0 max-[760px]:border-t">
           <CardActivityPanel {...props} />
         </div>
 

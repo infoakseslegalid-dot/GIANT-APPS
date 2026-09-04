@@ -2,6 +2,10 @@
 
 @import "tailwindcss";
 
+/* Mode gelap dikendalikan oleh ThemeProvider (src/lib/theme.jsx) lewat atribut
+   data-theme="dark" di <html>. Buat varian `dark:` Tailwind v4 mengikutinya. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 body {
     margin: 0;
     font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -50,8 +54,59 @@ body {
         --input: 214 15% 91%;
         --ring: 207 90% 44%;
         --radius: 0.5rem;
+        /* token permukaan tambahan (dipakai kelas util di komponen shell) */
+        --surface: 0 0% 100%;
+        --surface-2: 210 20% 97%;
+        --elevated: 0 0% 100%;
+        --text-1: 221 39% 11%;
+        --text-2: 218 15% 34%;
+        --text-3: 218 11% 55%;
+        --hairline: 214 15% 91%;
+    }
+
+    [data-theme="dark"] {
+        --background: 222 20% 11%;
+        --foreground: 210 20% 92%;
+        --card: 222 18% 15%;
+        --card-foreground: 210 20% 92%;
+        --popover: 222 18% 15%;
+        --popover-foreground: 210 20% 92%;
+        --primary: 210 90% 60%;
+        --primary-foreground: 222 30% 10%;
+        --secondary: 222 15% 20%;
+        --secondary-foreground: 210 20% 92%;
+        --muted: 222 15% 20%;
+        --muted-foreground: 217 12% 62%;
+        --accent: 222 15% 22%;
+        --accent-foreground: 210 20% 92%;
+        --destructive: 8 65% 55%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 222 14% 24%;
+        --input: 222 14% 24%;
+        --ring: 210 90% 60%;
+        --surface: 222 18% 15%;
+        --surface-2: 222 20% 12%;
+        --elevated: 222 16% 18%;
+        --text-1: 210 20% 92%;
+        --text-2: 214 12% 72%;
+        --text-3: 216 10% 55%;
+        --hairline: 222 14% 24%;
+        color-scheme: dark;
     }
 }
+
+/* Kelas permukaan semantik — pakai di shell agar ikut tema */
+.surface { background-color: hsl(var(--surface)); }
+.surface-2 { background-color: hsl(var(--surface-2)); }
+.elevated { background-color: hsl(var(--elevated)); }
+.text-1 { color: hsl(var(--text-1)); }
+.text-2 { color: hsl(var(--text-2)); }
+.text-3 { color: hsl(var(--text-3)); }
+.hairline { border-color: hsl(var(--hairline)); }
+
+/* Scrollbar ikut gelap */
+[data-theme="dark"] .minimal-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); }
+[data-theme="dark"] .minimal-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.30); }
 
 @layer base {
     * {

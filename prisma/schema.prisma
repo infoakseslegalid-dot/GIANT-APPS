@@ -36,14 +36,46 @@ model MasterCard {
   // Bentuk: [{ name: string, color: string }]. Setiap WorkItem di grup
   // disinkronkan ke daftar ini (label per-board di-mirror by name).
   sharedLabels    Json     @default("[]")
+
+  // Harga yang diberikan ke klien untuk keseluruhan job (Rupiah).
+  price        Int?
+  priceNote    String?
+  priceSetById String?
+  priceSetAt   DateTime?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   owner         User?      @relation("MasterCardOwner", fields: [ownerUserId], references: [id])
   ownerDivision Division?  @relation("MasterCardOwnerDivision", fields: [ownerDivisionId], references: [id])
   assignments   WorkItem[]
+  payments      Payment[]
 
   @@index([ownerUserId])
+}
+
+// Satu baris = satu pembayaran masuk untuk sebuah job (MasterCard).
+// Status bayar diturunkan: sum(amount) vs MasterCard.price → Belum / DP / Lunas.
+model Payment {
+  id             String   @id @default(uuid())
+  masterCardId   String
+  amount         Int // Rupiah, selalu positif
+  kind           String   @default("dp") // "dp" | "pelunasan" | "full"
+  method         String? // transfer / tunai / dll (teks bebas)
+  note           String?
+  paidAt         DateTime @default(now())
+  // Snapshot atribusi performa saat dicatat (biasanya CS PIC / owner job).
+  picUserId      String?
+  picDivisionId  String?
+  recordedById   String
+  recordedByName String?
+  createdAt      DateTime @default(now())
+
+  masterCard MasterCard @relation(fields: [masterCardId], references: [id], onDelete: Cascade)
+
+  @@index([masterCardId])
+  @@index([paidAt])
+  @@index([picUserId])
 }
 
 model Division {
@@ -69,6 +101,8 @@ model User {
   divisionId   String?
   avatarColor  String?
   isActive     Boolean  @default(true)
+  theme        String   @default("system") // light | dark | system
+  locale       String   @default("id") // id | en
   createdAt    DateTime @default(now())
 
   division           Division?      @relation(fields: [divisionId], references: [id])
@@ -130,13 +164,15 @@ model BoardMember {
 }
 
 model List {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   boardId           String
   name              String
   color             String?
   position          Float
   entryRequirements Json? // Array of strings
-  createdAt         DateTime @default(now())
+  archived          Boolean   @default(false)
+  archivedAt        DateTime?
+  createdAt         DateTime  @default(now())
 
   board           Board            @relation(fields: [boardId], references: [id], onDelete: Cascade)
   workItems       WorkItem[]
@@ -199,6 +235,10 @@ model WorkItem {
   releasedAt         DateTime?
 
   checklists Json? // Complex JSON structure for checklists
+
+  coverColor        String?
+  coverAttachmentId String?
+  watcherUserIds    String[] @default([]) // user yang "menonton" kartu ini
 
   board       Board @relation(fields: [boardId], references: [id])
   list        List  @relation(fields: [listId], references: [id])

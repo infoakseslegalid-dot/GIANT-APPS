@@ -69,12 +69,12 @@ function SortableItem({
     <div
       ref={setNodeRef}
       style={style}
-      className="group flex items-start gap-2 rounded-[5px] px-1 py-[3px] hover:bg-[#f7f8f9]"
+      className="group flex items-start gap-2 rounded-[5px] px-1 py-[3px] hover:bg-[hsl(var(--muted))]"
     >
       <button
         type="button"
         aria-label="Geser untuk mengurutkan"
-        className="mt-[3px] cursor-grab text-[#8590a2] opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        className="mt-[3px] cursor-grab text-3 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
         {...attributes}
         {...listeners}
       >
@@ -103,7 +103,7 @@ function SortableItem({
               setEditing(false);
             }
           }}
-          className="min-w-0 flex-1 rounded border border-[#0c66e4] px-1 py-[1px] text-[12px] text-[#172b4d] outline-none"
+          className="min-w-0 flex-1 rounded border border-[#0c66e4] px-1 py-[1px] text-[12px] text-foreground outline-none"
         />
       ) : (
         <span
@@ -112,7 +112,7 @@ function SortableItem({
             setEditing(true);
           }}
           className={`min-w-0 flex-1 cursor-text text-[12px] leading-[1.5] ${
-            item.done ? 'text-[#8590a2] line-through' : 'text-[#172b4d]'
+            item.done ? 'text-3 line-through' : 'text-foreground'
           }`}
         >
           {item.text}
@@ -123,7 +123,7 @@ function SortableItem({
         type="button"
         aria-label="Hapus item"
         onClick={() => onDeleteChecklistItem(checklistId, item.id)}
-        className="mt-[1px] shrink-0 rounded p-[3px] text-[#8590a2] opacity-0 transition-opacity hover:bg-[#091e420f] hover:text-[#e34935] group-hover:opacity-100"
+        className="mt-[1px] shrink-0 rounded p-[3px] text-3 opacity-0 transition-opacity hover:bg-[hsl(var(--muted))] hover:text-[#e34935] group-hover:opacity-100"
       >
         <Trash2 size={13} />
       </button>
@@ -203,7 +203,7 @@ function ChecklistBlock({
                 setTitleEditing(false);
               }
             }}
-            className="min-w-0 flex-1 rounded border border-[#0c66e4] px-1 text-[13px] font-bold text-[#172b4d] outline-none"
+            className="min-w-0 flex-1 rounded border border-[#0c66e4] px-1 text-[13px] font-bold text-foreground outline-none"
           />
         ) : (
           <button
@@ -212,27 +212,27 @@ function ChecklistBlock({
               setTitleDraft(checklist.title);
               setTitleEditing(true);
             }}
-            className="min-w-0 flex-1 truncate text-left text-[13px] font-bold text-[#172b4d]"
+            className="min-w-0 flex-1 truncate text-left text-[13px] font-bold text-foreground"
           >
             {checklist.title}
           </button>
         )}
-        <span className="shrink-0 text-[11px] font-semibold text-[#5e6c84]">
+        <span className="shrink-0 text-[11px] font-semibold text-3">
           {done}/{total}
         </span>
         <button
           type="button"
           aria-label="Hapus checklist"
           onClick={() => onDeleteChecklist(checklist.id)}
-          className="shrink-0 rounded p-1 text-[#8590a2] hover:bg-[#091e420f] hover:text-[#e34935]"
+          className="shrink-0 rounded p-1 text-3 hover:bg-[hsl(var(--muted))] hover:text-[#e34935]"
         >
           <X size={14} />
         </button>
       </div>
 
       <div className="mb-2 flex items-center gap-2">
-        <span className="w-8 text-right text-[10px] font-semibold text-[#5e6c84]">{pct}%</span>
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#dfe1e6]">
+        <span className="w-8 text-right text-[10px] font-semibold text-3">{pct}%</span>
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-[hsl(var(--muted))]">
           <div
             className="h-full rounded-full bg-[#36b37e] transition-all"
             style={{ width: `${pct}%` }}
@@ -267,7 +267,7 @@ function ChecklistBlock({
         }}
         onBlur={addItem}
         placeholder="Tambah item…"
-        className="ml-6 mt-1 w-[calc(100%-1.5rem)] rounded-[5px] border border-[#dfe1e6] bg-white px-2 py-1.5 text-[12px] text-[#172b4d] outline-none focus:border-[#0c66e4]"
+        className="ml-6 mt-1 w-[calc(100%-1.5rem)] rounded-[5px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-[#0c66e4]"
       />
     </div>
   );
@@ -315,25 +315,25 @@ export default function CardChecklist({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="rounded-[5px] border border-[#dfe1e6] bg-[#f7f8f9] px-[11px] py-[6px] text-[12px] text-[#172b4d] hover:bg-[#e9ebee]"
+            className="rounded-[5px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-[11px] py-[6px] text-[12px] text-foreground hover:bg-[hsl(var(--muted))]"
           >
             + Checklist
           </button>
         </PopoverTrigger>
         {/* @ts-expect-error JS interop children missing */}
-        <PopoverContent align="start" className="w-64 p-0 shadow-lg rounded-[8px] overflow-hidden border-[#dfe1e6]" sideOffset={4}>
-          <div className="flex flex-col text-[#172b4d]">
-            <div className="relative flex h-10 items-center justify-center border-b border-[#091e4224] px-4">
-              <span className="text-sm font-semibold text-[#5e6c84]">Add Checklist</span>
-              <button onClick={() => setOpen(false)} className="absolute right-2 text-[#6b778c] hover:text-[#172b4d]"><X size={16}/></button>
+        <PopoverContent align="start" className="w-64 p-0 shadow-lg rounded-[8px] overflow-hidden border-[hsl(var(--hairline))]" sideOffset={4}>
+          <div className="flex flex-col text-foreground">
+            <div className="relative flex h-10 items-center justify-center border-b border-[hsl(var(--hairline))] px-4">
+              <span className="text-sm font-semibold text-3">Add Checklist</span>
+              <button onClick={() => setOpen(false)} className="absolute right-2 text-3 hover:text-foreground"><X size={16}/></button>
             </div>
             <div className="flex flex-col p-2 gap-1">
-              <button onClick={() => { onAddChecklist('Checklist'); setOpen(false); }} className="text-left px-3 py-2 text-sm rounded hover:bg-[#091e420f]">
+              <button onClick={() => { onAddChecklist('Checklist'); setOpen(false); }} className="text-left px-3 py-2 text-sm rounded hover:bg-[hsl(var(--muted))]">
                 Blank Checklist
               </button>
-              <div className="px-3 py-1 mt-1 text-xs font-semibold text-[#5e6c84]">Templates</div>
+              <div className="px-3 py-1 mt-1 text-xs font-semibold text-3">Templates</div>
               {TEMPLATES.map(t => (
-                <button key={t.title} onClick={() => { onAddChecklist(t.title, t.items); setOpen(false); }} className="text-left px-3 py-2 text-sm rounded hover:bg-[#091e420f]">
+                <button key={t.title} onClick={() => { onAddChecklist(t.title, t.items); setOpen(false); }} className="text-left px-3 py-2 text-sm rounded hover:bg-[hsl(var(--muted))]">
                   {t.title}
                 </button>
               ))}
