@@ -95,7 +95,7 @@ export default function CardMoreMenu(props: CardBackProps) {
             <div
               className={`${menuItem} !text-[#c9372c] hover:!bg-[#ffeceb]`}
               onClick={pick(() => {
-                if (confirm('Hapus kartu mirror ini? Master Card TIDAK ikut terhapus — hanya assignment di divisi ini yang hilang.')) {
+                if (confirm('Hapus kartu mirror ini? Kartu aslinya TIDAK ikut terhapus — hanya assignment di divisi ini yang hilang.')) {
                   onDeleteCard();
                 }
               })}

@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import CardBack from '../../../components/kanban/card-back/CardBack';
 import type {
   CardActivity,
@@ -269,11 +270,17 @@ function FakeBoard() {
   );
 }
 
+// Halaman preview ini berdiri sendiri (di luar SPA App.js), jadi butuh
+// QueryClientProvider-nya sendiri — CardBack merender CardFinancePanel yang
+// pakai react-query.
+const previewQueryClient = new QueryClient();
+
 export default function CardBackPreviewPage() {
   const [open, setOpen] = useState(true);
   const [card, setCard] = useState<TrelloCard>(INITIAL);
 
   return (
+    <QueryClientProvider client={previewQueryClient}>
     <div className="relative h-screen w-full overflow-hidden bg-[#24272b] text-[14px]">
       <FakeBoard />
 
@@ -445,5 +452,6 @@ export default function CardBackPreviewPage() {
         onJoin={async () => {}}
       />
     </div>
+    </QueryClientProvider>
   );
 }

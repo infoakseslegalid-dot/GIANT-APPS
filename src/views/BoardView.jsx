@@ -639,7 +639,7 @@ export default function BoardView() {
               <p className="pt-3 text-[11px] font-bold uppercase tracking-wider text-3">Kartu Diarsipkan ({archivedCards.length})</p>
               {archivedCards.length === 0 && <p className="text-sm text-3">Tidak ada kartu di arsip.</p>}
               <p className="text-xs text-3 mb-1">
-                Untuk menghapus kartu (termasuk Master Card) permanen: arsipkan dulu, lalu hapus dari sini. Master Card yang dihapus menghapus semua assignment turunannya.
+                Untuk menghapus kartu (termasuk kartu asli yang sudah di-mirror) permanen: arsipkan dulu, lalu hapus dari sini. Kartu asli yang dihapus menghapus semua assignment turunannya.
               </p>
               {(archivedCards || []).map((c) => (
                 <div key={c.id} className="flex items-center justify-between bg-[hsl(var(--muted))] rounded-lg px-3 py-2" data-testid={`archived-card-${c.id}`}>

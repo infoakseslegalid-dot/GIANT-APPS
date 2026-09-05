@@ -34,6 +34,11 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
   const { data, refetch } = useQuery({
     queryKey: ['work-item', curId],
     queryFn: () => api.get(`/work-items/${curId}`).then((r) => r.data),
+    // Jaring pengaman di atas realtime SSE: kartu ini dibuka orang lain juga
+    // (mis. lihat Master Card sementara PIC-nya mengerjakan di board lain) —
+    // refetch berkala supaya komentar/aktivitas/status tidak pernah "nyangkut"
+    // lama kalau ada event SSE yang terlewat.
+    refetchInterval: 15000,
   });
 
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: () => api.get('/users').then((r) => r.data) });
@@ -255,7 +260,7 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       ownerName={item.owner_user_name || null}
       isMasterCard={!item.target_division_id}
       isAssignment={!!data.is_assignment}
-      master={data.master ? { id: data.master.id, title: data.master.title, boardName: data.master.board_name, listName: data.master.list_name } : null}
+      master={data.master ? { id: data.master.id, title: data.master.title, boardName: data.master.board_name, listName: data.master.list_name, picName: data.master.pic_name } : null}
       mentionableUsers={(data.mentionable_users || []).map((u: any) => ({ id: u.id, name: u.name, initials: initialsOf(u.name), avatarColor: u.avatar_color }))}
       assignments={(data.assignments || []).map((a: any) => ({
         id: a.id, title: a.title, divisionName: a.division_name, divisionKey: a.division_key,
@@ -412,8 +417,14 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
         const r = await run(() => api.post(`/work-items/${curId}/assign`, { add_user_ids: [user.id] }));
         if (r) toast.success(r.data?.became_pic ? 'Anda menjadi PIC kartu ini' : 'Anda bergabung sebagai anggota');
       }}
-      onTakePic={async () => {
-        await run(() => api.post(`/work-items/${curId}/set-pic`), 'Anda menjadi PIC kartu ini');
+      onTakePic={async (isTakeover) => {
+        // Sudah ada PIC → "Ambil alih" lewat /takeover (izin khusus, bisa
+        // diatur di Hak Akses). Belum ada PIC → self-claim biasa via /set-pic.
+        if (isTakeover) {
+          await run(() => api.post(`/work-items/${curId}/takeover`), 'Anda mengambil alih sebagai PIC');
+        } else {
+          await run(() => api.post(`/work-items/${curId}/set-pic`), 'Anda menjadi PIC kartu ini');
+        }
       }}
       onTransferOwner={async (userId: string) => {
         await run(() => api.post(`/work-items/${curId}/transfer-owner`, { user_id: userId }), 'Kepemilikan kartu dipindahkan');

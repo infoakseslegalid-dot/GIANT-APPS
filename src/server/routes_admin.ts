@@ -535,11 +535,25 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
   
   const cards = await db.workItem.findMany({
     where: {
-      OR: [
-        { boardId },
-        { mirrorBoards: { some: { boardId } } }
-      ],
-      archived: false
+      AND: [
+        {
+          OR: [
+            { boardId },
+            { mirrorBoards: { some: { boardId } } }
+          ]
+        },
+        { archived: false },
+        // Assignment Bank Data yang BELUM di-claim (belum ada PIC) tidak boleh
+        // tampil di board sungguhan — hanya terlihat di halaman Bank Data,
+        // sampai ada anggota divisi yang klaim (jadi PIC) atau di-assign langsung.
+        {
+          OR: [
+            { targetDivisionId: null },
+            { currentPicId: { not: null } },
+            { distributionStatus: { not: 'AVAILABLE' } },
+          ]
+        }
+      ]
     },
     include: {
       labels: true,
@@ -548,7 +562,7 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
       mirrorBoards: true
     }
   })
-  
+
   const archivedCount = await db.workItem.count({ where: { boardId, archived: true } })
   let division = null
   if (board.divisionId) {

@@ -115,17 +115,17 @@ export default function CardBack(props: CardBackProps) {
           ) : null}
 
           <div className={`h-full overflow-y-auto pb-6 pr-3 ${SCROLL}`}>
-            {/* Breadcrumb: kartu ini + (kalau assignment) asal Master Card */}
+            {/* Breadcrumb: kartu ini + (kalau assignment) kartu asal-nya */}
             <div className="mb-[12px] flex flex-wrap items-center gap-1.5 text-[11px]">
               {isAssignment && master && (
                 <>
                   <button
                     type="button"
-                    title="Buka Master Card"
+                    title="Buka kartu asli"
                     onClick={() => onOpenAssignment?.(master.id)}
                     className="inline-flex items-center gap-1 rounded-[4px] bg-[hsl(var(--muted))] px-2 py-1 font-medium text-2 hover:bg-[#c1c7d0]"
                   >
-                    {master.boardName || 'Master Card'}
+                    {master.boardName || 'Kartu asli'}
                     <span className="text-[9px]">↗</span>
                   </button>
                   {master.listName && (
@@ -137,7 +137,7 @@ export default function CardBack(props: CardBackProps) {
               <button
                 type="button"
                 title="Pindah list"
-                onClick={() => props.onMoveCard(card.listId, 0)}
+                onClick={() => (props.onOpenMove ? props.onOpenMove() : props.onMoveCard(card.listId, 0))}
                 className="inline-flex items-center gap-1 rounded-[4px] bg-[#e8d7ef] px-2 py-1 font-medium text-[#403152] hover:bg-[#ddc7e8]"
               >
                 {card.listName}
@@ -149,7 +149,7 @@ export default function CardBack(props: CardBackProps) {
             {isAssignment && master && (
               <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[6px] bg-[hsl(var(--muted))] px-3 py-2 text-[11.5px] text-2">
                 <span>
-                  Ini <strong>mirror</strong> dari Master Card <strong>“{master.title}”</strong> — board <strong>{master.boardName}</strong>
+                  Ini <strong>mirror</strong> dari board <strong>{master.boardName}</strong>
                   {master.listName ? <> · list <strong>{master.listName}</strong></> : null}.
                 </span>
                 <button
@@ -157,7 +157,7 @@ export default function CardBack(props: CardBackProps) {
                   onClick={() => onOpenAssignment?.(master.id)}
                   className="ml-auto rounded-[4px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 py-1 font-semibold text-foreground hover:bg-[hsl(var(--muted))]"
                 >
-                  Buka Master Card
+                  Buka kartu asli
                 </button>
               </div>
             )}
@@ -205,34 +205,9 @@ export default function CardBack(props: CardBackProps) {
               </div>
             )}
 
-            {/* Kepemilikan: Pemilik (Owner) + PIC — jelas & besar */}
+            {/* PIC — dialah penanggung jawab (sekaligus "pemilik") kartu ini */}
             <div className="mb-3 rounded-[8px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-3 py-2.5 text-[13px]">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="w-[64px] shrink-0 font-semibold text-3">Pemilik</span>
-                <span className="font-semibold text-foreground">{ownerName || '—'}</span>
-                {canEdit && props.onTransferOwner && (props.allUsers?.length ?? 0) > 0 && (
-                  <select
-                    data-testid="card-transfer-owner"
-                    defaultValue=""
-                    onChange={(e) => {
-                      const uid = e.target.value;
-                      e.target.value = '';
-                      if (!uid) return;
-                      const u = (props.allUsers || []).find((x) => x.id === uid);
-                      if (window.confirm(`Oper kepemilikan kartu ini ke ${u?.name || 'orang tsb'}? Dia akan jadi Pemilik + PIC.`)) {
-                        props.onTransferOwner!(uid);
-                      }
-                    }}
-                    className="ml-auto h-8 rounded-lg border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 text-[12px] font-semibold text-2 outline-none hover:bg-[hsl(var(--muted))]"
-                  >
-                    <option value="">Pindahkan kepemilikan…</option>
-                    {(props.allUsers || []).map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <span className="w-[64px] shrink-0 font-semibold text-3">PIC</span>
                 {iAmPic ? (
                   <span className="font-semibold text-foreground">{picName} <span className="font-normal text-3">(Anda)</span></span>
@@ -245,7 +220,7 @@ export default function CardBack(props: CardBackProps) {
                   <button
                     type="button"
                     data-testid="card-take-pic-button"
-                    onClick={() => onTakePic()}
+                    onClick={() => onTakePic(!!picName)}
                     className={`ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-colors active:scale-95 ${
                       picName
                         ? 'border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-2 hover:bg-[hsl(var(--muted))]'

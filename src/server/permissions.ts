@@ -39,6 +39,7 @@ export const FEATURE_PERMISSIONS = [
   { key: 'card.comment', label: 'Tulis / ubah / hapus komentar', category: 'Kartu / Pekerjaan' },
   { key: 'card.assign_members', label: 'Tetapkan anggota / PIC ke kartu', category: 'Kartu / Pekerjaan' },
   { key: 'card.complete', label: 'Tandai selesai / buka kembali pekerjaan', category: 'Kartu / Pekerjaan' },
+  { key: 'card.transfer_owner', label: 'Pindahkan kepemilikan (Owner) job ke orang lain', category: 'Kartu / Pekerjaan' },
   // Bank Data & Distribusi
   { key: 'bankdata.send_to_division', label: 'Kirim pekerjaan ke Divisi (Bank Data)', category: 'Bank Data & Distribusi' },
   { key: 'bankdata.intake', label: 'Input pekerjaan baru langsung ke Bank Data', category: 'Bank Data & Distribusi' },
@@ -88,6 +89,15 @@ function defaultAllowed(role: string, def: { key: string; kind: string }): boole
   // `canManageFinance` tetap membatasi ke PIC / pembuat / owner kartu itu.
   // admin (operasional) & viewer tidak. Super admin & supervisor bebas (di atas).
   if (key === 'finance.manage') return role === 'cs' || role === 'staff';
+
+  // Pindahkan kepemilikan (Owner Master Card): CS/staff lolos gerbang izin ini,
+  // TAPI route `/transfer-owner` tetap membatasi ke Owner job itu sendiri
+  // (kecuali supervisor/super admin) — sama pola dengan finance.manage.
+  if (key === 'card.transfer_owner') return role === 'cs' || role === 'staff';
+
+  // Ambil Alih PIC (§7.5 PRD): "permission khusus", default HANYA supervisor+
+  // (di atas) — admin/cs/staff/viewer tidak, meski bisa dibuka lewat Hak Akses.
+  if (key === 'bankdata.takeover') return false;
 
   // default OFF untuk hal lintas-divisi, struktur list, & rekap global
   const staffDenied = new Set([

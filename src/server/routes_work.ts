@@ -768,7 +768,7 @@ async function originMap(ids: string[]): Promise<Record<string, any>> {
       work_item_id: r.id,
       is_master: !r.targetDivisionId,
       division_key: div?.key || null,
-      label: r.targetDivisionId ? (div?.name || r.board?.name || 'Assignment') : 'Master Card',
+      label: div?.name || r.board?.name || (r.targetDivisionId ? 'Assignment' : 'Kartu asal'),
       pic_name: r.currentPic?.name || null,
     };
   }
@@ -780,10 +780,15 @@ async function masterInfo(item: any) {
   if (!item.masterCardId || !item.targetDivisionId) return null;
   const m = await prisma.workItem.findFirst({
     where: { masterCardId: item.masterCardId, targetDivisionId: null },
-    include: { board: true, list: true },
+    include: { board: true, list: true, currentPic: true },
   });
   if (!m) return null;
-  return { id: m.id, title: m.title, board_id: m.boardId, board_name: m.board?.name || null, list_name: m.list?.name || null };
+  return {
+    id: m.id, title: m.title, board_id: m.boardId, board_name: m.board?.name || null, list_name: m.list?.name || null,
+    // Siapa CS pemegang job ini — supaya kartu assignment (mis. di Admin Draf)
+    // menampilkan konteks "job ini dari CS siapa", bukan cuma nama board.
+    pic_name: m.currentPic?.name || null,
+  };
 }
 
 /** User yang relevan untuk di-mention (punya akses ke kartu ini). */
@@ -903,13 +908,19 @@ async function resolveDivisionBoardList(tx: any, divisionId: string, preferBoard
   return { board, listId };
 }
 
-/** Board milik seorang user (Board User / Board pribadi) yang punya list. */
+/**
+ * Board milik seorang user (Board User / Board pribadi) yang punya list.
+ * "Milik" = board di mana user itu jadi anggota (BUKAN board yang dia buat —
+ * board CS biasanya dibuat admin saat seed/setup, bukan oleh CS-nya sendiri).
+ * Kalau user anggota di beberapa board, pilih yang paling "personal" (anggota
+ * paling sedikit, mis. board 1-orang "CS Julia Ali") sebelum board bersama.
+ */
 async function resolveDivisionBoardListByCreator(tx: any, userId: string) {
   const candidates = await tx.board.findMany({
-    where: { createdById: userId, isArchived: false, lists: { some: {} } },
-    include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } }, _count: { select: { lists: true } } },
+    where: { isArchived: false, lists: { some: {} }, members: { some: { userId } } },
+    include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } }, _count: { select: { lists: true, members: true } } },
   });
-  candidates.sort((a: any, b: any) => b._count.lists - a._count.lists);
+  candidates.sort((a: any, b: any) => a._count.members - b._count.members || b._count.lists - a._count.lists);
   const board = candidates[0] || null;
   return { board, listId: board?.lists[0]?.id || null };
 }
@@ -949,6 +960,13 @@ router.post('/work-items/:item_id/claim', async (c) => {
         releasedAt: null,
         ...(userBoardId ? { boardId: userBoardId } : {}),
         ...(userListId ? { listId: userListId } : {}),
+        // Flow B: kartu ini LAHIR sebagai "assignment ke Bank Data CS"
+        // (targetDivisionId = divisi CS) karena belum ada Master Card. Begitu
+        // di-claim, dia LULUS jadi Master Card / kartu representatif sendiri —
+        // targetDivisionId dilepas supaya isMasterCard/masterInfo() & panel
+        // "Status Pengerjaan per Divisi" berfungsi benar (banner mirror di
+        // assignment lain, siblings di kartu ini).
+        ...(isCsBankData ? { targetDivisionId: null, targetBoardId: null, targetListId: null } : {}),
         updatedAt: new Date(),
       },
     });
@@ -1053,15 +1071,14 @@ router.post('/work-items/:item_id/release', async (c) => {
   return c.json({ ok: true });
 });
 
-// Ambil Alih (§7.5) — supervisor mengganti PIC lama ke PIC baru secara langsung
+// Ambil Alih (§7.5) — ganti PIC lama ke PIC baru secara langsung. "Permission
+// khusus" (default hanya supervisor+) — sepenuhnya diatur oleh matriks Hak
+// Akses (`bankdata.takeover`), TIDAK ada lagi gerbang role hardcode di sini.
 router.post('/work-items/:item_id/takeover', async (c) => {
   await requirePerm(c, 'bankdata.takeover');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json().catch(() => ({}));
-  if (!TAKEOVER_ROLES.includes(user.role)) {
-    return c.json({ error: 'Hanya supervisor/admin yang dapat melakukan Ambil Alih' }, 403);
-  }
   const newPicId = body.pic_user_id || user.id;
   const item = await getItemChecked(itemId, user);
   const oldPicId = item.currentPicId || null;
@@ -1205,9 +1222,10 @@ router.post('/work-items/:item_id/set-pic', async (c) => {
 });
 
 // Oper kepemilikan kartu: Pemilik (Owner Master Card) + PIC dipindah sekaligus
-// ke user lain. Boleh oleh Owner sekarang, PIC, pembuat, atau supervisor/admin.
+// ke user lain. HANYA Owner job saat ini, atau supervisor/super admin — BUKAN
+// sekadar PIC assignment atau pembuat kartu (itu tidak sama dengan pemilik job).
 router.post('/work-items/:item_id/transfer-owner', async (c) => {
-  await requirePerm(c, 'card.assign_members');
+  await requirePerm(c, 'card.transfer_owner');
   const user = c.get('user');
   const itemId = c.req.param('item_id');
   const body = await c.req.json().catch(() => ({}));
@@ -1216,12 +1234,8 @@ router.post('/work-items/:item_id/transfer-owner', async (c) => {
 
   const item = await getItemChecked(itemId, user);
   const mc = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
-  const allowed =
-    TAKEOVER_ROLES.includes(user.role) ||
-    item.currentPicId === user.id ||
-    item.createdById === user.id ||
-    mc?.ownerUserId === user.id;
-  if (!allowed) return c.json({ detail: 'Hanya Pemilik / PIC / pembuat kartu atau supervisor yang dapat mengoper kepemilikan.' }, 403);
+  const allowed = TAKEOVER_ROLES.includes(user.role) || mc?.ownerUserId === user.id;
+  if (!allowed) return c.json({ detail: 'Hanya Pemilik job ini atau supervisor/super admin yang dapat mengoper kepemilikan.' }, 403);
 
   const target = await prisma.user.findUnique({ where: { id: targetId } });
   if (!target) return c.json({ error: 'Pengguna tidak ditemukan' }, 404);
@@ -1235,9 +1249,17 @@ router.post('/work-items/:item_id/transfer-owner', async (c) => {
   if (mcId) {
     await prisma.masterCard.update({ where: { id: mcId }, data: { ownerUserId: targetId, ownerDivisionId: target.divisionId || null } });
   }
+  // Pindahkan fisik kartu ke board milik pemilik baru (sama seperti /claim &
+  // /takeover) — supaya TIDAK nyangkut di board pemilik lama.
+  const pb = await resolveDivisionBoardListByCreator(prisma, targetId);
   await prisma.workItem.update({
     where: { id: itemId },
-    data: { currentPicId: targetId, workStatus: item.workStatus === 'COMPLETED' ? item.workStatus : 'IN_PROGRESS' },
+    data: {
+      currentPicId: targetId,
+      workStatus: item.workStatus === 'COMPLETED' ? item.workStatus : 'IN_PROGRESS',
+      ...(pb.board ? { boardId: pb.board.id } : {}),
+      ...(pb.listId ? { listId: pb.listId } : {}),
+    },
   });
   await prisma.workItemMember.upsert({
     where: { workItemId_userId: { workItemId: itemId, userId: targetId } },
@@ -1382,39 +1404,10 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
       let currentDirect = direct;
       let currentAssignTo = body.assign_to_user_id;
 
+      // Tidak ada auto-assign round-robin: CS (atau divisi lain) tanpa
+      // assign_to_user_id eksplisit SELALU jatuh ke Bank Data (AVAILABLE,
+      // belum ada PIC/Owner) — menunggu ada yang klaim secara manual (§7.2 PRD).
       const div = await tx.division.findUnique({ where: { id: divId } });
-      if (div?.key === 'cs' && !currentDirect) {
-        const csUsers = await tx.user.findMany({ 
-          where: { divisionId: div.id, isActive: true }, 
-          orderBy: { name: 'asc' } 
-        });
-        
-        if (csUsers.length > 0) {
-          const keys = csUsers.map(u => `rr_cs_${u.id}`);
-          const settings = await tx.setting.findMany({ where: { key: { in: keys } } });
-          const map = new Map();
-          for (const s of settings) map.set(s.key, s.at);
-          
-          let nextUser = csUsers[0];
-          let oldestTime = Date.now() + 1000000;
-          for (const u of csUsers) {
-            const time = map.get(`rr_cs_${u.id}`)?.getTime() || 0;
-            if (time < oldestTime) {
-              oldestTime = time;
-              nextUser = u;
-            }
-          }
-          
-          await tx.setting.upsert({
-            where: { key: `rr_cs_${nextUser.id}` },
-            update: { at: new Date() },
-            create: { key: `rr_cs_${nextUser.id}` }
-          });
-          
-          currentDirect = true;
-          currentAssignTo = nextUser.id;
-        }
-      }
 
       const resolved = await resolveDivisionBoardList(
         tx,
@@ -2164,39 +2157,10 @@ router.post('/bank-data/intake', async (c) => {
     let currentDirect = direct;
     let currentAssignTo = body.assign_to_user_id;
 
+    // Tidak ada auto-assign round-robin: client offline yang masuk ke Bank Data
+    // Customer Service tanpa assign_to_user_id eksplisit SELALU belum ber-Owner
+    // (AVAILABLE) — Owner Master Card baru ditetapkan saat ada CS yang claim (Flow B, §7.2 PRD).
     const div = await tx.division.findUnique({ where: { id: body.target_division_id } });
-    if (div?.key === 'cs' && !currentDirect) {
-      const csUsers = await tx.user.findMany({ 
-        where: { divisionId: div.id, isActive: true }, 
-        orderBy: { name: 'asc' } 
-      });
-      
-      if (csUsers.length > 0) {
-        const keys = csUsers.map(u => `rr_cs_${u.id}`);
-        const settings = await tx.setting.findMany({ where: { key: { in: keys } } });
-        const map = new Map();
-        for (const s of settings) map.set(s.key, s.at);
-        
-        let nextUser = csUsers[0];
-        let oldestTime = Date.now() + 1000000;
-        for (const u of csUsers) {
-          const time = map.get(`rr_cs_${u.id}`)?.getTime() || 0;
-          if (time < oldestTime) {
-            oldestTime = time;
-            nextUser = u;
-          }
-        }
-        
-        await tx.setting.upsert({
-          where: { key: `rr_cs_${nextUser.id}` },
-          update: { at: new Date() },
-          create: { key: `rr_cs_${nextUser.id}` }
-        });
-        
-        currentDirect = true;
-        currentAssignTo = nextUser.id;
-      }
-    }
 
     const mc = await tx.masterCard.create({
       data: { title: body.title.trim(), client: body.client_name?.trim() || null, ownerUserId: currentDirect ? currentAssignTo : null, ownerDivisionId: div?.id || null },

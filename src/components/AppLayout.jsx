@@ -81,10 +81,10 @@ function GlobalSearch() {
             <div className="p-2 border-t">
               <p className="text-[10px] font-bold uppercase tracking-wider text-3 px-2 py-1">Pekerjaan</p>
               {results.items.map((i) => {
+                // Kartu asli tidak perlu badge khusus — hanya kartu mirror (assignment)
+                // yang perlu ditandai beda, karena cuma kartu asli yang bisa di-mirror.
                 const badge =
-                  i.role === "master"
-                    ? { t: "Master Card", c: "bg-[#E9F2FF] text-[#0C66E4]" }
-                    : i.role === "assignment"
+                  i.role === "assignment"
                     ? { t: "Assignment", c: "bg-[#EAE6FF] text-[#5E4DB2]" }
                     : null;
                 const meta = [
@@ -94,7 +94,6 @@ function GlobalSearch() {
                 const sub = [
                   i.role === "assignment" && i.target_division_name && `Divisi: ${i.target_division_name}`,
                   i.role === "assignment" && (i.pic_name ? `PIC: ${i.pic_name}` : i.distribution_label),
-                  i.role === "assignment" && i.owner_name && `Owner: ${i.owner_name}`,
                   i.role !== "assignment" && i.pic_name && `PIC: ${i.pic_name}`,
                 ].filter(Boolean).join("  ·  ");
                 return (

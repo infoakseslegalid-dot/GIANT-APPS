@@ -122,9 +122,12 @@ export interface CardBackProps {
   picName?: string | null;
   picUserId?: string | null;
   ownerName?: string | null;
-  /** Jadikan diri sendiri sebagai PIC (kartu CS biasa). */
-  onTakePic?: () => Promise<void>;
-  /** Oper kepemilikan (Owner + PIC) ke user lain. */
+  /**
+   * Jadikan diri sendiri sebagai PIC. `isTakeover=true` berarti PIC sekarang
+   * sudah ada (tombol "Ambil alih") — beda alur/izin dari klaim kartu kosong.
+   */
+  onTakePic?: (isTakeover?: boolean) => Promise<void>;
+  /** Oper kepemilikan (Owner + PIC) ke user lain — dipakai di luar card back. */
   onTransferOwner?: (userId: string) => Promise<void>;
   isMasterCard?: boolean;
   /** Ringkasan assignment turunan (hanya di Master Card). */
@@ -135,7 +138,7 @@ export interface CardBackProps {
 
   /** Penanda "kartu mirror": kartu ini adalah Assignment dari Master Card di board lain. */
   isAssignment?: boolean;
-  master?: { id: string; title: string; boardName?: string | null; listName?: string | null } | null;
+  master?: { id: string; title: string; boardName?: string | null; listName?: string | null; picName?: string | null } | null;
 
   /** @mention: kandidat user yang bisa disebut (punya akses). */
   mentionableUsers?: CardMember[];
