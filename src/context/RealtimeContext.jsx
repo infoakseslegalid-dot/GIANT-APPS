@@ -56,6 +56,12 @@ export function RealtimeProvider({ children }) {
       qc.invalidateQueries({ queryKey: ["activities"] });
       qc.invalidateQueries({ queryKey: ["global-hari"] });
       qc.invalidateQueries({ queryKey: ["global-skor"] });
+      // Harga & pembayaran (per Master Card): tidak punya work_item_id yang
+      // pasti sama dengan kartu yang lagi dibuka di klien lain (bisa beda
+      // assignment, satu Master Card yang sama) → segarkan semua panel
+      // finance yang lagi terbuka, siapa pun kartunya.
+      qc.invalidateQueries({ queryKey: ["card-finance"] });
+      qc.invalidateQueries({ queryKey: ["reports-overview"] });
     };
 
     const connect = () => {

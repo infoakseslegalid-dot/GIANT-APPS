@@ -1,12 +1,25 @@
 import { useState, useMemo } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RTooltip, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, ComposedChart } from "recharts";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, Wallet, CheckCircle2, Clock, AlertTriangle, X, ArrowUpNarrowWide } from "lucide-react";
+import { TrendingUp, Wallet, CheckCircle2, Clock, AlertTriangle, X, ArrowUpNarrowWide, ArrowUp, ArrowDown, ListChecks, Users2, Timer } from "lucide-react";
 import { api, fmtDate } from "../lib/api";
 import CardModal from "../components/kanban/CardModalWrapper";
 
 const rp = (n) =>
   (n == null || isNaN(n)) ? "—" : "Rp " + Math.round(n).toLocaleString("id-ID");
+
+/** Badge kecil naik/turun vs periode sebelumnya. pct: number | null (null = tidak ada pembanding). */
+function DeltaBadge({ pct }) {
+  if (pct == null) return <span className="text-[11px] text-slate-400 font-semibold">— vs periode lalu</span>;
+  const up = pct > 0;
+  const flat = pct === 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${flat ? "text-slate-400" : up ? "text-green-600" : "text-red-500"}`}>
+      {!flat && (up ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
+      {flat ? "0%" : `${Math.abs(pct)}%`} <span className="font-normal text-slate-400">vs lalu</span>
+    </span>
+  );
+}
 
 const PERIODS = [
   { key: "day", label: "Harian" },
@@ -110,7 +123,7 @@ export default function Reports() {
       
       {/* TABS */}
       <div className="flex border-b border-[hsl(var(--hairline))] mb-4">
-        {[{id: "eksekutif", label: "Ringkasan Eksekutif (BOS)"}, {id: "ringkasan", label: "Ringkasan / Overview"}, {id: "per_orang", label: "Per Orang (Leaderboard)"}, {id: "data_cs", label: "Data CS"}].map(t => (
+        {[{id: "eksekutif", label: "Ringkasan Eksekutif (BOS)"}, {id: "ringkasan", label: "Ringkasan / Overview"}, {id: "per_orang", label: "Per Orang (Leaderboard)"}, {id: "kelengkapan", label: "Kelengkapan Dokumen"}, {id: "data_cs", label: "Data CS"}].map(t => (
            <button 
              key={t.id} 
              onClick={() => setActiveTab(t.id)} 
@@ -135,19 +148,28 @@ export default function Reports() {
                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-blue-600">
                     <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Total Omzet <TrendingUp size={14} className="text-blue-500"/></div>
                     <div className="text-2xl lg:text-3xl font-extrabold text-slate-900">{rp(fin?.total_in)}</div>
-                    <div className="text-xs text-slate-500 mt-2"><span className="text-green-600 font-bold">+{fin?.count_lunas_period || 0}</span> Job Lunas Periode Ini</div>
+                    <div className="text-xs text-slate-500 mt-2 flex items-center justify-between">
+                      <span><span className="text-green-600 font-bold">+{fin?.count_lunas_period || 0}</span> Job Lunas</span>
+                      <DeltaBadge pct={data?.compare_prev?.total_in_pct} />
+                    </div>
                  </div>
                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-red-500">
                     <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Total Piutang <AlertTriangle size={14} className="text-red-500"/></div>
                     <div className="text-2xl lg:text-3xl font-extrabold text-slate-900">{rp(fin?.total_piutang)}</div>
-                    <div className="text-xs text-slate-500 mt-2"><span className="text-red-500 font-bold">{fin?.piutang_cards || 0}</span> Job masih DP/Belum Bayar</div>
+                    <div className="text-xs text-slate-500 mt-2">
+                      <span className="text-red-500 font-bold">{fin?.piutang_cards || 0}</span> job DP/belum bayar
+                      {fin?.aging?.[3]?.count > 0 && <span className="ml-1 text-red-600 font-semibold">· {fin.aging[3].count} &gt;30 hari!</span>}
+                    </div>
                  </div>
                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-green-600">
                     <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Pekerjaan Selesai <CheckCircle2 size={14} className="text-green-500"/></div>
                     <div className="text-2xl lg:text-3xl font-extrabold text-slate-900">
-                      {(data?.by_user || []).reduce((a,b)=>a+(b.done_period || 0), 0)} <span className="text-sm font-normal text-slate-500">job</span>
+                      {data?.compare_prev?.done_period_total ?? 0} <span className="text-sm font-normal text-slate-500">job</span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-2">Dikerjakan dalam periode ini</div>
+                    <div className="text-xs text-slate-500 mt-2 flex items-center justify-between">
+                      <span>Dikerjakan periode ini</span>
+                      <DeltaBadge pct={data?.compare_prev?.done_period_pct} />
+                    </div>
                  </div>
                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-amber-500">
                     <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex justify-between">Klien Mandek <Clock size={14} className="text-amber-500"/></div>
@@ -161,20 +183,20 @@ export default function Reports() {
                  {/* Trend Uang vs Pekerjaan */}
                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
                     <h3 className="font-bold text-slate-800 mb-1">Tren Omzet vs Pekerjaan Selesai</h3>
-                    <p className="text-xs text-slate-500 mb-6">Melihat korelasi pemasukan harian dengan jumlah pekerjaan yang diselesaikan tim (Data Dummy Harian).</p>
+                    <p className="text-xs text-slate-500 mb-6">Pemasukan harian vs jumlah pekerjaan yang benar-benar diselesaikan tim, hari yang sama.</p>
                     <div className="h-[280px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={
-                          Object.entries(fin?.by_day || {}).map(([date, amount]) => ({
-                             date: date.slice(5),
-                             omzet: amount,
-                             selesai: ((amount || 0) % 5) + 1 // We don't have jobs_done_by_day in overview, so mockup or zero
-                          })).sort((a,b) => a.date.localeCompare(b.date))
+                          (fin?.by_day || []).map((d) => ({
+                             date: d.date.slice(5),
+                             omzet: d.amount,
+                             selesai: d.done || 0,
+                          }))
                         }>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} />
                           <XAxis dataKey="date" tick={{fontSize: 10}} />
                           <YAxis yAxisId="left" tick={{fontSize: 10}} tickFormatter={(v) => (Number(v || 0)/1000000).toFixed(0)+"jt"} />
-                          <YAxis yAxisId="right" orientation="right" tick={{fontSize: 10}} />
+                          <YAxis yAxisId="right" orientation="right" tick={{fontSize: 10}} allowDecimals={false} />
                           <RTooltip formatter={(v, name) => name === "omzet" ? rp(v) : (Number(v) || 0)} />
                           <Bar yAxisId="left" dataKey="omzet" fill="#3b82f6" radius={[4,4,0,0]} name="Uang Masuk" />
                           <Line yAxisId="right" type="monotone" dataKey="selesai" stroke="#16a34a" strokeWidth={3} name="Job Selesai" />
@@ -251,6 +273,48 @@ export default function Reports() {
                     </div>
                  </div>
               </div>
+
+              {/* Top Klien & Titik Macet per Tahap */}
+              <div className="grid lg:grid-cols-2 gap-4">
+                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><Users2 size={15} /> Top Klien (Omzet Tertinggi)</h3>
+                    </div>
+                    <div>
+                       {(data?.top_clients || []).length === 0 && <p className="p-4 text-sm text-slate-500">Belum ada data klien.</p>}
+                       {(data?.top_clients || []).slice(0, 8).map((cl, i) => (
+                          <div key={cl.client} className="flex justify-between items-center px-4 py-2.5 border-b border-slate-50 last:border-b-0">
+                             <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="w-5 text-xs font-bold text-slate-400 shrink-0">{i + 1}</span>
+                                <span className="font-semibold text-sm text-slate-800 truncate">{cl.client}</span>
+                             </div>
+                             <div className="text-right shrink-0 pl-2">
+                                <div className="font-bold text-sm text-green-700">{rp(cl.revenue_total)}</div>
+                                <div className="text-[11px] text-slate-500">{cl.jobs_count} job</div>
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+
+                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><Timer size={15} /> Titik Macet per Tahap (List)</h3>
+                    </div>
+                    <div className="p-3 h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={data?.stage_bottleneck || []} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" tick={{fontSize: 10}} tickFormatter={(v) => `${v}h`} />
+                          <YAxis type="category" dataKey="list_name" tick={{fontSize: 10}} width={110} />
+                          <RTooltip formatter={(v, name) => name === "avg_days" ? [`${v} hari`, "Rata-rata umur"] : [v, "Jumlah kartu"]} />
+                          <Bar dataKey="avg_days" fill="#f59e0b" radius={[0,4,4,0]} name="avg_days" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <p className="px-4 pb-3 text-[11px] text-slate-400">Rata-rata umur kartu AKTIF (belum selesai) yang sedang diam di tahap itu — lintas board dengan nama list sama.</p>
+                 </div>
+              </div>
             </div>
           )}
 
@@ -262,6 +326,30 @@ export default function Reports() {
                 <StatCard icon={<Clock size={15} />} label="Job masih DP" value={fin?.count_dp ?? 0} sub="Sudah bayar sebagian" tone="amber" />
                 <StatCard icon={<AlertTriangle size={15} />} label="Job belum bayar" value={fin?.count_belum ?? 0} sub="Harga sudah diisi, Rp 0 masuk" tone="red" />
               </div>
+
+              {/* Corong pembayaran */}
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard icon={<Timer size={15} />} label="Rata-rata DP → Lunas" value={fin?.avg_days_dp_to_lunas != null ? `${fin.avg_days_dp_to_lunas} hari` : "—"} sub="Sejak pembayaran pertama sampai lunas" tone="blue" />
+                <StatCard icon={<CheckCircle2 size={15} />} label="Tingkat konversi Lunas" value={fin?.lunas_conversion_pct != null ? `${fin.lunas_conversion_pct}%` : "—"} sub="dari seluruh job berharga (belum+DP+lunas)" tone="green" />
+              </div>
+
+              {/* Umur piutang (aging) */}
+              <section className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
+                <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
+                  <h2 className="font-heading font-bold text-foreground">Umur Piutang (Aging)</h2>
+                  <p className="text-xs text-2 mt-0.5">Sejak pembayaran terakhir masuk (atau sejak harga diisi kalau belum pernah dibayar).</p>
+                </header>
+                <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-[hsl(var(--hairline))]">
+                  {(fin?.aging || []).map((a) => (
+                    <div key={a.bucket} className={`p-4 ${a.bucket === ">30 hari" && a.count > 0 ? "bg-[#FFECEB]" : ""}`}>
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-3">{a.bucket}</div>
+                      <div className={`text-xl font-bold mt-1 ${a.bucket === ">30 hari" && a.count > 0 ? "text-[#C9372C]" : "text-foreground"}`}>{a.count}</div>
+                      <div className="text-xs text-3">{rp(a.amount)}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
               <section className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
                 <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
                   <h2 className="font-heading font-bold text-foreground">Performa per Divisi</h2>
@@ -304,6 +392,7 @@ export default function Reports() {
                         <th className="py-3 text-left">DIVISI</th>
                         <th className="py-3 text-right">TOTAL</th>
                         <th className="py-3 text-right">FINISH</th>
+                        <th className="py-3 text-right" title="Job yang dibuka kembali setelah ditandai selesai, periode ini">KERJA ULANG</th>
                         <th className="py-3 text-left pl-8 w-48">COMPLETION</th>
                       </tr>
                     </thead>
@@ -317,6 +406,7 @@ export default function Reports() {
                             <td className="py-3 text-slate-500">{u.division_name || "—"}</td>
                             <td className="py-3 text-right font-semibold">{u.cards_total}</td>
                             <td className="py-3 text-right font-bold text-green-700">{u.done_now}</td>
+                            <td className={`py-3 text-right font-semibold ${u.rework_count > 0 ? "text-amber-600" : "text-slate-300"}`}>{u.rework_count || 0}</td>
                             <td className="py-3 pl-8">
                                <div className="flex items-center gap-2">
                                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -365,6 +455,87 @@ export default function Reports() {
             </div>
           )}
 
+          {activeTab === "kelengkapan" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <StatCard
+                  icon={<ListChecks size={15} />}
+                  label="Kelengkapan tercentang"
+                  value={data?.checklist?.pct != null ? `${data.checklist.pct}%` : "—"}
+                  sub={`${data?.checklist?.done_items ?? 0} dari ${data?.checklist?.total_items ?? 0} item, kartu aktif`}
+                  tone={data?.checklist?.pct != null && data.checklist.pct >= 80 ? "green" : "amber"}
+                />
+                <StatCard
+                  icon={<AlertTriangle size={15} />}
+                  label="Kartu belum lengkap"
+                  value={data?.checklist?.top_incomplete?.length ? `${(data?.checklist?.top_incomplete || []).length}+` : "0"}
+                  sub="Masih ada item checklist belum tercentang"
+                  tone="amber"
+                />
+                <StatCard
+                  icon={<Clock size={15} />}
+                  label="Menunggu verifikasi Admin"
+                  value={data?.checklist?.admin_verify_pending?.length ?? 0}
+                  sub='Item "Diverifikasi Admin" belum dicentang'
+                  tone="red"
+                />
+              </div>
+
+              <section className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
+                <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
+                  <h2 className="font-heading font-bold text-foreground">Kartu Aktif Paling Banyak Kekurangan</h2>
+                  <p className="text-xs text-2 mt-0.5">Diurutkan dari yang paling banyak item checklist belum tercentang.</p>
+                </header>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="bg-[hsl(var(--muted))]">
+                      <tr><Th>Pekerjaan</Th><Th>Klien</Th><Th>Board / List</Th><Th className="text-right">Tercentang</Th><Th className="text-right">Kurang</Th></tr>
+                    </thead>
+                    <tbody>
+                      {(data?.checklist?.top_incomplete || []).map((it) => (
+                        <tr key={it.id} onClick={() => setOpenCard(it.id)} className="border-t border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] cursor-pointer">
+                          <Td className="font-medium">{it.title}</Td>
+                          <Td className="text-2">{it.client || "—"}</Td>
+                          <Td className="text-2 text-xs">{it.board_name}{it.list_name ? ` · ${it.list_name}` : ""}</Td>
+                          <Td className="text-right">{it.done}/{it.total}</Td>
+                          <Td className="text-right font-bold text-[#C9372C]">{it.missing}</Td>
+                        </tr>
+                      ))}
+                      {(data?.checklist?.top_incomplete || []).length === 0 && (
+                        <tr><td colSpan={5} className="py-6 text-center text-sm text-3">Semua kartu aktif checklist-nya sudah lengkap 🎉</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-hidden">
+                <header className="px-4 py-3 border-b border-[hsl(var(--hairline))]">
+                  <h2 className="font-heading font-bold text-foreground">Menunggu Verifikasi Admin</h2>
+                  <p className="text-xs text-2 mt-0.5">Kartu dari template checklist yang belum di-tandai "Diverifikasi Admin" — CS bisa follow-up klien duluan kalau ada yang kurang, tanpa nunggu ini.</p>
+                </header>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="bg-[hsl(var(--muted))]">
+                      <tr><Th>Pekerjaan</Th><Th>Klien</Th><Th>Board / List</Th></tr>
+                    </thead>
+                    <tbody>
+                      {(data?.checklist?.admin_verify_pending || []).map((it) => (
+                        <tr key={it.id} onClick={() => setOpenCard(it.id)} className="border-t border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] cursor-pointer">
+                          <Td className="font-medium">{it.title}</Td>
+                          <Td className="text-2">{it.client || "—"}</Td>
+                          <Td className="text-2 text-xs">{it.board_name}{it.list_name ? ` · ${it.list_name}` : ""}</Td>
+                        </tr>
+                      ))}
+                      {(data?.checklist?.admin_verify_pending || []).length === 0 && (
+                        <tr><td colSpan={3} className="py-6 text-center text-sm text-3">Tidak ada yang menunggu verifikasi Admin.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          )}
 
           {activeTab === "data_cs" && (
             <div className="space-y-6">

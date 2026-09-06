@@ -57,8 +57,8 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
     setOpenWhich(null);
     afterAddScroll();
   };
-  const addFromTemplate = (t: { name: string; items: string[] }) => {
-    onAddChecklist(t.name, t.items);
+  const addFromTemplate = (t: { name: string; items: string[]; cs_self_check?: boolean }) => {
+    onAddChecklist(t.name, t.items, t.cs_self_check);
     setOpenWhich(null);
     afterAddScroll();
   };

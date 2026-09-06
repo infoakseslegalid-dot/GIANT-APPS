@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { CheckCircle2, RotateCcw, UserCheck, ChevronDown, ArrowUpRight } from 'lucide-react';
 import type { CardBackProps } from './types';
 import CardBackHeader from './CardBackHeader';
 import CardTitle from './CardTitle';
@@ -25,8 +26,8 @@ const DIST_LABEL: Record<string, { t: string; c: string }> = {
 };
 
 /** Badge status besar & jelas (banyak user usia lanjut). */
-const STATUS_TONE: Record<string, { cls: string; icon: string }> = {
-  green: { cls: 'bg-[#DCFFF1] text-[#164B35] border-[#7EE2B8]', icon: '✓' },
+const STATUS_TONE: Record<string, { cls: string; icon?: string }> = {
+  green: { cls: 'bg-[#DCFFF1] text-[#164B35] border-[#7EE2B8]' },
   blue: { cls: 'bg-[#E9F2FF] text-[#0C459A] border-[#8FB8F6]', icon: '•' },
   amber: { cls: 'bg-[#FFF3D6] text-[#7A4100] border-[#F5CD8B]', icon: '!' },
   slate: { cls: 'bg-[hsl(var(--muted))] text-2 border-[hsl(var(--hairline))]', icon: '…' },
@@ -36,7 +37,8 @@ function StatusBadge({ tone, label }: { tone?: string; label?: string }) {
   const t = STATUS_TONE[tone || 'blue'] || STATUS_TONE.blue;
   return (
     <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-bold ${t.cls}`}>
-      <span aria-hidden>{t.icon}</span>{label || '—'}
+      {tone === 'green' ? <CheckCircle2 size={13} aria-hidden /> : <span aria-hidden>{t.icon}</span>}
+      {label || '—'}
     </span>
   );
 }
@@ -126,7 +128,7 @@ export default function CardBack(props: CardBackProps) {
                     className="inline-flex items-center gap-1 rounded-[4px] bg-[hsl(var(--muted))] px-2 py-1 font-medium text-2 hover:bg-[#c1c7d0]"
                   >
                     {master.boardName || 'Kartu asli'}
-                    <span className="text-[9px]">↗</span>
+                    <ArrowUpRight size={11} />
                   </button>
                   {master.listName && (
                     <span className="rounded-[4px] bg-[#e8d7ef] px-2 py-1 font-medium text-[#403152]">{master.listName}</span>
@@ -141,7 +143,7 @@ export default function CardBack(props: CardBackProps) {
                 className="inline-flex items-center gap-1 rounded-[4px] bg-[#e8d7ef] px-2 py-1 font-medium text-[#403152] hover:bg-[#ddc7e8]"
               >
                 {card.listName}
-                <span className="text-[10px] leading-none">⌄</span>
+                <ChevronDown size={11} />
               </button>
             </div>
 
@@ -164,7 +166,12 @@ export default function CardBack(props: CardBackProps) {
 
             <CardTitle {...props} />
 
-            {/* Status pekerjaan + tombol Tandai Selesai — besar & jelas */}
+            {/* Labels + quick actions — pindah ke atas, di bawah judul (paling cepat dipindai). */}
+            <CardQuickActions {...props} onLabels={() => setLabelsOpen(true)} />
+            <CardLabels {...props} open={labelsOpen} onOpenChange={setLabelsOpen} />
+
+            {/* Status + PIC digabung satu baris ringkas — dua hal yang paling
+                sering dilirik sekaligus, jadi tidak perlu dua kotak terpisah. */}
             {(() => {
               const submitted = card.statusLabel === 'Menunggu persetujuan';
               const done = card.isComplete;
@@ -172,28 +179,64 @@ export default function CardBack(props: CardBackProps) {
               // tidak ada tombol manual. Selesai otomatis saat semua divisi selesai.
               const derivedMaster = isMasterCard && assignments.length > 0;
               return (
-                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-3 py-2.5">
-                  <span className="text-[13px] font-semibold text-3">Status:</span>
+                <div className="mb-3 flex flex-wrap items-center gap-2.5 rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] px-3 py-2.5 text-[13px]">
                   <StatusBadge tone={card.statusTone} label={card.statusLabel || (done ? 'Selesai' : 'Sedang dikerjakan')} />
+                  <span className="h-4 w-px shrink-0 bg-[hsl(var(--hairline))]" />
+                  <span className="font-semibold text-3">PIC</span>
+                  {iAmPic ? (
+                    <span className="font-semibold text-foreground">{picName} <span className="font-normal text-3">(Anda)</span></span>
+                  ) : picName ? (
+                    <span className="font-semibold text-foreground">{picName}</span>
+                  ) : (
+                    <span className="italic text-3">Belum ada</span>
+                  )}
                   {derivedMaster ? (
-                    <span className="ml-auto text-[11.5px] text-3">Selesai otomatis saat semua divisi selesai ↓</span>
-                  ) : canEdit ? (
-                    <button
-                      type="button"
-                      data-testid="card-mark-done-button"
-                      onClick={() => props.onUpdateCard({ isComplete: !(done || submitted) })}
-                      className={`ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[13px] font-bold transition-colors active:scale-95 ${
-                        done || submitted
-                          ? 'border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-2 hover:bg-[hsl(var(--muted))]'
-                          : 'bg-[#22a06b] text-white hover:bg-[#1f845a] shadow-sm'
-                      }`}
-                    >
-                      {done || submitted ? '↩  Buka Kembali' : '✓  Tandai Selesai'}
-                    </button>
-                  ) : null}
+                    <span className="ml-auto text-[11.5px] text-3">Selesai otomatis saat semua divisi selesai</span>
+                  ) : (
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                      {canEdit && (
+                        <button
+                          type="button"
+                          data-testid="card-mark-done-button"
+                          onClick={() => props.onUpdateCard({ isComplete: !(done || submitted) })}
+                          className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-colors active:scale-95 ${
+                            done || submitted
+                              ? 'border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-2 hover:bg-[hsl(var(--muted))]'
+                              : 'bg-[#22a06b] text-white hover:bg-[#1f845a] shadow-sm'
+                          }`}
+                        >
+                          {done || submitted ? (
+                            <><RotateCcw size={14} /> Buka Kembali</>
+                          ) : (
+                            <><CheckCircle2 size={14} /> Tandai Selesai</>
+                          )}
+                        </button>
+                      )}
+                      {canEdit && !iAmPic && onTakePic && (
+                        <button
+                          type="button"
+                          data-testid="card-take-pic-button"
+                          onClick={() => onTakePic(!!picName)}
+                          className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-colors active:scale-95 ${
+                            picName
+                              ? 'border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-2 hover:bg-[hsl(var(--muted))]'
+                              : 'bg-[#0c66e4] text-white hover:bg-[#0052cc] shadow-sm'
+                          }`}
+                        >
+                          <UserCheck size={14} /> {picName ? 'Ambil alih sebagai PIC' : 'Saya yang kerjakan'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })()}
+
+            {!canEdit && (
+              <p className="mb-3 rounded bg-[#fff7d6] px-2 py-1 text-[11.5px] font-semibold text-[#7f5f01]">
+                Mode pantau — hanya PIC / anggota divisi terkait yang bisa mengubah.
+              </p>
+            )}
 
             {/* Di kartu Assignment: tampilkan progres legalitas keseluruhan */}
             {isAssignment && groupProgress && groupProgress.total > 0 && (
@@ -205,44 +248,8 @@ export default function CardBack(props: CardBackProps) {
               </div>
             )}
 
-            {/* PIC — dialah penanggung jawab (sekaligus "pemilik") kartu ini */}
-            <div className="mb-3 rounded-[8px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-3 py-2.5 text-[13px]">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="w-[64px] shrink-0 font-semibold text-3">PIC</span>
-                {iAmPic ? (
-                  <span className="font-semibold text-foreground">{picName} <span className="font-normal text-3">(Anda)</span></span>
-                ) : picName ? (
-                  <span className="font-semibold text-foreground">{picName}</span>
-                ) : (
-                  <span className="italic text-3">Belum ada</span>
-                )}
-                {canEdit && !iAmPic && onTakePic && (
-                  <button
-                    type="button"
-                    data-testid="card-take-pic-button"
-                    onClick={() => onTakePic(!!picName)}
-                    className={`ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold transition-colors active:scale-95 ${
-                      picName
-                        ? 'border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] text-2 hover:bg-[hsl(var(--muted))]'
-                        : 'bg-[#0c66e4] text-white hover:bg-[#0052cc] shadow-sm'
-                    }`}
-                  >
-                    {picName ? 'Ambil alih sebagai PIC' : '✋  Saya yang kerjakan'}
-                  </button>
-                )}
-              </div>
-              {!canEdit && (
-                <p className="mt-2 rounded bg-[#fff7d6] px-2 py-1 text-[11.5px] font-semibold text-[#7f5f01]">
-                  Mode pantau — hanya PIC / anggota divisi terkait yang bisa mengubah.
-                </p>
-              )}
-            </div>
-
             {/* Harga job & pembayaran (rekap Finance) */}
             <CardFinancePanel cardId={card.id} />
-
-            <CardQuickActions {...props} onLabels={() => setLabelsOpen(true)} />
-            <CardLabels {...props} open={labelsOpen} onOpenChange={setLabelsOpen} />
 
             {/* Panel status pengerjaan per divisi (di Master Card) */}
             {isMasterCard && assignments.length > 0 && (
@@ -251,10 +258,14 @@ export default function CardBack(props: CardBackProps) {
 
                 {groupProgress && groupProgress.total > 0 && (
                   <div className="mb-3">
-                    <div className="mb-1 text-[14px] font-bold text-foreground">
-                      {groupProgress.done === groupProgress.total
-                        ? '✓ Semua divisi sudah selesai'
-                        : `${groupProgress.done} dari ${groupProgress.total} divisi selesai`}
+                    <div className="mb-1 flex items-center gap-1.5 text-[14px] font-bold text-foreground">
+                      {groupProgress.done === groupProgress.total ? (
+                        <>
+                          <CheckCircle2 size={15} className="text-[#22a06b]" /> Semua divisi sudah selesai
+                        </>
+                      ) : (
+                        `${groupProgress.done} dari ${groupProgress.total} divisi selesai`
+                      )}
                     </div>
                     <div className="h-3 w-full overflow-hidden rounded-full bg-[hsl(var(--muted))]">
                       <div

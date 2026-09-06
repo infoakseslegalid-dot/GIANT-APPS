@@ -1,12 +1,14 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw } from "lucide-react";
+import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw, Info } from "lucide-react";
 import { api, errMsg, ROLE_LABELS, fmtDateTime } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "../components/common";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "../components/ui/tooltip";
 
 const inputCls = "h-9 w-full rounded-lg border border-[hsl(var(--hairline))] px-3 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
 const btnPrimary = "h-9 px-4 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors active:scale-95";
@@ -325,23 +327,84 @@ function BoardsTab({ divisions }) {
 }
 
 function ActivityTab() {
-  const { data: activities } = useQuery({ queryKey: ["activities"], queryFn: () => api.get("/activities?limit=80").then((r) => r.data) });
+  const { data: boards } = useQuery({ queryKey: ["boards"], queryFn: () => api.get("/boards").then((r) => r.data) });
+  const [q, setQ] = useState("");
+  const [boardId, setBoardId] = useState("");
+  const [limit, setLimit] = useState(80);
+
+  const { data: activities, isLoading } = useQuery({
+    queryKey: ["activities", q, boardId, limit],
+    queryFn: () => api.get("/activities", { params: { limit, q: q || undefined, board_id: boardId || undefined } }).then((r) => r.data),
+  });
+
   return (
     <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5" data-testid="admin-activity-tab">
-      <h3 className="font-heading font-bold text-foreground mb-4 flex items-center gap-2"><Activity size={16} /> Log Aktivitas Global</h3>
+      <h3 className="font-heading font-bold text-foreground mb-1 flex items-center gap-2"><Activity size={16} /> Log Aktivitas Global</h3>
+      <p className="text-sm text-2 mb-3">Semua perubahan kartu lintas board — label, harga/pembayaran, checklist, komentar, pindah list, dst.</p>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Cari di teks aktivitas…"
+          className="h-9 w-56 rounded-lg border border-[hsl(var(--hairline))] px-3 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]"
+          data-testid="activity-search"
+        />
+        <select
+          value={boardId}
+          onChange={(e) => setBoardId(e.target.value)}
+          className="h-9 rounded-lg border border-[hsl(var(--hairline))] px-2 text-sm bg-[hsl(var(--elevated))] outline-none"
+          data-testid="activity-board-filter"
+        >
+          <option value="">Semua board</option>
+          {(boards || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <select
+          value={limit}
+          onChange={(e) => setLimit(Number(e.target.value))}
+          className="h-9 rounded-lg border border-[hsl(var(--hairline))] px-2 text-sm bg-[hsl(var(--elevated))] outline-none"
+        >
+          <option value={50}>50 terbaru</option>
+          <option value={80}>80 terbaru</option>
+          <option value={150}>150 terbaru</option>
+          <option value={300}>300 terbaru</option>
+        </select>
+      </div>
+
       <div className="space-y-3">
+        {isLoading && <p className="text-sm text-3">Memuat…</p>}
         {(activities || []).map((a) => (
-          <div key={a.id} className="flex items-start gap-3 border-b border-[hsl(var(--hairline))] pb-2.5 last:border-b-0" data-testid={`activity-row-${a.id}`}>
-            <div className="w-7 h-7 rounded-full bg-[hsl(var(--muted))] flex items-center justify-center shrink-0">
-              <Activity size={13} className="text-2" />
-            </div>
-            <div>
-              <p className="text-sm text-2"><span className="font-semibold text-foreground">{a.user_name}</span> {a.action}</p>
-              <p className="text-[11px] text-3">{fmtDateTime(a.created_at)}</p>
+          <div key={a.id} className="flex items-start gap-3 border-b border-[hsl(var(--hairline))] pb-3 last:border-b-0" data-testid={`activity-row-${a.id}`}>
+            <Avatar name={a.user_name} size="h-8 w-8 text-[11px]" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-2">
+                <span className="font-semibold text-foreground">{a.user_name || "Sistem"}</span> {a.action}
+              </p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-3">
+                <span>{fmtDateTime(a.created_at)}</span>
+                {a.board_name && (
+                  <>
+                    <span>·</span>
+                    <span>{a.board_name}</span>
+                  </>
+                )}
+                {a.division_name && (
+                  <span className="rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 font-semibold text-2">{a.division_name}</span>
+                )}
+                {a.card_title && a.board_id && (
+                  <Link
+                    to={`/board/${a.board_id}?card=${a.work_item_id}`}
+                    className="rounded bg-[#E9F2FF] px-1.5 py-0.5 font-semibold text-[#0C459A] hover:underline"
+                    title="Buka kartu ini"
+                  >
+                    {a.card_title}{a.is_master_card ? " (Master)" : ""}
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         ))}
-        {(activities || []).length === 0 && <p className="text-sm text-3">Belum ada aktivitas.</p>}
+        {!isLoading && (activities || []).length === 0 && <p className="text-sm text-3">Belum ada aktivitas yang cocok.</p>}
       </div>
     </div>
   );
@@ -430,6 +493,11 @@ function FlowTab() {
         <select value={activeBoardId || ""} onChange={(e) => setBoardId(e.target.value)} className={`${inputCls} max-w-sm`} data-testid="flow-board-select">
           {(boards || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
+        {full?.division?.key === "cs" && (
+          <p className="mt-3 rounded-lg bg-[#E9F2FF] px-3 py-2 text-xs text-[#0C459A]" data-testid="flow-cs-shared-note">
+            📌 Board CS berbagi satu syarat &amp; warna untuk semua staf — ubah di board manapun, otomatis berlaku ke board CS lainnya. Board divisi lain (Draf/Pajak/Perizinan/Desain) tetap terpisah.
+          </p>
+        )}
       </div>
 
       {lists.length > 0 && (
@@ -448,6 +516,7 @@ function ChecklistTemplateRow({ tpl }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(tpl.name);
   const [itemsText, setItemsText] = useState((tpl.items || []).join("\n"));
+  const [csSelfCheck, setCsSelfCheck] = useState(!!tpl.cs_self_check);
   const [busy, setBusy] = useState(false);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["checklist-templates"] });
@@ -459,6 +528,7 @@ function ChecklistTemplateRow({ tpl }) {
       await api.patch(`/checklist-templates/${tpl.id}`, {
         name: name.trim(),
         items: itemsText.split("\n").map((s) => s.trim()).filter(Boolean),
+        cs_self_check: csSelfCheck,
       });
       toast.success("Template disimpan");
       setEditing(false);
@@ -481,7 +551,10 @@ function ChecklistTemplateRow({ tpl }) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="font-semibold text-sm text-foreground">{tpl.name}</p>
-            <p className="text-xs text-3">{(tpl.items || []).length} item</p>
+            <p className="text-xs text-3">
+              {(tpl.items || []).length} item
+              {tpl.cs_self_check && <span className="ml-1.5 rounded bg-[#E3FCEF] px-1.5 py-0.5 font-semibold text-[#216E4E]">CS self-check</span>}
+            </p>
           </div>
           <div className="flex gap-1 shrink-0">
             <button onClick={() => setEditing(true)} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2" title="Ubah"><Pencil size={14} /></button>
@@ -512,9 +585,13 @@ function ChecklistTemplateRow({ tpl }) {
         rows={6}
         className="w-full rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
       />
+      <label className="mt-2 flex items-start gap-2 text-xs text-2">
+        <input type="checkbox" checked={csSelfCheck} onChange={(e) => setCsSelfCheck(e.target.checked)} className="mt-0.5" />
+        <span>CS boleh self-check (langsung FU klien sendiri kalau ada yang kurang, tanpa nunggu Admin verifikasi)</span>
+      </label>
       <div className="flex gap-2 mt-2">
         <button onClick={save} disabled={busy} className={btnPrimary}>{busy ? "Menyimpan..." : "Simpan"}</button>
-        <button onClick={() => { setEditing(false); setName(tpl.name); setItemsText((tpl.items || []).join("\n")); }} className="h-9 px-4 rounded-lg border border-[hsl(var(--hairline))] text-sm text-2 hover:bg-[hsl(var(--muted))]">Batal</button>
+        <button onClick={() => { setEditing(false); setName(tpl.name); setItemsText((tpl.items || []).join("\n")); setCsSelfCheck(!!tpl.cs_self_check); }} className="h-9 px-4 rounded-lg border border-[hsl(var(--hairline))] text-sm text-2 hover:bg-[hsl(var(--muted))]">Batal</button>
       </div>
     </div>
   );
@@ -528,6 +605,7 @@ function ChecklistTemplatesTab() {
   });
   const [name, setName] = useState("");
   const [itemsText, setItemsText] = useState("");
+  const [csSelfCheck, setCsSelfCheck] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const create = async () => {
@@ -537,9 +615,10 @@ function ChecklistTemplatesTab() {
       await api.post("/checklist-templates", {
         name: name.trim(),
         items: itemsText.split("\n").map((s) => s.trim()).filter(Boolean),
+        cs_self_check: csSelfCheck,
       });
       toast.success("Template dibuat");
-      setName(""); setItemsText("");
+      setName(""); setItemsText(""); setCsSelfCheck(false);
       qc.invalidateQueries({ queryKey: ["checklist-templates"] });
     } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
@@ -570,6 +649,10 @@ function ChecklistTemplatesTab() {
             />
           </div>
           <div>
+            <label className="mb-2 flex items-start gap-2 text-xs text-2">
+              <input type="checkbox" checked={csSelfCheck} onChange={(e) => setCsSelfCheck(e.target.checked)} className="mt-0.5" data-testid="tpl-new-cs-self-check" />
+              <span>CS boleh self-check (langsung FU klien sendiri kalau ada yang kurang, tanpa nunggu Admin verifikasi)</span>
+            </label>
             <button onClick={create} disabled={busy} className={`${btnPrimary} flex items-center gap-1.5`} data-testid="tpl-new-submit">
               <Plus size={14} /> {busy ? "Membuat..." : "Buat Template"}
             </button>
@@ -613,6 +696,54 @@ function Toggle({ on, disabled, onChange, testid }) {
   );
 }
 
+// ── Otomasi ──────────────────────────────────────────────────────────────
+function AutomationSettingsTab() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["settings-auto-label-payment"],
+    queryFn: () => api.get("/settings/auto-label-payment").then((r) => r.data),
+  });
+  const [busy, setBusy] = useState(false);
+
+  const toggle = async (enabled) => {
+    setBusy(true);
+    try {
+      await api.patch("/settings/auto-label-payment", { enabled });
+      toast.success(enabled ? "Auto-label status bayar diaktifkan" : "Auto-label status bayar dimatikan");
+      qc.invalidateQueries({ queryKey: ["settings-auto-label-payment"] });
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4" data-testid="admin-automation-tab">
+      <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5">
+        <h3 className="font-heading font-bold text-foreground mb-1">Otomasi</h3>
+        <p className="text-sm text-2 mb-4">Aturan otomatis yang berlaku untuk semua kartu, tidak per-board.</p>
+
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-[hsl(var(--hairline))] p-4">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm text-foreground">Auto-label status pembayaran (DP / Lunas)</p>
+            <p className="text-xs text-3 mt-0.5">
+              Begitu klien bayar sebagian, kartu otomatis dapat label <b>DP</b>; begitu lunas, label berubah jadi <b>Lunas</b>.
+              Diterapkan ke semua kartu turunan job yang sama.
+            </p>
+          </div>
+          <Toggle
+            on={!!data?.enabled}
+            disabled={isLoading || busy}
+            onChange={toggle}
+            testid="toggle-auto-label-payment"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PermissionsTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -649,16 +780,6 @@ function PermissionsTab() {
     } catch (e) { toast.error(errMsg(e)); }
   };
 
-  const copyFromRole = async (srcRole) => {
-    if (!srcRole || activeRole === "super_admin") return;
-    const changes = perms.map((p) => ({ role: activeRole, key: p.key, allowed: !!p.allow[srcRole] }));
-    try {
-      const r = await api.patch("/permissions", { changes });
-      applyMatrix(r.data.matrix);
-      toast.success(`Disalin dari ${ROLE_LABELS[srcRole] || srcRole}`);
-    } catch (e) { toast.error(errMsg(e)); }
-  };
-
   const sync = async () => {
     setSyncing(true);
     try {
@@ -678,6 +799,7 @@ function PermissionsTab() {
   const activeCount = perms.filter((p) => isSuper || p.allow[activeRole]).length;
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="space-y-4" data-testid="admin-permissions-tab">
       <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -727,14 +849,6 @@ function PermissionsTab() {
             <>
               <button onClick={() => bulk(filtered.map((p) => p.key), true)} className="rounded-md bg-[#E3FCEF] px-2.5 py-1.5 text-[12px] font-semibold text-[#216E4E] hover:brightness-95">Aktifkan semua</button>
               <button onClick={() => bulk(filtered.map((p) => p.key), false)} className="rounded-md bg-[hsl(var(--muted))] px-2.5 py-1.5 text-[12px] font-semibold text-2 hover:brightness-95">Kosongkan semua</button>
-              <select
-                defaultValue=""
-                onChange={(e) => { copyFromRole(e.target.value); e.target.value = ""; }}
-                className="h-8 rounded-md border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-2 text-[12px] font-semibold text-2 outline-none"
-              >
-                <option value="">Salin dari peran…</option>
-                {roles.filter((r) => r !== activeRole).map((r) => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
-              </select>
             </>
           )}
         </div>
@@ -781,7 +895,21 @@ function PermissionsTab() {
                   return (
                     <div key={perm.key} className="flex items-center gap-3 px-4 py-2.5">
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] text-foreground">{perm.label}</p>
+                        <p className="flex items-center gap-1.5 text-[13.5px] text-foreground">
+                          {perm.label}
+                          {perm.description && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span tabIndex={0} className="shrink-0 text-3 hover:text-[#0C66E4] cursor-help">
+                                  <Info size={13} />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[280px] text-[12px] leading-snug">
+                                {perm.description}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </p>
                         <code className="text-[10px] text-3">{perm.key}</code>
                       </div>
                       <Toggle
@@ -799,6 +927,7 @@ function PermissionsTab() {
         );
       })}
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -829,6 +958,7 @@ export default function AdminPanel() {
           {isAdmin && <TabsTrigger value="boards" data-testid="tab-trigger-boards">Board</TabsTrigger>}
           {isAdmin && <TabsTrigger value="flow" data-testid="tab-trigger-flow">Alur & Syarat List</TabsTrigger>}
           {isAdmin && <TabsTrigger value="checklist-templates" data-testid="tab-trigger-checklist-templates">Template Checklist</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="automation" data-testid="tab-trigger-automation">Otomasi</TabsTrigger>}
           {isAdmin && <TabsTrigger value="permissions" data-testid="tab-trigger-permissions">Hak Akses</TabsTrigger>}
           <TabsTrigger value="activity" data-testid="tab-trigger-activity">Log Aktivitas</TabsTrigger>
         </TabsList>
@@ -839,6 +969,7 @@ export default function AdminPanel() {
             <TabsContent value="boards" className="mt-4"><BoardsTab divisions={divisions} /></TabsContent>
             <TabsContent value="flow" className="mt-4"><FlowTab /></TabsContent>
             <TabsContent value="checklist-templates" className="mt-4"><ChecklistTemplatesTab /></TabsContent>
+            <TabsContent value="automation" className="mt-4"><AutomationSettingsTab /></TabsContent>
             <TabsContent value="permissions" className="mt-4"><PermissionsTab /></TabsContent>
           </>
         )}

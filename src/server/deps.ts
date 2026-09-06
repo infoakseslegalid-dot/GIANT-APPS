@@ -180,6 +180,20 @@ export async function logActivity(workItemId: string, boardId: string | null, us
     await wsManager.broadcast({ type: "activity", work_item_id: workItemId, board_id: boardId });
 }
 
+// ── Setting: penyimpanan key-value generic untuk toggle app-wide ──────────
+export async function getSetting(key: string): Promise<any> {
+    const row = await db.setting.findUnique({ where: { key } });
+    return row?.value ?? null;
+}
+
+export async function setSetting(key: string, value: any): Promise<void> {
+    await db.setting.upsert({
+        where: { key },
+        update: { value, at: new Date() },
+        create: { key, value },
+    });
+}
+
 export async function notify(userIds: string[], ntype: string, title: string, body: string, workItemId: string | null = null, boardId: string | null = null, exclude: Set<string> | null = null) {
     const excludeSet = exclude || new Set();
     const uniqueIds = new Set(userIds || []);

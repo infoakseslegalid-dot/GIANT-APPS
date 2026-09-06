@@ -77,6 +77,12 @@ export interface ChecklistItem {
   id: string;
   text: string;
   done: boolean;
+  assignee_id?: string | null;
+  due_date?: string | null;
+  /** Bukti kelengkapan (opsional) — hanya salah satu dari dua ini yang terisi. */
+  evidence_attachment_id?: string | null;
+  evidence_comment_id?: string | null;
+  evidence_linked_at?: string | null;
 }
 
 export interface Checklist {
@@ -168,15 +174,15 @@ export interface CardBackProps {
   onOpenSend?: () => void;
 
   /** Checklist. */
-  checklistTemplates?: Array<{ id: string; name: string; items: string[] }>;
-  onAddChecklist: (title: string, items?: string[]) => Promise<void>;
+  checklistTemplates?: Array<{ id: string; name: string; items: string[]; cs_self_check?: boolean }>;
+  onAddChecklist: (title: string, items?: string[], csSelfCheck?: boolean) => Promise<void>;
   onRenameChecklist: (checklistId: string, title: string) => Promise<void>;
   onDeleteChecklist: (checklistId: string) => Promise<void>;
   onAddChecklistItem: (checklistId: string, text: string) => Promise<void>;
   onUpdateChecklistItem: (
     checklistId: string,
     itemId: string,
-    patch: Partial<Pick<ChecklistItem, 'text' | 'done'>>,
+    patch: Partial<Pick<ChecklistItem, 'text' | 'done' | 'assignee_id' | 'due_date' | 'evidence_attachment_id' | 'evidence_comment_id'>>,
   ) => Promise<void>;
   onDeleteChecklistItem: (checklistId: string, itemId: string) => Promise<void>;
   onReorderChecklistItems: (checklistId: string, orderedItemIds: string[]) => Promise<void>;

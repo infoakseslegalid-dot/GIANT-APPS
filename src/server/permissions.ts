@@ -17,42 +17,75 @@ export const ROLES = ['super_admin', 'admin', 'cs', 'supervisor', 'staff', 'view
 
 export const FEATURE_PERMISSIONS = [
   // Administrasi
-  { key: 'user.manage', label: 'Kelola pengguna (tambah / ubah / hapus / reset password)', category: 'Administrasi' },
-  { key: 'division.manage', label: 'Kelola divisi', category: 'Administrasi' },
-  { key: 'automation.manage', label: 'Kelola aturan otomatisasi', category: 'Administrasi' },
-  { key: 'checklist_template.manage', label: 'Kelola template checklist', category: 'Administrasi' },
-  { key: 'permission.manage', label: 'Kelola matriks hak akses ini', category: 'Administrasi' },
+  { key: 'user.manage', label: 'Kelola pengguna (tambah / ubah / hapus / reset password)', category: 'Administrasi',
+    description: 'Tambah pengguna baru, ubah data/peran pengguna, reset password, dan nonaktifkan/hapus akun.' },
+  { key: 'division.manage', label: 'Kelola divisi', category: 'Administrasi',
+    description: 'Buat, ubah nama/warna, atau hapus divisi (CS, Draf, Pajak, Perizinan, Desain, dll).' },
+  { key: 'automation.manage', label: 'Kelola aturan otomatisasi', category: 'Administrasi',
+    description: 'Buat/ubah aturan otomatisasi per board — mis. pindah list otomatis, kirim ke divisi lain, pasang label otomatis saat kartu dibuat/dipindah.' },
+  { key: 'checklist_template.manage', label: 'Kelola template checklist', category: 'Administrasi',
+    description: 'Buat/ubah/hapus template checklist yang dipakai berulang saat menambah checklist ke kartu (mis. daftar kelengkapan "Pendirian PT Umum").' },
+  { key: 'permission.manage', label: 'Kelola matriks hak akses ini', category: 'Administrasi',
+    description: 'Membuka & mengubah halaman Hak Akses ini sendiri — siapa boleh melakukan apa, per peran.' },
   // Board & List
-  { key: 'board.view_all', label: 'Lihat SEMUA board (hanya-baca, lintas divisi)', category: 'Board & List' },
-  { key: 'board.edit_all', label: 'Ubah SEMUA board (lintas divisi) — bukan hanya-baca', category: 'Board & List' },
-  { key: 'board.manage', label: 'Buat / ubah / hapus board', category: 'Board & List' },
-  { key: 'board.manage_members', label: 'Atur anggota board', category: 'Board & List' },
-  { key: 'list.manage', label: 'Buat / ubah / hapus / urutkan list', category: 'Board & List' },
-  { key: 'list.entry_requirements', label: 'Ubah syarat pindah list & warna list', category: 'Board & List' },
-  { key: 'label.manage', label: 'Buat / ubah label board', category: 'Board & List' },
+  { key: 'board.view_all', label: 'Lihat SEMUA board (hanya-baca, lintas divisi)', category: 'Board & List',
+    description: 'Bisa melihat semua board lintas divisi, termasuk yang bukan miliknya — hanya untuk melihat, tidak bisa mengubah isinya.' },
+  { key: 'board.edit_all', label: 'Ubah SEMUA board (lintas divisi) — bukan hanya-baca', category: 'Board & List',
+    description: 'Sama seperti "Lihat semua board", tapi juga boleh mengubah isi board yang bukan miliknya (pindah kartu, edit list, dll).' },
+  { key: 'board.manage', label: 'Buat / ubah / hapus board', category: 'Board & List',
+    description: 'Membuat board baru, mengubah nama/latar board, menyalin board, atau menghapus board.' },
+  { key: 'board.manage_members', label: 'Atur anggota board', category: 'Board & List',
+    description: 'Menambahkan atau mengeluarkan anggota dari sebuah board.' },
+  { key: 'list.manage', label: 'Buat / ubah / hapus / urutkan list', category: 'Board & List',
+    description: 'Membuat, mengubah nama, menghapus, mengarsipkan, atau mengurutkan ulang list di dalam sebuah board.' },
+  { key: 'list.entry_requirements', label: 'Ubah syarat pindah list & warna list', category: 'Board & List',
+    description: 'Mengatur warna list dan syarat checklist yang wajib tercentang sebelum kartu boleh pindah ke list itu (menu "Alur & Syarat Pindah List").' },
+  { key: 'label.manage', label: 'Buat / ubah label board', category: 'Board & List',
+    description: 'Membuat label baru atau mengubah nama/warna label yang sudah ada di sebuah board.' },
   // Pekerjaan / kartu
-  { key: 'card.create', label: 'Buat kartu pekerjaan', category: 'Kartu / Pekerjaan' },
-  { key: 'card.edit', label: 'Ubah isi kartu (judul, deskripsi, tanggal, cover)', category: 'Kartu / Pekerjaan' },
-  { key: 'card.move', label: 'Pindahkan / geser kartu antar list & board', category: 'Kartu / Pekerjaan' },
-  { key: 'card.archive', label: 'Arsipkan / kembalikan kartu', category: 'Kartu / Pekerjaan' },
-  { key: 'card.delete', label: 'Hapus kartu / kartu mirror (assignment)', category: 'Kartu / Pekerjaan' },
-  { key: 'card.comment', label: 'Tulis / ubah / hapus komentar', category: 'Kartu / Pekerjaan' },
-  { key: 'card.assign_members', label: 'Tetapkan anggota / PIC ke kartu', category: 'Kartu / Pekerjaan' },
-  { key: 'card.complete', label: 'Tandai selesai / buka kembali pekerjaan', category: 'Kartu / Pekerjaan' },
-  { key: 'card.transfer_owner', label: 'Pindahkan kepemilikan (Owner) job ke orang lain', category: 'Kartu / Pekerjaan' },
+  { key: 'card.create', label: 'Buat kartu pekerjaan', category: 'Kartu / Pekerjaan',
+    description: 'Membuat kartu pekerjaan baru di sebuah board.' },
+  { key: 'card.edit', label: 'Ubah isi kartu (judul, deskripsi, tanggal, cover)', category: 'Kartu / Pekerjaan',
+    description: 'Mengubah judul, nama klien, deskripsi, tanggal mulai/deadline, warna/gambar cover, checklist, dan label kartu.' },
+  { key: 'card.move', label: 'Pindahkan / geser kartu antar list & board', category: 'Kartu / Pekerjaan',
+    description: 'Memindahkan/menggeser kartu antar list, atau antar board (termasuk mem-mirror kartu ke board lain).' },
+  { key: 'card.archive', label: 'Arsipkan / kembalikan kartu', category: 'Kartu / Pekerjaan',
+    description: 'Mengarsipkan kartu (menyembunyikan dari board tanpa menghapus) atau mengembalikannya dari arsip.' },
+  { key: 'card.delete', label: 'Hapus kartu / kartu mirror (assignment)', category: 'Kartu / Pekerjaan',
+    description: 'Menghapus kartu secara permanen, termasuk kartu mirror/assignment turunannya.' },
+  { key: 'card.comment', label: 'Tulis / ubah / hapus komentar', category: 'Kartu / Pekerjaan',
+    description: 'Menulis komentar baru, mengubah, atau menghapus komentar pada sebuah kartu.' },
+  { key: 'card.assign_members', label: 'Tetapkan anggota / PIC ke kartu', category: 'Kartu / Pekerjaan',
+    description: 'Menambahkan/menghapus anggota kartu, dan menetapkan siapa yang menjadi PIC.' },
+  { key: 'card.complete', label: 'Tandai selesai / buka kembali pekerjaan', category: 'Kartu / Pekerjaan',
+    description: 'Menandai pekerjaan sebagai selesai, atau membuka kembali kartu yang sudah ditandai selesai.' },
+  { key: 'card.transfer_owner', label: 'Pindahkan kepemilikan (Owner) job ke orang lain', category: 'Kartu / Pekerjaan',
+    description: 'Memindahkan kepemilikan (Owner) satu job ke orang lain — tetap dibatasi hanya Owner job itu sendiri yang boleh melakukannya, kecuali supervisor/super admin.' },
   // Bank Data & Distribusi
-  { key: 'bankdata.send_to_division', label: 'Kirim pekerjaan ke Divisi (Bank Data)', category: 'Bank Data & Distribusi' },
-  { key: 'bankdata.intake', label: 'Input pekerjaan baru langsung ke Bank Data', category: 'Bank Data & Distribusi' },
-  { key: 'bankdata.claim', label: 'Klaim / ambil pekerjaan dari Bank Data', category: 'Bank Data & Distribusi' },
-  { key: 'bankdata.release', label: 'Lepaskan pekerjaan', category: 'Bank Data & Distribusi' },
-  { key: 'bankdata.takeover', label: 'Ambil alih pekerjaan orang lain', category: 'Bank Data & Distribusi' },
+  { key: 'bankdata.send_to_division', label: 'Kirim pekerjaan ke Divisi (Bank Data)', category: 'Bank Data & Distribusi',
+    description: 'Mengirim satu pekerjaan ke divisi lain lewat alur Bank Data (membuat kartu assignment turunan di board divisi tujuan).' },
+  { key: 'bankdata.intake', label: 'Input pekerjaan baru langsung ke Bank Data', category: 'Bank Data & Distribusi',
+    description: 'Menginput pekerjaan client-offline langsung ke Bank Data suatu divisi, tanpa lewat kartu CS terlebih dulu.' },
+  { key: 'bankdata.claim', label: 'Klaim / ambil pekerjaan dari Bank Data', category: 'Bank Data & Distribusi',
+    description: 'Mengambil (klaim) pekerjaan yang masih menunggu di Bank Data suatu divisi supaya jadi PIC-nya.' },
+  { key: 'bankdata.release', label: 'Lepaskan pekerjaan', category: 'Bank Data & Distribusi',
+    description: 'Melepaskan kembali pekerjaan yang sedang dipegang, supaya bisa diklaim anggota divisi lain.' },
+  { key: 'bankdata.takeover', label: 'Ambil alih pekerjaan orang lain', category: 'Bank Data & Distribusi',
+    description: 'Mengambil alih pekerjaan yang sudah dipegang orang lain — permission khusus, biasanya cuma untuk supervisor ke atas.' },
   // Halaman agregat
-  { key: 'hari.view', label: 'Buka halaman Board Harian (Hari 1-7)', category: 'Halaman' },
-  { key: 'hari.advance', label: 'Majukan tahap HARI pada Board Harian', category: 'Halaman' },
-  { key: 'skor.view', label: 'Buka halaman Peta Skor Global', category: 'Halaman' },
-  { key: 'report.view', label: 'Buka halaman Rekap & Performa (per user, per divisi, keuangan)', category: 'Halaman' },
+  { key: 'hari.view', label: 'Buka halaman Board Harian (Hari 1-7)', category: 'Halaman',
+    description: 'Membuka halaman Board Harian — peta tahap HARI 1 sampai 7/8 yang merangkum kartu lintas board.' },
+  { key: 'hari.advance', label: 'Majukan tahap HARI pada Board Harian', category: 'Halaman',
+    description: 'Memajukan kartu ke tahap HARI berikutnya langsung dari halaman Board Harian.' },
+  { key: 'skor.view', label: 'Buka halaman Peta Skor Global', category: 'Halaman',
+    description: 'Membuka halaman Peta Skor Global — ringkasan posisi semua kartu CS lintas board dalam satu tampilan.' },
+  { key: 'report.view', label: 'Buka halaman Rekap & Performa (per user, per divisi, keuangan)', category: 'Halaman',
+    description: 'Membuka halaman Rekap & Performa — omzet, performa per user/divisi, dan rekap data keuangan job.' },
   // Keuangan
-  { key: 'finance.manage', label: 'Input harga job & catat pembayaran (DP / lunas)', category: 'Keuangan' },
+  { key: 'finance.manage', label: 'Input harga job & catat pembayaran (DP / lunas)', category: 'Keuangan',
+    description: 'Mengisi/mengubah harga job dan mencatat pembayaran masuk (DP/pelunasan) — tetap dibatasi hanya PIC/pembuat/owner job itu, kecuali supervisor/super admin.' },
+  { key: 'finance.delete_payment', label: 'Hapus catatan pembayaran (koreksi)', category: 'Keuangan',
+    description: 'Menghapus catatan pembayaran yang salah input (koreksi) — tetap dibatasi hanya PIC/pembuat/owner job itu, kecuali supervisor/super admin.' },
 ].map((p) => ({ ...p, kind: 'feature' }));
 
 /** table.<Model> untuk tiap model Prisma. */
@@ -61,6 +94,7 @@ export function tablePermissionDefs() {
     key: `table.${m.name}`,
     label: `Akses langsung tabel "${m.name}"`,
     category: 'Tabel Database',
+    description: `Akses baca/tulis langsung ke tabel database "${m.name}" — teknis/debug, di luar aksi harian aplikasi. Default hanya super admin.`,
     kind: 'table',
   }));
 }
@@ -89,6 +123,10 @@ function defaultAllowed(role: string, def: { key: string; kind: string }): boole
   // `canManageFinance` tetap membatasi ke PIC / pembuat / owner kartu itu.
   // admin (operasional) & viewer tidak. Super admin & supervisor bebas (di atas).
   if (key === 'finance.manage') return role === 'cs' || role === 'staff';
+
+  // Hapus pembayaran (koreksi): sama pola dengan finance.manage — CS/staff PIC
+  // job boleh, route `canDeletePayment` tetap membatasi ke PIC/pembuat/owner.
+  if (key === 'finance.delete_payment') return role === 'cs' || role === 'staff';
 
   // Pindahkan kepemilikan (Owner Master Card): CS/staff lolos gerbang izin ini,
   // TAPI route `/transfer-owner` tetap membatasi ke Owner job itu sendiri
@@ -212,6 +250,7 @@ export async function fullMatrix() {
     permissions: defs.map((d) => ({
       key: d.key,
       label: d.label,
+      description: d.description || '',
       category: d.category,
       kind: d.kind,
       allow: Object.fromEntries(roles.map((role) => [

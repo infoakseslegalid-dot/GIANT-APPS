@@ -97,12 +97,14 @@ export default function AllWork() {
                   <span className="text-2 text-xs ml-1.5">{item.list_name}</span>
                 </td>
                 <td className="px-4 py-2.5">
-                  <div className="flex -space-x-1.5">
-                    {(item.member_ids || []).length === 0 && <span className="text-[11px] text-[#E56910] font-semibold">Belum ada</span>}
-                    {(item.member_ids || []).slice(0, 3).map((id) => (
-                      <Avatar key={id} name={usersById[id]?.name || "?"} color={usersById[id]?.avatar_color} size="h-6 w-6 text-[10px]" />
-                    ))}
-                  </div>
+                  {item.current_pic_name ? (
+                    <div className="flex items-center gap-1.5">
+                      <Avatar name={item.current_pic_name} color={usersById[item.current_pic_id]?.avatar_color} size="h-6 w-6 text-[10px]" />
+                      <span className="text-2 whitespace-nowrap">{item.current_pic_name}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-[#E56910] font-semibold">Belum ada</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-2">{item.due_date ? fmtDate(item.due_date) : "—"}</td>
                 <td className="px-4 py-2.5">

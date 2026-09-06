@@ -69,12 +69,22 @@ export default function CardLabels(
         
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="flex h-8 w-8 items-center justify-center rounded bg-[hsl(var(--muted))] text-2 transition-colors hover:bg-[hsl(var(--accent))]"
-            >
-              <Plus size={16} />
-            </button>
+            {card.labels?.length ? (
+              <button
+                type="button"
+                aria-label="Tambah label"
+                className="flex h-8 w-8 items-center justify-center rounded bg-[hsl(var(--muted))] text-2 transition-colors hover:bg-[hsl(var(--accent))]"
+              >
+                <Plus size={16} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="flex h-7 items-center gap-1.5 rounded-[5px] border border-dashed border-[#c1c7d0] px-2.5 text-[12px] font-medium text-2 transition-colors hover:border-[#0c66e4] hover:text-[#0c66e4]"
+              >
+                <Plus size={13} /> Tambah label
+              </button>
+            )}
           </PopoverTrigger>
           {/* @ts-expect-error JS interop children missing */}
           <PopoverContent align="start" className="w-80 p-0 shadow-lg rounded-[8px] overflow-hidden border-[hsl(var(--hairline))]" sideOffset={8}>

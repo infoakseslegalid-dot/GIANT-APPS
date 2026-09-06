@@ -129,7 +129,7 @@ async function labelIdsToShared(labelIds: string[]): Promise<SharedLabel[]> {
 }
 
 /** Terapkan daftar label kanonik ke SEMUA WorkItem satu grup Master Card. */
-async function syncGroupLabels(masterCardId: string, shared: SharedLabel[], actor: any) {
+export async function syncGroupLabels(masterCardId: string, shared: SharedLabel[], actor: any) {
   const canon = normLabelList(shared);
   await prisma.masterCard.update({ where: { id: masterCardId }, data: { sharedLabels: canon } });
 
@@ -373,11 +373,13 @@ router.get('/work-items/:item_id', async (c) => {
   const lst = await prisma.list.findUnique({ where: { id: item.listId } });
   const board = await prisma.board.findUnique({ where: { id: item.boardId } });
 
-  // Untuk assignment (kartu grup): deskripsi & checklist DITAMPILKAN dari Master
-  // Card rep (canonical) supaya "tampil sama" di semua board.
+  // Untuk assignment (kartu grup): judul, deskripsi & checklist DITAMPILKAN dari
+  // Master Card rep (canonical) supaya "tampil sama" di semua board — konsisten
+  // dengan field BERSAMA di PATCH /work-items/:item_id (judul, klien, deskripsi).
   const host = await canonicalItem(item);
   const itemOut: any = formatWorkItem(item);
   if (host.id !== item.id) {
+    itemOut.title = host.title || itemOut.title;
     itemOut.description = host.description || '';
     itemOut.checklists = normChecklists(host.checklists);
     itemOut.client_name = host.clientName ?? itemOut.client_name;
@@ -459,6 +461,19 @@ router.patch('/work-items/:item_id', async (c) => {
     local.labels = { deleteMany: {}, create: body.label_ids.map((id: string) => ({ labelId: id })) };
   }
 
+  // Susun pesan aktivitas per field yang benar-benar berubah supaya tercatat detail.
+  const changes: string[] = [];
+  if (shared.title !== undefined && shared.title !== host.title) changes.push(`mengubah judul menjadi "${shared.title}"`);
+  if (shared.clientName !== undefined && shared.clientName !== host.clientName) changes.push(`mengubah nama klien menjadi "${shared.clientName || '-'}"`);
+  if (shared.description !== undefined && shared.description !== host.description) changes.push('mengubah deskripsi');
+  if (local.startDate !== undefined && String(local.startDate || '') !== String(item.startDate || '')) changes.push(local.startDate ? 'mengatur tanggal mulai' : 'menghapus tanggal mulai');
+  if (local.dueDate !== undefined && String(local.dueDate || '') !== String(item.dueDate || '')) changes.push(local.dueDate ? 'mengatur tanggal deadline' : 'menghapus tanggal deadline');
+  if (local.needsApproval !== undefined && local.needsApproval !== item.needsApproval) changes.push(local.needsApproval ? 'mengaktifkan perlu persetujuan' : 'menonaktifkan perlu persetujuan');
+  if (local.priority !== undefined && local.priority !== item.priority) changes.push(`mengubah prioritas menjadi "${local.priority}"`);
+  if (local.coverColor !== undefined && local.coverColor !== item.coverColor) changes.push('mengubah warna cover');
+  if (local.coverAttachmentId !== undefined && local.coverAttachmentId !== item.coverAttachmentId) changes.push('mengubah gambar cover');
+  if (body.label_ids !== undefined && !item.masterCardId) changes.push('mengubah label');
+
   if (Object.keys(local).length) {
     await prisma.workItem.update({ where: { id: itemId }, data: { ...local, updatedAt: new Date() } });
   }
@@ -470,7 +485,10 @@ router.patch('/work-items/:item_id', async (c) => {
     const sh = await labelIdsToShared(body.label_ids || []);
     await syncGroupLabels(item.masterCardId, sh, user);
     await logActivity(host.id, host.boardId, user, `mengubah label "${host.title}"`);
-  } else {
+  }
+  if (changes.length) {
+    await logActivity(host.id, host.boardId, user, `${changes.join(', ')} pada "${host.title}"`);
+  } else if (!groupedLabelChange) {
     await logActivity(host.id, host.boardId, user, `mengubah pekerjaan "${host.title}"`);
   }
   if (grouped && Object.keys(shared).length) await broadcastItem(await getWorkItem(host.id));
@@ -1172,6 +1190,19 @@ router.post('/work-items/:item_id/assign', async (c) => {
   
   await prisma.workItem.update({ where: { id: itemId }, data: updateData });
 
+  if (body.remove_user_ids?.length) {
+    const removed = await prisma.user.findMany({ where: { id: { in: body.remove_user_ids } }, select: { name: true } });
+    const names = removed.map((u: any) => u.name).filter(Boolean).join(', ');
+    await logActivity(itemId, item.boardId, user, `menghapus anggota${names ? ` ${names}` : ''} dari "${item.title}"`);
+  }
+  if (body.add_division_ids?.length || body.remove_division_ids?.length) {
+    const divIds = [...(body.add_division_ids || []), ...(body.remove_division_ids || [])];
+    const divs = await prisma.division.findMany({ where: { id: { in: divIds } }, select: { id: true, name: true } });
+    const divName = (id: string) => divs.find((d: any) => d.id === id)?.name || id;
+    if (body.add_division_ids?.length) await logActivity(itemId, item.boardId, user, `menambahkan divisi ${body.add_division_ids.map(divName).join(', ')} pada "${item.title}"`);
+    if (body.remove_division_ids?.length) await logActivity(itemId, item.boardId, user, `menghapus divisi ${body.remove_division_ids.map(divName).join(', ')} pada "${item.title}"`);
+  }
+
   // "Join" (menambahkan diri sendiri) → kalau kartu BELUM ada PIC, otomatis jadi PIC.
   let becamePic = false;
   const joinedSelf = Array.isArray(body.add_user_ids) && body.add_user_ids.length === 1 && body.add_user_ids[0] === user.id;
@@ -1601,8 +1632,10 @@ router.delete('/work-items/:item_id/checklists/:cl_id', async (c) => {
   const item = await getItemChecked(itemId, user);
   { const _d = await editDenied(c, user, item); if (_d) return _d; }
   const host = await canonicalItem(item);
+  const deleted = normChecklists(host.checklists).find((x) => x.id === clId);
   const checklists = normChecklists(host.checklists).filter((x) => x.id !== clId);
   await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  if (deleted) await logActivity(host.id, host.boardId, user, `menghapus checklist "${deleted.title}"`);
   await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
@@ -1620,6 +1653,7 @@ router.post('/work-items/:item_id/checklists/:cl_id/items', async (c) => {
   const cl = checklists.find((x) => x.id === clId);
   if (cl) cl.items.push({ id: newId(), text: body.text.trim(), done: false });
   await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  if (cl) await logActivity(host.id, host.boardId, user, `menambahkan item "${body.text.trim()}" pada checklist "${cl.title}"`);
   await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
@@ -1656,16 +1690,45 @@ router.patch('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) =
   const host = await canonicalItem(item);
   const checklists = normChecklists(host.checklists);
   const cl = checklists.find((x) => x.id === clId);
+  const changes: string[] = [];
+  let subText = '';
   if (cl) {
     const sub = cl.items.find((i) => i.id === subId);
     if (sub) {
-      if (body.done !== undefined) sub.done = body.done;
-      if (body.text !== undefined) sub.text = body.text.trim();
-      if (body.assignee_id !== undefined) sub.assignee_id = body.assignee_id;
-      if (body.due_date !== undefined) sub.due_date = body.due_date;
+      subText = sub.text;
+      if (body.done !== undefined && body.done !== sub.done) {
+        changes.push(body.done ? 'menyelesaikan' : 'membuka kembali');
+        sub.done = body.done;
+      }
+      if (body.text !== undefined) {
+        const t = body.text.trim();
+        if (t !== sub.text) { changes.push(`mengubah teks menjadi "${t}"`); sub.text = t; }
+      }
+      if (body.assignee_id !== undefined && body.assignee_id !== sub.assignee_id) {
+        changes.push(body.assignee_id ? 'menetapkan penanggung jawab' : 'menghapus penanggung jawab');
+        sub.assignee_id = body.assignee_id;
+      }
+      if (body.due_date !== undefined && body.due_date !== sub.due_date) {
+        changes.push(body.due_date ? 'mengatur tenggat' : 'menghapus tenggat');
+        sub.due_date = body.due_date;
+      }
+      // Bukti kelengkapan (opsional): tautkan item checklist ke satu
+      // lampiran ATAU satu komentar yang membuktikan item itu sudah ada.
+      if (body.evidence_attachment_id !== undefined && body.evidence_attachment_id !== sub.evidence_attachment_id) {
+        changes.push(body.evidence_attachment_id ? 'menautkan bukti lampiran' : 'menghapus tautan bukti');
+        sub.evidence_attachment_id = body.evidence_attachment_id;
+        sub.evidence_comment_id = null;
+        sub.evidence_linked_at = body.evidence_attachment_id ? new Date().toISOString() : null;
+      } else if (body.evidence_comment_id !== undefined && body.evidence_comment_id !== sub.evidence_comment_id) {
+        changes.push(body.evidence_comment_id ? 'menautkan bukti komentar' : 'menghapus tautan bukti');
+        sub.evidence_comment_id = body.evidence_comment_id;
+        sub.evidence_attachment_id = null;
+        sub.evidence_linked_at = body.evidence_comment_id ? new Date().toISOString() : null;
+      }
     }
   }
   await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  if (changes.length) await logActivity(host.id, host.boardId, user, `${changes.join(', ')} item checklist "${subText}"`);
   await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
@@ -1680,8 +1743,10 @@ router.delete('/work-items/:item_id/checklists/:cl_id/items/:sub_id', async (c) 
   const host = await canonicalItem(item);
   const checklists = normChecklists(host.checklists);
   const cl = checklists.find((x) => x.id === clId);
+  const deletedSub = cl?.items.find((i) => i.id === subId);
   if (cl) cl.items = cl.items.filter((i) => i.id !== subId);
   await prisma.workItem.update({ where: { id: host.id }, data: { checklists, updatedAt: new Date() } });
+  if (deletedSub) await logActivity(host.id, host.boardId, user, `menghapus item checklist "${deletedSub.text}"`);
   await broadcastItem(await getWorkItem(host.id));
   return c.json({ ok: true });
 });
@@ -1784,8 +1849,13 @@ router.get('/work-items', async (c) => {
   if (status) where.status = status;
   if (q) where.OR = [{ title: { contains: q, mode: 'insensitive' } }, { clientName: { contains: q, mode: 'insensitive' } }];
   
-  const items = await prisma.workItem.findMany({ where, orderBy: { updatedAt: 'desc' }, include: { board: true, list: true } });
-  return c.json(items.map((i: any) => ({ ...formatWorkItem(i), board_name: i.board.name, list_name: i.list.name })));
+  const items = await prisma.workItem.findMany({
+    where, orderBy: { updatedAt: 'desc' },
+    include: { board: true, list: true, currentPic: true, members: true },
+  });
+  return c.json(items.map((i: any) => ({
+    ...formatWorkItem(i), board_name: i.board.name, board_background: i.board.background, list_name: i.list.name,
+  })));
 });
 
 router.get('/search', async (c) => {
@@ -2030,8 +2100,9 @@ router.delete('/comments/:comment_id', async (c) => {
   if (comment.createdById !== user.id && user.role !== "super_admin") return c.json({ error: "Tidak ada akses" }, 403);
   
   await prisma.comment.delete({ where: { id: commentId } });
-  
+
   const item = await getWorkItem(comment.workItemId);
+  await logActivity(item.id, item.boardId, user, "menghapus komentar");
   await broadcastItem(item);
   return c.json({ ok: true });
 });

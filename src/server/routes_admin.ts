@@ -7,7 +7,8 @@ import {
 import {
   zValidator } from '@hono/zod-validator'
 import {
-  db, requireAdmin, requireSupervisor, canViewBoard, canEditBoard, broadcastBoard, getBoard, hashPassword, todayStr
+  db, requireAdmin, requireSupervisor, canViewBoard, canEditBoard, broadcastBoard, getBoard, hashPassword, todayStr,
+  getSetting, setSetting,
 } from './deps'
 import { fullMatrix, syncPermissions, invalidatePermCache, requirePerm } from './permissions'
 import { can } from './permissions'
@@ -587,6 +588,14 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
       f.master_item_id = m?.id || null
       f.master_board_name = m?.board?.name || null
       f.master_list_name = m?.list?.name || null
+      // Judul & nama klien = single source of truth di Master Card rep (lihat
+      // AGENTS.md / komentar di GET /work-items/:item_id) — kalau tidak
+      // di-fallback ke sini, kartu assignment di board tetap tampil judul lama
+      // walau sudah diubah dari kartu master.
+      if (m) {
+        f.title = m.title || f.title
+        f.client_name = m.clientName ?? f.client_name
+      }
     }
     return f
   })
@@ -685,6 +694,29 @@ adminRouter.patch('/lists/:list_id', zValidator('json', UpdateListBody), async (
   if (Object.keys(updates).length > 0) {
     await db.list.update({ where: { id: listId }, data: updates })
     await broadcastBoard(lst.boardId)
+
+    // "CS seragam semua" — board apa pun yang divisinya CS berbagi SATU
+    // config warna & syarat pindah list (staf CS punya board masing-masing
+    // tapi list-nya identik). Board Admin per-divisi (draf/pajak/dst) tidak
+    // ikut fan-out ini, tetap terpisah seperti sebelumnya.
+    const isCsBoard = lst.board.division?.key === 'cs'
+    const fanOutFields: any = {}
+    if (body.color !== undefined) fanOutFields.color = body.color
+    if (body.entryRequirements !== undefined) fanOutFields.entryRequirements = body.entryRequirements as any
+    if (isCsBoard && Object.keys(fanOutFields).length > 0) {
+      const siblings = await db.list.findMany({
+        where: {
+          id: { not: listId },
+          name: { equals: lst.name, mode: 'insensitive' },
+          board: { divisionId: lst.board.divisionId },
+        },
+        select: { id: true, boardId: true },
+      })
+      for (const sib of siblings) {
+        await db.list.update({ where: { id: sib.id }, data: fanOutFields })
+        await broadcastBoard(sib.boardId)
+      }
+    }
   }
   const updated = await db.list.findUnique({ where: { id: listId } })
   return c.json(updated)
@@ -922,12 +954,40 @@ adminRouter.delete('/automation/:rule_id', async (c) => {
 adminRouter.get('/activities', async (c) => {
   const user = c.get('user')
   requireSupervisor(user)
-  const limit = parseInt(c.req.query('limit') || '50', 10)
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '80', 10) || 80, 1), 300)
+  const q = (c.req.query('q') || '').trim()
+  const boardId = c.req.query('board_id') || undefined
+  const userId = c.req.query('user_id') || undefined
+
+  const where: any = {}
+  if (q) where.action = { contains: q, mode: 'insensitive' }
+  if (boardId) where.boardId = boardId
+  if (userId) where.userId = userId
+
   const acts = await db.activity.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
-    take: limit
+    take: limit,
+    include: {
+      workItem: { select: { id: true, title: true, masterCardId: true } },
+      board: { select: { id: true, name: true, division: { select: { key: true, name: true } } } },
+    },
   })
-  return c.json(acts)
+  return c.json(acts.map((a) => ({
+    id: a.id,
+    action: a.action,
+    detail: a.detail,
+    user_id: a.userId,
+    user_name: a.userName,
+    created_at: a.createdAt,
+    work_item_id: a.workItemId,
+    card_title: a.workItem?.title || null,
+    is_master_card: !!a.workItem?.masterCardId,
+    board_id: a.boardId,
+    board_name: a.board?.name || null,
+    division_name: a.board?.division?.name || null,
+    division_key: a.board?.division?.key || null,
+  })))
 })
 
 adminRouter.get('/stats', async (c) => {
@@ -1041,6 +1101,7 @@ const tplOut = (t) => ({
   name: t.name,
   items: Array.isArray(t.items) ? t.items : asItems(t.items),
   position: t.position,
+  cs_self_check: !!t.csSelfCheck,
   created_at: t.createdAt,
 })
 
@@ -1058,7 +1119,7 @@ adminRouter.post('/checklist-templates', async (c) => {
   const items = asItems(body.items)
   const count = await db.checklistTemplate.count()
   const created = await db.checklistTemplate.create({
-    data: { name, items, position: (count + 1) * 10, createdById: user.id },
+    data: { name, items, position: (count + 1) * 10, createdById: user.id, csSelfCheck: !!body.cs_self_check },
   })
   return c.json(tplOut(created))
 })
@@ -1076,6 +1137,7 @@ adminRouter.patch('/checklist-templates/:id', async (c) => {
   }
   if (body.items !== undefined) data.items = asItems(body.items)
   if (body.position !== undefined) data.position = Number(body.position) || 0
+  if (body.cs_self_check !== undefined) data.csSelfCheck = !!body.cs_self_check
   const updated = await db.checklistTemplate.update({ where: { id }, data })
   return c.json(tplOut(updated))
 })
@@ -1086,4 +1148,22 @@ adminRouter.delete('/checklist-templates/:id', async (c) => {
   const id = c.req.param('id')
   await db.checklistTemplate.delete({ where: { id } })
   return c.json({ ok: true })
+})
+
+// ---------- SETTINGS (toggle app-wide, dikelola dari Panel Admin) ----------
+const AUTO_LABEL_PAYMENT_KEY = 'auto_label_payment_status'
+
+adminRouter.get('/settings/auto-label-payment', async (c) => {
+  const user = c.get('user')
+  requireSupervisor(user)
+  const value = await getSetting(AUTO_LABEL_PAYMENT_KEY)
+  return c.json({ enabled: !!value?.enabled })
+})
+
+adminRouter.patch('/settings/auto-label-payment', async (c) => {
+  const user = c.get('user')
+  requireSupervisor(user)
+  const body = await c.req.json()
+  await setSetting(AUTO_LABEL_PAYMENT_KEY, { enabled: !!body.enabled })
+  return c.json({ enabled: !!body.enabled })
 })

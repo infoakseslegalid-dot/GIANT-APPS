@@ -358,13 +358,19 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       onRenameAttachment={async () => { toast.info('Ganti nama lampiran belum tersedia'); }}
 
       checklistTemplates={(checklistTemplates || []).map((t: any) => ({
-        id: t.id, name: t.name, items: Array.isArray(t.items) ? t.items : [],
+        id: t.id, name: t.name, items: Array.isArray(t.items) ? t.items : [], cs_self_check: !!t.cs_self_check,
       }))}
-      onAddChecklist={async (title, templateItems) => {
+      onAddChecklist={async (title, templateItems, csSelfCheck) => {
         const res = await run(() => api.post(`/work-items/${curId}/checklists`, { title }));
         if (res?.data?.id && templateItems && templateItems.length > 0) {
           for (const text of templateItems) {
             await run(() => api.post(`/work-items/${curId}/checklists/${res.data.id}/items`, { text }));
+          }
+          // Template resmi (Admin Panel) yang BUKAN "CS self-check" otomatis
+          // dapat 1 item penutup yang jadi penanda Admin sudah verifikasi —
+          // sesuai kebijakan per jenis layanan yang diatur di Admin Panel.
+          if (csSelfCheck === false) {
+            await run(() => api.post(`/work-items/${curId}/checklists/${res.data.id}/items`, { text: 'Diverifikasi Admin' }));
           }
         }
       }}

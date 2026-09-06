@@ -9,11 +9,37 @@
 import { Hono } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { requirePerm } from './permissions';
+import { logActivity, getSetting } from './deps';
+import { syncGroupLabels } from './routes_work';
 
 const prisma = new PrismaClient();
 const router = new Hono();
 
 const SUPERVISOR_ROLES = ['super_admin', 'supervisor'];
+const rp = (n: number | null | undefined) => (n == null ? '-' : 'Rp ' + Math.round(n).toLocaleString('id-ID'));
+const PAYMENT_KIND_LABELS: Record<string, string> = { dp: 'DP', pelunasan: 'pelunasan', full: 'lunas' };
+
+const AUTO_LABEL_SETTING_KEY = 'auto_label_payment_status';
+const PAYMENT_STATUS_LABEL_NAMES = ['dp', 'lunas']; // dibandingkan lowercase
+
+// Tempelkan/lepas label "DP"/"Lunas" pada SELURUH kartu satu grup Master Card
+// sesuai status pembayaran terkini — kalau saklarnya aktif di Admin Panel.
+async function applyPaymentStatusLabel(masterCardId: string, status: string, actor: any) {
+  const setting = await getSetting(AUTO_LABEL_SETTING_KEY);
+  if (!setting?.enabled) return;
+
+  const mc = await prisma.masterCard.findUnique({ where: { id: masterCardId } });
+  if (!mc) return;
+  let shared: any[] = [];
+  try { shared = Array.isArray(mc.sharedLabels) ? mc.sharedLabels : JSON.parse(mc.sharedLabels || '[]'); } catch { shared = []; }
+
+  const kept = shared.filter((l: any) => !PAYMENT_STATUS_LABEL_NAMES.includes((l?.name || '').trim().toLowerCase()));
+  if (status === 'dp') kept.push({ name: 'DP', color: 'yellow' });
+  else if (status === 'lunas') kept.push({ name: 'Lunas', color: 'green' });
+  // status 'belum' / 'no_price' → tidak menambahkan label apa pun (sesuai keputusan produk).
+
+  await syncGroupLabels(masterCardId, kept, actor);
+}
 
 // ── util periode ─────────────────────────────────────────────────────────
 function periodRange(period: string, dateStr?: string) {
@@ -39,6 +65,29 @@ const inRange = (d: any, from: Date, to: Date) => {
   const t = new Date(d).getTime();
   return t >= from.getTime() && t < to.getTime();
 };
+
+/** Rentang periode SEBELUMNYA (sama panjang) — buat perbandingan naik/turun. */
+function prevRangeFor(period: string, from: Date, to: Date) {
+  if (period === 'month') {
+    const prevFrom = new Date(from.getFullYear(), from.getMonth() - 1, 1);
+    return { from: prevFrom, to: from };
+  }
+  const durationMs = to.getTime() - from.getTime();
+  return { from: new Date(from.getTime() - durationMs), to: from };
+}
+/** % perubahan vs periode sebelumnya. null kalau tidak ada pembanding (dua-duanya 0). */
+function pctDelta(curr: number, prev: number): number | null {
+  if (!prev) return curr ? null : 0; // prev 0 & curr > 0 → "baru", bukan %, biar frontend tampilkan "baru"
+  return Math.round(((curr - prev) / prev) * 1000) / 10;
+}
+
+const AGING_BUCKETS = ['0-7 hari', '8-14 hari', '15-30 hari', '>30 hari'];
+function agingBucket(days: number): string {
+  if (days <= 7) return AGING_BUCKETS[0];
+  if (days <= 14) return AGING_BUCKETS[1];
+  if (days <= 30) return AGING_BUCKETS[2];
+  return AGING_BUCKETS[3];
+}
 
 // ── klasifikasi kartu: list / doing / done ───────────────────────────────
 const DONE_RE = /(^|\b)(FINISH|DONE|SELESAI)(\b|$)/;
@@ -88,6 +137,20 @@ function canManageFinance(user: any, item: any, mc: any): boolean {
   return (
     item.currentPicId === user.id ||
     item.createdById === user.id ||
+    (mc && mc.ownerUserId === user.id)
+  );
+}
+
+// ── siapa yang boleh menghapus catatan pembayaran (koreksi) ─────────────
+// Default: sama seperti dulu (hanya supervisor+). Bisa dilonggarkan ke
+// PIC/pembuat/owner job lewat Admin Panel → Hak Akses → "finance.delete_payment".
+function canDeletePayment(user: any, item: any, mc: any): boolean {
+  if (SUPERVISOR_ROLES.includes(user.role)) return true;
+  const has = user._perms && user._perms.has('finance.delete_payment');
+  if (!has) return false;
+  return (
+    item?.currentPicId === user.id ||
+    item?.createdById === user.id ||
     (mc && mc.ownerUserId === user.id)
   );
 }
@@ -157,6 +220,7 @@ router.post('/work-items/:id/price', async (c) => {
   const amount = Math.round(Number(body.amount));
   if (!Number.isFinite(amount) || amount < 0) return c.json({ detail: 'Nominal tidak valid' }, 400);
   if (!mc) mc = await ensureMC(item);
+  const oldPrice = mc.price;
   const updated = await prisma.masterCard.update({
     where: { id: mc.id },
     data: {
@@ -165,7 +229,13 @@ router.post('/work-items/:id/price', async (c) => {
     },
     include: { payments: true },
   });
-  return c.json({ ok: true, ...payInfo(updated) });
+  const priceMsg = oldPrice == null
+    ? `mengatur harga pekerjaan "${item.title}" menjadi ${rp(amount)}`
+    : `mengubah harga pekerjaan "${item.title}" dari ${rp(oldPrice)} menjadi ${rp(amount)}`;
+  await logActivity(item.id, item.boardId, user, priceMsg);
+  const info = payInfo(updated);
+  await applyPaymentStatusLabel(mc.id, info.status, user);
+  return c.json({ ok: true, ...info });
 });
 
 // Catat satu pembayaran masuk.
@@ -208,17 +278,30 @@ router.post('/work-items/:id/payments', async (c) => {
     },
   });
   const fresh = await prisma.masterCard.findUnique({ where: { id: mc.id }, include: { payments: true } });
-  return c.json({ ok: true, pic_name: picName, ...payInfo(fresh) });
+  await logActivity(item.id, item.boardId, user, `mencatat pembayaran ${PAYMENT_KIND_LABELS[kind] || kind} ${rp(amount)} pada "${item.title}"`);
+  const info = payInfo(fresh);
+  await applyPaymentStatusLabel(mc.id, info.status, user);
+  return c.json({ ok: true, pic_name: picName, ...info });
 });
 
-// Hapus pembayaran (koreksi) — supervisor / super admin saja.
+// Hapus pembayaran (koreksi) — supervisor/super admin, atau PIC/pembuat/owner
+// job kalau perannya diizinkan lewat Admin Panel → Hak Akses → "finance.delete_payment".
 router.delete('/payments/:pid', async (c) => {
   const user = c.get('user');
-  if (!SUPERVISOR_ROLES.includes(user.role)) {
-    return c.json({ detail: 'Hanya supervisor / super admin yang boleh menghapus pembayaran.' }, 403);
-  }
   const pid = c.req.param('pid');
+  const payment = await prisma.payment.findUnique({ where: { id: pid }, include: { masterCard: true } });
+  if (!payment) return c.json({ ok: true });
+  const anyItem = await prisma.workItem.findFirst({ where: { masterCardId: payment.masterCardId } });
+  if (!canDeletePayment(user, anyItem, payment.masterCard)) {
+    return c.json({ detail: 'Hanya PIC job (CS) / supervisor yang boleh menghapus pembayaran.' }, 403);
+  }
   await prisma.payment.delete({ where: { id: pid } }).catch(() => {});
+  if (anyItem) {
+    const title = payment.masterCard?.title || anyItem.title;
+    await logActivity(anyItem.id, anyItem.boardId, user, `menghapus pembayaran ${PAYMENT_KIND_LABELS[payment.kind] || payment.kind} ${rp(payment.amount)} pada "${title}"`);
+  }
+  const fresh = await prisma.masterCard.findUnique({ where: { id: payment.masterCardId }, include: { payments: true } });
+  if (fresh) await applyPaymentStatusLabel(fresh.id, payInfo(fresh).status, user);
   return c.json({ ok: true });
 });
 
@@ -230,17 +313,19 @@ router.get('/reports/overview', async (c) => {
   const period = c.req.query('period') || 'day';
   const date = c.req.query('date') || undefined;
   const { from, to, period: p } = periodRange(period, date);
+  const now = Date.now();
+  const { from: prevFrom, to: prevTo } = prevRangeFor(p, from, to);
 
-  const [users, divisions, items, mcs, activities] = await Promise.all([
+  const [users, divisions, items, mcs, activities, reworkActs] = await Promise.all([
     prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true, divisionId: true, role: true } }),
     prisma.division.findMany({ select: { id: true, key: true, name: true } }),
     prisma.workItem.findMany({
       where: { archived: false },
       select: {
-        id: true, title: true, status: true, workStatus: true, completedAt: true,
+        id: true, title: true, clientName: true, status: true, workStatus: true, completedAt: true, createdAt: true,
         currentPicId: true, createdById: true, boardId: true,
         list: { select: { name: true } },
-        board: { select: { divisionId: true } },
+        board: { select: { divisionId: true, name: true } },
       },
     }),
     prisma.masterCard.findMany({
@@ -250,6 +335,11 @@ router.get('/reports/overview', async (c) => {
     prisma.activity.findMany({
       where: { createdAt: { gte: from, lt: to }, action: { startsWith: 'memindahkan' } },
       select: { userId: true, action: true, createdAt: true, boardId: true },
+    }),
+    // Kartu yang dibuka kembali setelah ditandai selesai (periode ini) → proxy "kerja ulang" per orang.
+    prisma.activity.findMany({
+      where: { createdAt: { gte: from, lt: to }, action: { startsWith: 'membuka kembali pekerjaan' } },
+      select: { userId: true },
     }),
   ]);
 
@@ -265,31 +355,48 @@ router.get('/reports/overview', async (c) => {
       division_key: u.divisionId ? divById[u.divisionId]?.key || null : null,
       division_name: u.divisionId ? divById[u.divisionId]?.name || null : null,
       cards_total: 0, list: 0, doing: 0, done_now: 0,
-      done_period: 0, revenue_period: 0, lunas_period: 0,
+      done_period: 0, revenue_period: 0, lunas_period: 0, rework_count: 0,
     };
   }
   const bumpUser = (uid: string) => {
-    if (uid && !U[uid]) U[uid] = { user_id: uid, name: '(user nonaktif)', role: null, division_id: null, division_key: null, division_name: null, cards_total: 0, list: 0, doing: 0, done_now: 0, done_period: 0, revenue_period: 0, lunas_period: 0 };
+    if (uid && !U[uid]) U[uid] = { user_id: uid, name: '(user nonaktif)', role: null, division_id: null, division_key: null, division_name: null, cards_total: 0, list: 0, doing: 0, done_now: 0, done_period: 0, revenue_period: 0, lunas_period: 0, rework_count: 0 };
     return U[uid];
   };
+  for (const r of reworkActs) { const row = r.userId ? bumpUser(r.userId) : null; if (row) row.rework_count += 1; }
 
   // ---- snapshot buckets (kartu "milik" = PIC, fallback pembuat) ----
+  const doneByDayMap: Record<string, number> = {};
+  let done_period_total = 0, done_period_prev_total = 0;
   for (const it of items) {
     const uid = it.currentPicId || it.createdById;
     const row = bumpUser(uid);
-    if (!row) continue;
-    row.cards_total += 1;
-    row[bucketOf(it) === 'done' ? 'done_now' : bucketOf(it)] += 1;
-    if (inRange(it.completedAt, from, to) && isDoneItem(it)) row.done_period += 1;
+    if (row) {
+      row.cards_total += 1;
+      row[bucketOf(it) === 'done' ? 'done_now' : bucketOf(it)] += 1;
+    }
+    if (isDoneItem(it) && inRange(it.completedAt, from, to)) {
+      if (row) row.done_period += 1;
+      done_period_total += 1;
+      const dk = new Date(it.completedAt as any).toISOString().slice(0, 10);
+      doneByDayMap[dk] = (doneByDayMap[dk] || 0) + 1;
+    }
+    if (isDoneItem(it) && inRange(it.completedAt, prevFrom, prevTo)) done_period_prev_total += 1;
   }
 
   // ---- keuangan ----
   let total_in = 0;
+  let total_in_prev = 0;
   let total_piutang = 0;
   let piutang_cards = 0;
   let count_lunas_period = 0;
+  let count_lunas_period_prev = 0;
   let count_dp = 0, count_belum = 0, count_lunas_total = 0;
   const byDayMap: Record<string, number> = {};
+  const agingMap: Record<string, { count: number; amount: number }> = {};
+  for (const b of AGING_BUCKETS) agingMap[b] = { count: 0, amount: 0 };
+  const cycleDaysList: number[] = []; // DP pertama → Lunas, dalam hari (all-time, buat rata-rata yang stabil)
+  const clientMap: Record<string, { client: string; revenue_total: number; jobs_count: number }> = {};
+
   for (const mc of mcs) {
     const info = payInfo(mc);
     if (info.status === 'lunas') count_lunas_total += 1;
@@ -299,9 +406,35 @@ router.get('/reports/overview', async (c) => {
     if (info.outstanding && info.outstanding > 0) {
       total_piutang += info.outstanding;
       piutang_cards += 1;
+      // Umur piutang: dihitung sejak pembayaran TERAKHIR masuk, atau sejak harga
+      // diisi kalau belum pernah dibayar sama sekali.
+      const lastPaidAt = info.payments.length ? info.payments[info.payments.length - 1].paidAt : mc.priceSetAt;
+      const refTime = lastPaidAt ? new Date(lastPaidAt).getTime() : now;
+      const ageDays = Math.floor((now - refTime) / 86400000);
+      const bucket = agingBucket(ageDays);
+      agingMap[bucket].count += 1;
+      agingMap[bucket].amount += info.outstanding;
+    }
+
+    if (info.lunasPayment) {
+      const firstPaidAt = info.payments[0]?.paidAt;
+      if (firstPaidAt) {
+        const days = Math.max(0, Math.round((new Date(info.lunasPayment.paidAt).getTime() - new Date(firstPaidAt).getTime()) / 86400000));
+        cycleDaysList.push(days);
+      }
+    }
+
+    // Top klien (all-time, lintas periode — "klien mana yang paling bernilai").
+    const clientName = (mc.client || '').trim();
+    if (clientName) {
+      const key = clientName.toLowerCase();
+      if (!clientMap[key]) clientMap[key] = { client: clientName, revenue_total: 0, jobs_count: 0 };
+      clientMap[key].jobs_count += 1;
+      clientMap[key].revenue_total += info.paid;
     }
 
     for (const pay of info.payments) {
+      if (inRange(pay.paidAt, prevFrom, prevTo)) total_in_prev += pay.amount || 0;
       if (!inRange(pay.paidAt, from, to)) continue;
       total_in += pay.amount || 0;
       const dk = new Date(pay.paidAt).toISOString().slice(0, 10);
@@ -310,6 +443,7 @@ router.get('/reports/overview', async (c) => {
       const row = uid ? bumpUser(uid) : null;
       if (row) row.revenue_period += pay.amount || 0;
     }
+    if (info.lunasPayment && inRange(info.lunasPayment.paidAt, prevFrom, prevTo)) count_lunas_period_prev += 1;
     if (info.lunasPayment && inRange(info.lunasPayment.paidAt, from, to)) {
       count_lunas_period += 1;
       const uid = info.lunasPayment.picUserId || mc.ownerUserId;
@@ -317,7 +451,17 @@ router.get('/reports/overview', async (c) => {
       if (row) row.lunas_period += 1;
     }
   }
-  const by_day = Object.entries(byDayMap).sort().map(([d, amount]) => ({ date: d, amount }));
+  const by_day = Object.entries(byDayMap).sort().map(([d, amount]) => ({ date: d, amount, done: doneByDayMap[d] || 0 }));
+  const avg_days_dp_to_lunas = cycleDaysList.length
+    ? Math.round((cycleDaysList.reduce((a, b) => a + b, 0) / cycleDaysList.length) * 10) / 10
+    : null;
+  const lunas_conversion_pct = (count_dp + count_belum + count_lunas_total)
+    ? Math.round((count_lunas_total / (count_dp + count_belum + count_lunas_total)) * 1000) / 10
+    : null;
+  const top_clients = Object.values(clientMap)
+    .sort((a, b) => b.revenue_total - a.revenue_total)
+    .slice(0, 10);
+  const aging = AGING_BUCKETS.map((b) => ({ bucket: b, ...agingMap[b] }));
 
   // ---- per divisi ----
   const D: Record<string, any> = {};
@@ -365,7 +509,6 @@ router.get('/reports/overview', async (c) => {
   });
   for (const m of moveActs) if (!lastMove[m.workItemId]) lastMove[m.workItemId] = m.createdAt;
 
-  const now = Date.now();
   const STUCK_DAYS = 3;
   const stuck: any[] = [];
   for (const cc of csCards) {
@@ -392,14 +535,97 @@ router.get('/reports/overview', async (c) => {
     }))
     .sort((a, b) => b.skor_up - a.skor_up);
 
+  // ---- titik macet per tahap (list) — umur kartu AKTIF saat ini di tiap list,
+  // digabung lintas board (nama list sama dianggap tahap yang sama). ----
+  const activeItems = items.filter((it) => bucketOf(it) !== 'done');
+  const activeIds = activeItems.map((it) => it.id);
+  const lastMoveAll: Record<string, Date> = {};
+  if (activeIds.length) {
+    const allMoveActs = await prisma.activity.findMany({
+      where: { action: { startsWith: 'memindahkan' }, workItemId: { in: activeIds } },
+      select: { workItemId: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    for (const m of allMoveActs) if (!lastMoveAll[m.workItemId]) lastMoveAll[m.workItemId] = m.createdAt;
+  }
+  const stageMap: Record<string, { count: number; totalDays: number; maxDays: number }> = {};
+  for (const it of activeItems) {
+    const listName = it.list?.name || '(tanpa list)';
+    const ref = lastMoveAll[it.id] || it.createdAt;
+    const days = Math.max(0, Math.floor((now - new Date(ref as any).getTime()) / 86400000));
+    if (!stageMap[listName]) stageMap[listName] = { count: 0, totalDays: 0, maxDays: 0 };
+    stageMap[listName].count += 1;
+    stageMap[listName].totalDays += days;
+    stageMap[listName].maxDays = Math.max(stageMap[listName].maxDays, days);
+  }
+  const stage_bottleneck = Object.entries(stageMap)
+    .map(([list_name, s]) => ({
+      list_name, count: s.count,
+      avg_days: Math.round((s.totalDays / s.count) * 10) / 10,
+      max_days: s.maxDays,
+    }))
+    .sort((a, b) => (b.count * b.avg_days) - (a.count * a.avg_days))
+    .slice(0, 10);
+
+  // ---- kelengkapan dokumen (checklist) kartu aktif — termasuk yang masih
+  // menunggu item "Diverifikasi Admin" (lihat fitur csSelfCheck template). ----
+  const checklistRows = activeIds.length
+    ? await prisma.workItem.findMany({
+        where: { id: { in: activeIds } },
+        select: {
+          id: true, title: true, clientName: true, checklists: true,
+          board: { select: { name: true } }, list: { select: { name: true } },
+        },
+      })
+    : [];
+  let checklist_total_items = 0, checklist_done_items = 0;
+  const incompleteCards: any[] = [];
+  const adminVerifyPending: any[] = [];
+  for (const cr of checklistRows) {
+    let cls: any[] = [];
+    try { cls = typeof cr.checklists === 'string' ? JSON.parse(cr.checklists) : (cr.checklists || []); } catch { cls = []; }
+    if (!Array.isArray(cls) || !cls.length) continue;
+    let total = 0, done = 0, adminPending = false;
+    for (const cl of cls) {
+      for (const it of (cl.items || [])) {
+        total += 1;
+        if (it.done) done += 1;
+        else if (String(it.text || '').trim().toLowerCase() === 'diverifikasi admin') adminPending = true;
+      }
+    }
+    if (!total) continue;
+    checklist_total_items += total;
+    checklist_done_items += done;
+    const rowOut = { id: cr.id, title: cr.title, client: cr.clientName || null, board_name: cr.board?.name || null, list_name: cr.list?.name || null };
+    if (done < total) incompleteCards.push({ ...rowOut, done, total, missing: total - done });
+    if (adminPending) adminVerifyPending.push(rowOut);
+  }
+  incompleteCards.sort((a, b) => b.missing - a.missing);
+  const checklist = {
+    total_items: checklist_total_items,
+    done_items: checklist_done_items,
+    pct: checklist_total_items ? Math.round((checklist_done_items / checklist_total_items) * 1000) / 10 : null,
+    top_incomplete: incompleteCards.slice(0, 10),
+    admin_verify_pending: adminVerifyPending.slice(0, 20),
+  };
+
   return c.json({
     range: { from, to, period: p, date: date || new Date().toISOString().slice(0, 10) },
     finance: {
-      total_in,
-      count_lunas_period,
+      total_in, total_in_prev,
+      count_lunas_period, count_lunas_period_prev,
       count_lunas_total, count_dp, count_belum, total_piutang, piutang_cards,
-      by_day,
+      by_day, aging, avg_days_dp_to_lunas, lunas_conversion_pct,
     },
+    compare_prev: {
+      total_in_pct: pctDelta(total_in, total_in_prev),
+      count_lunas_period_pct: pctDelta(count_lunas_period, count_lunas_period_prev),
+      done_period_pct: pctDelta(done_period_total, done_period_prev_total),
+      done_period_total, done_period_prev_total,
+    },
+    top_clients,
+    stage_bottleneck,
+    checklist,
     by_user: (Object.values(U) as any[])
       .filter((r) => r.cards_total > 0 || r.revenue_period > 0 || r.done_period > 0)
       .sort((a, b) => b.revenue_period - a.revenue_period || b.done_period - a.done_period || b.cards_total - a.cards_total),

@@ -395,8 +395,9 @@ model CronRun {
 }
 
 model Setting {
-  key String   @id
-  at  DateTime @default(now())
+  key   String   @id
+  value Json?
+  at    DateTime @default(now())
 }
 
 // ── Permission matrix (role × aksi) yang bisa diatur admin ───────────────
@@ -431,6 +432,11 @@ model ChecklistTemplate {
   name        String
   items       Json     @default("[]") // string[]
   position    Float    @default(0)
+  // Kalau true: CS boleh anggap "semua item tercentang = lengkap" dan langsung
+  // FU klien sendiri tanpa nunggu Admin verifikasi (lihat catatan di
+  // routes_work.ts checklist creation — item "Diverifikasi Admin" tidak
+  // ditambahkan otomatis untuk template dengan flag ini).
+  csSelfCheck Boolean  @default(false)
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
