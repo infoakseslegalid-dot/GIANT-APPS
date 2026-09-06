@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Bell, BellOff, Check, CheckCheck, MessageSquare, AtSign, Send,
-  UserPlus, Sparkles, ChevronRight,
+  UserPlus, Sparkles, ChevronRight, CalendarClock, ListChecks,
 } from "lucide-react";
 import { api, fmtDateTime, timeAgo } from "../lib/api";
 import {
@@ -18,6 +18,8 @@ const TYPE_META = {
   sent: { Icon: Send, fg: "#206A83", bg: "#E7F9FF" },
   assigned: { Icon: UserPlus, fg: "#216E4E", bg: "#DCFFF1" },
   automation: { Icon: Sparkles, fg: "#A54800", bg: "#FFF3D6" },
+  due: { Icon: CalendarClock, fg: "#946F00", bg: "#FFF7D6" },
+  kelengkapan_pending: { Icon: ListChecks, fg: "#C9372C", bg: "#FFECEB" },
   info: { Icon: Bell, fg: "#44546F", bg: "#F1F2F4" },
 };
 

@@ -1816,7 +1816,11 @@ router.get('/my-work', async (c) => {
     orderBy: { dueDate: 'asc' },
     include: { board: true, list: true }
   });
-  return c.json(items.map((i: any) => ({ ...formatWorkItem(i), board_name: i.board.name, list_name: i.list.name })));
+  const hostMap = await hostTitlesByMasterCardId(items);
+  return c.json(items.map((i: any) => ({
+    ...formatWorkItem(i), title: canonTitle(i, hostMap), client_name: canonClientName(i, hostMap) || null,
+    board_name: i.board.name, list_name: i.list.name,
+  })));
 });
 
 /**
