@@ -82,7 +82,10 @@ Buka repo → **Settings** → **Deploy keys** → **Add deploy key**:
 ### d. Beri tahu SSH kunci mana yang dipakai
 
 VPS ini juga menampung project lain yang mungkin punya deploy key sendiri,
-jadi pakai alias host supaya tidak tertukar. Tambahkan ke `~/.ssh/config`:
+jadi pakai alias host supaya tidak tertukar. **Tambahkan** blok berikut ke
+`~/.ssh/config` — jangan mengubah blok `Host github.com` yang sudah ada di
+sana, karena itu yang dipakai project lain. Keduanya tidak bentrok: pencocokan
+`Host` memakai nama yang Anda tulis di perintah git, bukan `HostName`.
 
 ```
 Host github.com-giant-apps
