@@ -1,0 +1,72 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Memungkinkan untuk trigger manual dari tab Actions
+
+concurrency:
+  group: production-deploy
+  # Sengaja false: membatalkan deploy yang sedang berjalan bisa memutus
+  # `docker compose up` di tengah jalan dan meninggalkan stack setengah jadi.
+  # Lebih aman diantrekan — push berikutnya menunggu yang sekarang selesai.
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Kalau SSH VPS tidak di port 22, buka komentar baris berikut dan
+          # tambahkan secret VPS_PORT.
+          # port: ${{ secrets.VPS_PORT }}
+          #
+          # Hentikan skrip pada perintah pertama yang gagal, supaya job jadi
+          # merah — bukan "hijau" padahal deploy-nya gagal di tengah.
+          script_stop: true
+          script: |
+            set -e
+
+            echo "[1/5] Masuk ke direktori project..."
+            cd /opt/giant-apps
+
+            echo "[2/5] Menarik kode terbaru dari GitHub..."
+            git fetch origin main
+            git reset --hard origin/main
+            # `.env` tidak ikut terhapus: file itu untracked dan ter-gitignore,
+            # jadi kredensial di VPS aman dari `reset --hard`.
+
+            echo "[3/5] Build & mengganti container..."
+            # Service `migrate` jalan lebih dulu; kalau `prisma db push` gagal,
+            # perintah ini keluar dengan status bukan-nol dan deploy berhenti.
+            docker compose -f docker-compose.prod.yml up -d --build
+
+            echo "[4/5] Menunggu container sehat..."
+            for i in $(seq 1 30); do
+              status=$(docker inspect giant-apps --format '{{.State.Health.Status}}' 2>/dev/null || echo starting)
+              if [ "$status" = "healthy" ]; then
+                echo "Container healthy."
+                break
+              fi
+              if [ "$i" = "30" ]; then
+                echo "Container tidak kunjung healthy (status terakhir: $status). Log terakhir:"
+                docker compose -f docker-compose.prod.yml logs --tail 80 giant-apps
+                exit 1
+              fi
+              sleep 5
+            done
+
+            echo "[5/5] Membersihkan image lama..."
+            # Sengaja BUKAN `docker system prune -af`. Perintah itu ikut
+            # menghapus build cache (deploy berikutnya jadi jauh lebih lambat)
+            # dan image milik stack lain di VPS ini yang containernya kebetulan
+            # sedang mati. Di sini hanya image tak terpakai berumur >72 jam.
+            docker image prune -af --filter "until=72h"
+
+            echo "Deploy selesai."

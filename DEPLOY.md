@@ -6,7 +6,7 @@ Domain: **ali-dev.web.id** — dipatok langsung di label Traefik pada
 Database: **Supabase** — tidak ada container Postgres di stack produksi.
 
 File yang dipakai: [Dockerfile](Dockerfile), [docker-compose.prod.yml](docker-compose.prod.yml),
-[.env.example](.env.example).
+[.env.example](.env.example), [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
 
 ---
 
@@ -30,10 +30,69 @@ File yang dipakai: [Dockerfile](Dockerfile), [docker-compose.prod.yml](docker-co
 
 ---
 
-## 2. Siapkan environment
+## 2. Clone repo private di VPS (deploy key)
+
+Repo ini private, jadi VPS butuh identitas sendiri untuk membacanya. Cara yang
+tepat adalah **deploy key**: satu kunci SSH khusus repo ini, read-only. Lebih
+aman daripada Personal Access Token — token akan tersimpan apa adanya di
+`.git/config` dan biasanya berlaku untuk semua repo Anda, sedangkan deploy key
+hanya bisa membaca satu repo dan gampang dicabut.
+
+### a. Buat kunci di VPS
 
 ```bash
-git clone <repo> giant-apps && cd giant-apps
+ssh-keygen -t ed25519 -C "giant-apps-vps" -f ~/.ssh/giant_apps_deploy -N ""
+cat ~/.ssh/giant_apps_deploy.pub
+```
+
+### b. Daftarkan di GitHub
+
+Buka repo → **Settings** → **Deploy keys** → **Add deploy key**:
+
+- Title: `VPS ali-dev`
+- Key: tempel isi `giant_apps_deploy.pub` tadi
+- **Jangan** centang *Allow write access* — VPS cuma perlu membaca.
+
+### c. Beri tahu SSH kunci mana yang dipakai
+
+VPS ini juga menampung project lain yang mungkin punya deploy key sendiri,
+jadi pakai alias host supaya tidak tertukar. Tambahkan ke `~/.ssh/config`:
+
+```
+Host github.com-giant-apps
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/giant_apps_deploy
+  IdentitiesOnly yes
+```
+
+Uji:
+
+```bash
+ssh -T git@github.com-giant-apps
+# Balasan yang benar:
+# Hi infoakseslegalid-dot/GIANT-APPS! You've successfully authenticated,
+# but GitHub does not provide shell access.
+```
+
+### d. Clone
+
+```bash
+sudo mkdir -p /opt/giant-apps
+sudo chown "$USER":"$USER" /opt/giant-apps
+git clone git@github.com-giant-apps:infoakseslegalid-dot/GIANT-APPS.git /opt/giant-apps
+cd /opt/giant-apps
+```
+
+Path `/opt/giant-apps` dipakai juga oleh workflow GitHub Actions di bagian 6 —
+kalau Anda memilih path lain, sesuaikan juga di sana.
+
+---
+
+## 3. Siapkan environment
+
+```bash
+cd /opt/giant-apps
 cp .env.example .env
 nano .env
 ```
@@ -42,8 +101,8 @@ Yang dibaca stack produksi dari `.env` hanya tiga:
 
 | Variabel | Isi |
 |---|---|
-| `DATABASE_URL` | Connection string Supabase (Session pooler, port 5432) |
-| `DIRECT_URL` | Sama dengan `DATABASE_URL` kalau memakai Session pooler |
+| `DATABASE_URL` | Connection string Supabase (transaction pooler 6543 `?pgbouncer=true`, atau session pooler 5432) |
+| `DIRECT_URL` | Session pooler, port 5432 — dipakai `prisma db push` |
 | `JWT_SECRET` | Nilai acak |
 
 Sisanya — domain, `NODE_ENV`, `PORT`, `COOKIE_SECURE` — sudah dipatok di
@@ -52,14 +111,8 @@ Sisanya — domain, `NODE_ENV`, `PORT`, `COOKIE_SECURE` — sudah dipatok di
 Bikin secret:
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# atau tanpa Node:
 openssl rand -hex 32
 ```
-
-> Mengganti `JWT_SECRET` otomatis me-logout semua sesi yang sedang berjalan.
-> Kalau memakai `.env` yang sama dengan laptop, pakai nilai yang sama supaya
-> tidak saling melempar logout.
 
 Amankan filenya — isinya kredensial database:
 
@@ -67,11 +120,15 @@ Amankan filenya — isinya kredensial database:
 chmod 600 .env
 ```
 
+`.env` untracked dan ter-gitignore, jadi `git reset --hard` saat deploy tidak
+akan menghapusnya.
+
 ---
 
-## 3. Deploy
+## 4. Deploy manual (pertama kali)
 
 ```bash
+cd /opt/giant-apps
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
@@ -103,22 +160,87 @@ menunjukkan `healthy` kalau aplikasinya benar hidup.
 
 ---
 
-## 4. Update versi
+## 5. Update versi (manual)
 
 ```bash
+cd /opt/giant-apps
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Bersihkan image lama sesekali:
-
-```bash
-docker image prune -f
-```
+Atau biarkan GitHub Actions yang mengerjakannya — lihat bagian berikut.
 
 ---
 
-## 5. Catatan penting
+## 6. CI/CD: deploy otomatis dari GitHub Actions
+
+Workflow ada di [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
+Setiap push ke `main` (atau klik **Run workflow** di tab Actions) memicu SSH ke
+VPS, `git reset --hard origin/main`, rebuild container, tunggu sampai healthy,
+lalu bersihkan image lama.
+
+### a. Kunci SSH untuk GitHub Actions
+
+Perhatikan bedanya dengan bagian 2 — ini kunci yang berbeda dan arahnya
+terbalik:
+
+| Kunci | Arah | Untuk apa |
+|---|---|---|
+| Deploy key (bagian 2) | VPS → GitHub | VPS membaca repo private |
+| `SSH_PRIVATE_KEY` (di sini) | GitHub Actions → VPS | Runner login ke VPS |
+
+Di VPS:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/gha_giant_apps -N ""
+cat ~/.ssh/gha_giant_apps.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+cat ~/.ssh/gha_giant_apps      # salin SELURUH isinya, termasuk baris
+                               # -----BEGIN ... dan -----END ...
+```
+
+Setelah disalin ke GitHub, hapus private key-nya dari VPS supaya tidak ada
+salinan yang menganggur:
+
+```bash
+rm ~/.ssh/gha_giant_apps
+```
+
+### b. Daftarkan secrets
+
+Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
+
+| Nama | Isi |
+|---|---|
+| `VPS_HOST` | IP atau hostname VPS |
+| `VPS_USERNAME` | user SSH (mis. `root` atau `deploy`) |
+| `SSH_PRIVATE_KEY` | isi lengkap `gha_giant_apps` tadi |
+| `VPS_PORT` | *opsional*, hanya kalau SSH bukan di port 22 — dan buka komentar baris `port:` di workflow |
+
+Secrets bersifat per-repo. Kalau VPS-nya sama dengan project Anda yang lain,
+nilainya boleh persis sama, tapi tetap harus didaftarkan ulang di repo ini.
+
+### c. Uji
+
+Tab **Actions** → **Deploy to VPS** → **Run workflow**. Jalankan manual dulu
+sebelum mengandalkan push otomatis, supaya kalau ada yang salah Anda tahu
+sebelum kode masuk.
+
+### Catatan atas dua penyimpangan dari template contoh
+
+- **`cancel-in-progress: false`.** Kalau `true`, push kedua yang datang cepat
+  akan membunuh deploy pertama yang mungkin sedang di tengah
+  `docker compose up` — stack bisa tertinggal setengah jadi. Diantrekan lebih
+  aman.
+- **`docker image prune -af --filter "until=72h"`, bukan `docker system prune -af`.**
+  `system prune -a` ikut membuang build cache (deploy berikutnya jauh lebih
+  lambat karena `yarn install` dan `next build` mulai dari nol) dan image milik
+  stack lain di VPS yang containernya kebetulan sedang mati.
+
+---
+
+## 7. Catatan penting
 
 **Satu Supabase dipakai bersama dev.** Kalau `.env` di VPS memakai
 connection string yang sama dengan laptop, keduanya menulis ke database yang
@@ -158,7 +280,21 @@ di `docker-compose.prod.yml` (sesuaikan nama resolvernya):
 
 ---
 
-## 6. Troubleshooting
+## 8. Troubleshooting
+
+**`Permission denied (publickey)` saat clone di VPS**
+Deploy key belum terdaftar, atau `~/.ssh/config` belum menunjuk ke kunci yang
+benar. Uji dengan `ssh -T git@github.com-giant-apps`.
+
+**`Repository not found` saat clone**
+Biasanya bukan soal repo hilang, melainkan kunci yang dipakai tidak punya akses
+— GitHub menyamarkan repo private sebagai "tidak ada" untuk identitas yang
+tidak berhak.
+
+**Workflow gagal di langkah SSH**
+Cek `SSH_PRIVATE_KEY` disalin utuh (termasuk baris `-----BEGIN` dan `-----END`
+serta baris kosong di akhir), dan public key-nya benar-benar ada di
+`~/.ssh/authorized_keys` milik user `VPS_USERNAME`.
 
 **`network proxy declared as external, but could not be found`**
 `docker network create proxy`.
@@ -188,6 +324,12 @@ diakses lewat HTTPS. Pastikan Traefik sudah menerbitkan sertifikat untuk
 ali-dev.web.id dan Anda tidak membukanya lewat `http://`.
 
 **Prisma error `Can't reach database server`**
-Pastikan VPS bisa menjangkau host Supabase di port 5432 (tidak diblokir
-firewall keluar), dan `DATABASE_URL` memakai Session pooler. Direct connection
-`db.<ref>.supabase.co` butuh IPv6.
+Pastikan VPS bisa menjangkau host Supabase di port 6543 dan 5432 (tidak
+diblokir firewall keluar):
+
+```bash
+for p in 6543 5432; do
+  timeout 5 bash -c "</dev/tcp/aws-0-ap-southeast-1.pooler.supabase.com/$p" \
+    && echo "port $p OK" || echo "port $p TERBLOKIR"
+done
+```
