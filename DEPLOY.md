@@ -38,14 +38,40 @@ aman daripada Personal Access Token — token akan tersimpan apa adanya di
 `.git/config` dan biasanya berlaku untuk semua repo Anda, sedangkan deploy key
 hanya bisa membaca satu repo dan gampang dicabut.
 
-### a. Buat kunci di VPS
+### a. Cek dulu kunci yang sudah ada di VPS
+
+VPS ini kemungkinan sudah menyimpan kunci dari project lain (`github_deploy_key`,
+`id_velloscript`, dan seterusnya). Sebelum membuat yang baru, periksa jenis
+kunci yang sudah ada — jawabannya menentukan apakah bisa dipakai ulang:
+
+```bash
+ssh -T -i ~/.ssh/github_deploy_key git@github.com
+```
+
+- Balasan **`Hi <username>!`** → itu **kunci akun** (terdaftar di Settings →
+  SSH and GPG keys), berlaku untuk semua repo milik Anda. Pakai ulang saja:
+  lewati langkah (b) dan (c), lalu clone dengan alamat `git@github.com:...`
+  biasa di langkah (d).
+- Balasan **`Hi <owner>/<repo>!`** → itu **deploy key** milik repo lain.
+  GitHub hanya mengizinkan satu public key dipakai sebagai deploy key di satu
+  repo; mendaftarkannya lagi di repo kedua ditolak dengan *"Key is already in
+  use"*. Jadi buat kunci baru di langkah berikut.
+
+Lihat juga isi `~/.ssh/config` yang sekarang supaya blok baru tidak bentrok
+dengan entri yang sudah ada:
+
+```bash
+cat ~/.ssh/config
+```
+
+### b. Buat kunci baru untuk repo ini
 
 ```bash
 ssh-keygen -t ed25519 -C "giant-apps-vps" -f ~/.ssh/giant_apps_deploy -N ""
 cat ~/.ssh/giant_apps_deploy.pub
 ```
 
-### b. Daftarkan di GitHub
+### c. Daftarkan di GitHub
 
 Buka repo → **Settings** → **Deploy keys** → **Add deploy key**:
 
@@ -53,7 +79,7 @@ Buka repo → **Settings** → **Deploy keys** → **Add deploy key**:
 - Key: tempel isi `giant_apps_deploy.pub` tadi
 - **Jangan** centang *Allow write access* — VPS cuma perlu membaca.
 
-### c. Beri tahu SSH kunci mana yang dipakai
+### d. Beri tahu SSH kunci mana yang dipakai
 
 VPS ini juga menampung project lain yang mungkin punya deploy key sendiri,
 jadi pakai alias host supaya tidak tertukar. Tambahkan ke `~/.ssh/config`:
@@ -75,7 +101,7 @@ ssh -T git@github.com-giant-apps
 # but GitHub does not provide shell access.
 ```
 
-### d. Clone
+### e. Clone
 
 ```bash
 sudo mkdir -p /opt/giant-apps
@@ -189,22 +215,35 @@ terbalik:
 | Deploy key (bagian 2) | VPS → GitHub | VPS membaca repo private |
 | `SSH_PRIVATE_KEY` (di sini) | GitHub Actions → VPS | Runner login ke VPS |
 
-Di VPS:
+Berbeda dengan deploy key, kunci ini **boleh dipakai bersama** beberapa repo —
+ia hanya sebuah kunci login SSH biasa ke VPS, dan GitHub tidak membatasi satu
+private key untuk satu repo. Jadi kalau VPS sudah punya `~/.ssh/github_actions_key`
+dari project lain, cukup pakai ulang:
 
 ```bash
-ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/gha_giant_apps -N ""
-cat ~/.ssh/gha_giant_apps.pub >> ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
-
-cat ~/.ssh/gha_giant_apps      # salin SELURUH isinya, termasuk baris
-                               # -----BEGIN ... dan -----END ...
+cat ~/.ssh/github_actions_key   # salin SELURUH isinya, termasuk baris
+                                # -----BEGIN ... dan -----END ...
 ```
 
-Setelah disalin ke GitHub, hapus private key-nya dari VPS supaya tidak ada
-salinan yang menganggur:
+Pastikan public key-nya memang ada di `authorized_keys` (biasanya sudah, kalau
+workflow project lain berjalan normal):
 
 ```bash
-rm ~/.ssh/gha_giant_apps
+# cek dulu
+grep -qF "$(cat ~/.ssh/github_actions_key.pub)" ~/.ssh/authorized_keys && echo "sudah terpasang" || echo "belum terpasang"
+
+# hanya kalau hasilnya "belum terpasang":
+cat ~/.ssh/github_actions_key.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Kalau memang belum ada kunci untuk Actions sama sekali, buat baru:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions_key -N ""
+cat ~/.ssh/github_actions_key.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+cat ~/.ssh/github_actions_key
 ```
 
 ### b. Daftarkan secrets
@@ -215,7 +254,7 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **New re
 |---|---|
 | `VPS_HOST` | IP atau hostname VPS |
 | `VPS_USERNAME` | user SSH (mis. `root` atau `deploy`) |
-| `SSH_PRIVATE_KEY` | isi lengkap `gha_giant_apps` tadi |
+| `SSH_PRIVATE_KEY` | isi lengkap `github_actions_key` tadi |
 | `VPS_PORT` | *opsional*, hanya kalau SSH bukan di port 22 — dan buka komentar baris `port:` di workflow |
 
 Secrets bersifat per-repo. Kalau VPS-nya sama dengan project Anda yang lain,
