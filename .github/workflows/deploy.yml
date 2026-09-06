@@ -63,10 +63,14 @@ jobs:
             done
 
             echo "[5/5] Membersihkan image lama..."
-            # Sengaja BUKAN `docker system prune -af`. Perintah itu ikut
-            # menghapus build cache (deploy berikutnya jadi jauh lebih lambat)
-            # dan image milik stack lain di VPS ini yang containernya kebetulan
-            # sedang mati. Di sini hanya image tak terpakai berumur >72 jam.
-            docker image prune -af --filter "until=72h"
+            # VPS ini dipakai bersama stack lain (ali-app, velloscript, khal),
+            # jadi pembersihannya sengaja dibuat sesempit mungkin:
+            #   • tanpa -a  → hanya image dangling (yang tag-nya sudah pindah
+            #     ke hasil build baru), bukan semua image tak terpakai. Image
+            #     versi lama milik project lain — yang mungkin disimpan untuk
+            #     rollback — tidak ikut terhapus.
+            #   • bukan `system prune` → container, network, volume, dan build
+            #     cache milik siapa pun tidak disentuh.
+            docker image prune -f --filter "until=72h"
 
             echo "Deploy selesai."

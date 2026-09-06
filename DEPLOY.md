@@ -275,10 +275,13 @@ sebelum kode masuk.
   akan membunuh deploy pertama yang mungkin sedang di tengah
   `docker compose up` — stack bisa tertinggal setengah jadi. Diantrekan lebih
   aman.
-- **`docker image prune -af --filter "until=72h"`, bukan `docker system prune -af`.**
-  `system prune -a` ikut membuang build cache (deploy berikutnya jauh lebih
-  lambat karena `yarn install` dan `next build` mulai dari nol) dan image milik
-  stack lain di VPS yang containernya kebetulan sedang mati.
+- **`docker image prune -f --filter "until=72h"`, bukan `docker system prune -af`.**
+  VPS ini dipakai bersama stack lain, jadi pembersihannya dibuat sesempit
+  mungkin: hanya image *dangling* (yang tag-nya sudah pindah ke hasil build
+  baru) berumur lebih dari 72 jam. `system prune -a` sebaliknya ikut membuang
+  build cache — deploy berikutnya jauh lebih lambat karena `yarn install` dan
+  `next build` mulai dari nol — serta image versi lama milik project lain yang
+  mungkin disimpan untuk rollback.
 
 ---
 
