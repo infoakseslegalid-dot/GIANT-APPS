@@ -87,10 +87,7 @@ function GlobalSearch() {
                   i.role === "assignment"
                     ? { t: "Assignment", c: "bg-[#EAE6FF] text-[#5E4DB2]" }
                     : null;
-                const meta = [
-                  i.board_name && `📋 ${i.board_name}`,
-                  i.list_name && `• ${i.list_name}`,
-                ].filter(Boolean).join(" ");
+                const meta = i.board_name ? `${i.board_name}${i.list_name ? ` • ${i.list_name}` : ""}` : "";
                 const sub = [
                   i.role === "assignment" && i.target_division_name && `Divisi: ${i.target_division_name}`,
                   i.role === "assignment" && (i.pic_name ? `PIC: ${i.pic_name}` : i.distribution_label),
@@ -108,7 +105,7 @@ function GlobalSearch() {
                       {badge && <span className={`shrink-0 rounded px-1.5 py-px text-[9px] font-bold ${badge.c}`}>{badge.t}</span>}
                     </div>
                     {i.client_name && <p className="text-xs text-2">{i.client_name}</p>}
-                    {meta && <p className="text-[11px] text-3">{meta}</p>}
+                    {meta && <p className="flex items-center gap-1 text-[11px] text-3"><LayoutGrid size={10} className="shrink-0" /> {meta}</p>}
                     {sub && <p className="text-[11px] text-3">{sub}</p>}
                   </button>
                 );

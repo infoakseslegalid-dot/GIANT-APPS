@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw, Info } from "lucide-react";
+import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw, Info, Search } from "lucide-react";
 import { api, errMsg, ROLE_LABELS, fmtDateTime } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "../components/common";
@@ -494,8 +494,9 @@ function FlowTab() {
           {(boards || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
         {full?.division?.key === "cs" && (
-          <p className="mt-3 rounded-lg bg-[#E9F2FF] px-3 py-2 text-xs text-[#0C459A]" data-testid="flow-cs-shared-note">
-            📌 Board CS berbagi satu syarat &amp; warna untuk semua staf — ubah di board manapun, otomatis berlaku ke board CS lainnya. Board divisi lain (Draf/Pajak/Perizinan/Desain) tetap terpisah.
+          <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-[#E9F2FF] px-3 py-2 text-xs text-[#0C459A]" data-testid="flow-cs-shared-note">
+            <Info size={13} className="mt-0.5 shrink-0" />
+            Board CS berbagi satu syarat &amp; warna untuk semua staf — ubah di board manapun, otomatis berlaku ke board CS lainnya. Board divisi lain (Draf/Pajak/Perizinan/Desain) tetap terpisah.
           </p>
         )}
       </div>
@@ -842,7 +843,7 @@ function PermissionsTab() {
         {/* Alat cepat */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 rounded-md border border-[hsl(var(--hairline))] px-2">
-            <span className="text-3">🔎</span>
+            <Search size={13} className="text-3 shrink-0" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari izin…" className="h-8 w-44 bg-transparent text-[13px] outline-none" />
           </div>
           {!isSuper && (

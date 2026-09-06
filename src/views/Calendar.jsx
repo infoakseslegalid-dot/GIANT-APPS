@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, CalendarDays, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, X, LayoutGrid } from "lucide-react";
 import { api, PRIORITIES } from "../lib/api";
 import { PriorityFlag } from "../components/common";
 import CardModal from "../components/kanban/CardModalWrapper";
@@ -43,7 +43,7 @@ function DayPanel({ dateStr, items, onOpenItem, onClose }) {
                   {it.title}
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-3">
-                  {it.board_name && <span>📋 {it.board_name}</span>}
+                  {it.board_name && <span className="inline-flex items-center gap-1"><LayoutGrid size={10} /> {it.board_name}</span>}
                   {it.list_name && <span>• {it.list_name}</span>}
                   {it.pic_name && <span>· PIC: {it.pic_name}</span>}
                 </span>
