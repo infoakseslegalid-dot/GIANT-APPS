@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { formatWorkItem, canViewBoard, canEditBoard, runAutomation as realRunAutomation, broadcastItem as depsBroadcastItem, wsManager } from './deps';
+import { formatWorkItem, canViewBoard, canEditBoard, runAutomation as realRunAutomation, broadcastItem as depsBroadcastItem, wsManager, autoSpawnAssignment } from './deps';
 import {  Hono } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
@@ -162,6 +162,64 @@ export async function syncGroupLabels(masterCardId: string, shared: SharedLabel[
   }
   for (const gi of groupItems) {
     try { await broadcastItem(await getWorkItem(gi.id)); } catch (e) { /* ignore */ }
+  }
+}
+
+/**
+ * Aturan otomasi GLOBAL yang admin buat sendiri dari Admin Panel → Otomasi
+ * ("kejadian → aksi", lintas board) — beda dari runAutomation() bawaan yang
+ * per-board. Dipanggil dari titik-titik kejadian level Master Card/job: kartu
+ * dibuat, harga diisi, status pembayaran berubah.
+ */
+export async function runGlobalAutomation(
+  trigger: 'card_created' | 'price_set' | 'payment_status_changed',
+  ctx: { item: any; masterCardId?: string | null; status?: string; actor: any },
+) {
+  const rules = await prisma.globalAutomationRule.findMany({ where: { trigger, enabled: true } });
+  if (!rules.length) return;
+
+  for (const rule of rules) {
+    if (trigger === 'payment_status_changed' && rule.conditionValue && rule.conditionValue !== ctx.status) continue;
+    try {
+      let desc = '';
+      if (rule.action === 'add_label') {
+        let parsed: { name?: string; color?: string } = {};
+        try { parsed = JSON.parse(rule.actionValue || '{}'); } catch { parsed = {}; }
+        const name = (parsed.name || '').trim();
+        if (!name) continue;
+        const color = parsed.color || '#8590A2';
+        if (ctx.masterCardId) {
+          const mc = await prisma.masterCard.findUnique({ where: { id: ctx.masterCardId } });
+          let shared: any[] = [];
+          try { shared = Array.isArray((mc as any)?.sharedLabels) ? (mc as any).sharedLabels : JSON.parse((mc as any)?.sharedLabels || '[]'); } catch { shared = []; }
+          if (!shared.some((l: any) => (l?.name || '').trim().toLowerCase() === name.toLowerCase())) {
+            await syncGroupLabels(ctx.masterCardId, [...shared, { name, color }], ctx.actor);
+          }
+        } else {
+          let row = await prisma.label.findFirst({ where: { boardId: ctx.item.boardId, name: { equals: name, mode: 'insensitive' } } });
+          if (!row) row = await prisma.label.create({ data: { boardId: ctx.item.boardId, name, color } });
+          await prisma.workItemLabel.upsert({
+            where: { workItemId_labelId: { workItemId: ctx.item.id, labelId: row.id } },
+            create: { workItemId: ctx.item.id, labelId: row.id },
+            update: {},
+          });
+        }
+        desc = `pasang label "${name}"`;
+      } else if (rule.action === 'set_priority') {
+        if (!rule.actionValue) continue;
+        await prisma.workItem.update({ where: { id: ctx.item.id }, data: { priority: rule.actionValue, updatedAt: new Date() } });
+        desc = `ubah prioritas jadi "${rule.actionValue}"`;
+      } else if (rule.action === 'send_to_division') {
+        if (!rule.actionValue) continue;
+        await autoSpawnAssignment(ctx.item, rule.actionValue, { actor: ctx.actor });
+        desc = `kirim ke divisi "${rule.actionValue}"`;
+      } else {
+        continue;
+      }
+      await logActivity(ctx.item.id, ctx.item.boardId, ctx.actor, `Otomasi: ${desc}`);
+    } catch (e) {
+      console.error('[global-automation]', rule.id, e);
+    }
   }
 }
 
@@ -334,6 +392,7 @@ router.post('/work-items', async (c) => {
   await logActivity(item.id, item.boardId, user, `membuat pekerjaan "${item.title}"`);
   await ensureRequirementChecklist(item, lst);
   await runAutomation(item.boardId, 'card_created', item, user, item.listId);
+  await runGlobalAutomation('card_created', { item, masterCardId: item.masterCardId, actor: user });
   if (body.member_ids?.length) {
     await notify(body.member_ids, 'assigned', 'Anda ditugaskan', `${user.name} menugaskan Anda pada "${item.title}"`, item.id, item.boardId, new Set([user.id]));
   }

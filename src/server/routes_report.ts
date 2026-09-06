@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { requirePerm } from './permissions';
 import { logActivity, getSetting } from './deps';
-import { syncGroupLabels } from './routes_work';
+import { syncGroupLabels, runGlobalAutomation } from './routes_work';
 
 const prisma = new PrismaClient();
 const router = new Hono();
@@ -235,6 +235,8 @@ router.post('/work-items/:id/price', async (c) => {
   await logActivity(item.id, item.boardId, user, priceMsg);
   const info = payInfo(updated);
   await applyPaymentStatusLabel(mc.id, info.status, user);
+  await runGlobalAutomation('price_set', { item, masterCardId: mc.id, actor: user });
+  await runGlobalAutomation('payment_status_changed', { item, masterCardId: mc.id, status: info.status, actor: user });
   return c.json({ ok: true, ...info });
 });
 
@@ -281,6 +283,7 @@ router.post('/work-items/:id/payments', async (c) => {
   await logActivity(item.id, item.boardId, user, `mencatat pembayaran ${PAYMENT_KIND_LABELS[kind] || kind} ${rp(amount)} pada "${item.title}"`);
   const info = payInfo(fresh);
   await applyPaymentStatusLabel(mc.id, info.status, user);
+  await runGlobalAutomation('payment_status_changed', { item, masterCardId: mc.id, status: info.status, actor: user });
   return c.json({ ok: true, pic_name: picName, ...info });
 });
 
@@ -301,7 +304,11 @@ router.delete('/payments/:pid', async (c) => {
     await logActivity(anyItem.id, anyItem.boardId, user, `menghapus pembayaran ${PAYMENT_KIND_LABELS[payment.kind] || payment.kind} ${rp(payment.amount)} pada "${title}"`);
   }
   const fresh = await prisma.masterCard.findUnique({ where: { id: payment.masterCardId }, include: { payments: true } });
-  if (fresh) await applyPaymentStatusLabel(fresh.id, payInfo(fresh).status, user);
+  if (fresh) {
+    const status = payInfo(fresh).status;
+    await applyPaymentStatusLabel(fresh.id, status, user);
+    if (anyItem) await runGlobalAutomation('payment_status_changed', { item: anyItem, masterCardId: fresh.id, status, actor: user });
+  }
   return c.json({ ok: true });
 });
 

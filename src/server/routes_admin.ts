@@ -908,11 +908,16 @@ adminRouter.get('/boards/:board_id/automation', async (c) => {
   return c.json(rules)
 })
 
+// NB: field di sini sengaja snake_case — itu yang benar-benar dikirim
+// AutomationModal.jsx. Sebelumnya schema ini pakai camelCase (triggerListId/
+// actionValue) yang TIDAK PERNAH match body asli → actionValue selalu ke-parse
+// jadi undefined → setiap aturan otomasi board yang dibuat lewat UI tersimpan
+// dengan nilai aksi kosong (null), diam-diam tidak pernah benar-benar bekerja.
 const AutomationBody = z.object({
   trigger: z.string(),
-  triggerListId: z.string().optional().nullable(),
+  trigger_list_id: z.string().optional().nullable(),
   action: z.string(),
-  actionValue: z.string().optional().nullable(),
+  action_value: z.string().optional().nullable(),
 })
 
 adminRouter.post('/boards/:board_id/automation', zValidator('json', AutomationBody), async (c) => {
@@ -920,21 +925,21 @@ adminRouter.post('/boards/:board_id/automation', zValidator('json', AutomationBo
   await requirePerm(c, 'automation.manage')
   const boardId = c.req.param('board_id')
   const body = c.req.valid('json')
-  
+
   if (!["card_created", "card_moved", "card_mirrored", "mirror_removed"].includes(body.trigger)) {
     return c.json({ error: "Trigger tidak valid" }, 400)
   }
   if (!["add_label", "remove_label", "set_priority", "assign_division"].includes(body.action)) {
     return c.json({ error: "Aksi tidak valid" }, 400)
   }
-  
+
   const doc = await db.automationRule.create({
     data: {
       boardId,
       trigger: body.trigger,
-      triggerListId: body.triggerListId,
+      triggerListId: body.trigger_list_id,
       action: body.action,
-      actionValue: body.actionValue,
+      actionValue: body.action_value,
       createdById: user.id
     }
   })
@@ -1166,4 +1171,72 @@ adminRouter.patch('/settings/auto-label-payment', async (c) => {
   const body = await c.req.json()
   await setSetting(AUTO_LABEL_PAYMENT_KEY, { enabled: !!body.enabled })
   return c.json({ enabled: !!body.enabled })
+})
+
+// ---------- GLOBAL AUTOMATION RULES (Panel Admin -> Otomasi, lintas board) ----------
+// Beda dari AutomationRule (per-board): tidak terikat satu board, dipakai untuk
+// kejadian level Master Card/job (harga diisi, status bayar berubah). Lihat
+// runGlobalAutomation() di routes_work.ts untuk mesin eksekusinya.
+const gaOut = (r: any) => ({
+  id: r.id,
+  trigger: r.trigger,
+  condition_value: r.conditionValue,
+  action: r.action,
+  action_value: r.actionValue,
+  enabled: r.enabled,
+  created_at: r.createdAt,
+})
+
+const GA_TRIGGERS = ['card_created', 'price_set', 'payment_status_changed']
+const GA_ACTIONS = ['add_label', 'set_priority', 'send_to_division']
+
+adminRouter.get('/global-automation-rules', async (c) => {
+  const user = c.get('user')
+  await requirePerm(c, 'automation.manage')
+  const rows = await db.globalAutomationRule.findMany({ orderBy: { createdAt: 'asc' } })
+  return c.json(rows.map(gaOut))
+})
+
+const GlobalAutomationBody = z.object({
+  trigger: z.string(),
+  condition_value: z.string().optional().nullable(),
+  action: z.string(),
+  action_value: z.string().optional().nullable(),
+})
+
+adminRouter.post('/global-automation-rules', zValidator('json', GlobalAutomationBody), async (c) => {
+  const user = c.get('user')
+  await requirePerm(c, 'automation.manage')
+  const body = c.req.valid('json')
+  if (!GA_TRIGGERS.includes(body.trigger)) return c.json({ error: 'Kejadian tidak valid' }, 400)
+  if (!GA_ACTIONS.includes(body.action)) return c.json({ error: 'Aksi tidak valid' }, 400)
+  const doc = await db.globalAutomationRule.create({
+    data: {
+      trigger: body.trigger,
+      conditionValue: body.condition_value,
+      action: body.action,
+      actionValue: body.action_value,
+      createdById: user.id,
+    },
+  })
+  return c.json(gaOut(doc))
+})
+
+adminRouter.patch('/global-automation-rules/:rule_id', async (c) => {
+  const user = c.get('user')
+  await requirePerm(c, 'automation.manage')
+  const ruleId = c.req.param('rule_id')
+  const body = await c.req.json().catch(() => ({}))
+  const data: any = {}
+  if (body.enabled !== undefined) data.enabled = !!body.enabled
+  const updated = await db.globalAutomationRule.update({ where: { id: ruleId }, data })
+  return c.json(gaOut(updated))
+})
+
+adminRouter.delete('/global-automation-rules/:rule_id', async (c) => {
+  const user = c.get('user')
+  await requirePerm(c, 'automation.manage')
+  const ruleId = c.req.param('rule_id')
+  await db.globalAutomationRule.delete({ where: { id: ruleId } }).catch(() => {})
+  return c.json({ ok: true })
 })

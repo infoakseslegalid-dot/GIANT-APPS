@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw, Info, Search } from "lucide-react";
-import { api, errMsg, ROLE_LABELS, fmtDateTime } from "../lib/api";
+import { api, errMsg, ROLE_LABELS, fmtDateTime, PRIORITIES } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "../components/common";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -698,7 +698,193 @@ function Toggle({ on, disabled, onChange, testid }) {
 }
 
 // ── Otomasi ──────────────────────────────────────────────────────────────
-function AutomationSettingsTab() {
+const GA_TRIGGERS = [
+  { value: "card_created", label: "Saat kartu baru dibuat" },
+  { value: "price_set", label: "Saat harga job diisi / diubah" },
+  { value: "payment_status_changed", label: "Saat status pembayaran berubah jadi..." },
+];
+const GA_PAYMENT_STATUSES = [
+  { value: "dp", label: "DP (sebagian)" },
+  { value: "lunas", label: "Lunas" },
+  { value: "belum", label: "Belum bayar" },
+];
+const GA_ACTIONS = [
+  { value: "add_label", label: "Pasang label" },
+  { value: "set_priority", label: "Ubah prioritas menjadi" },
+  { value: "send_to_division", label: "Kirim ke divisi" },
+];
+// Palet warna label yang sama konsepnya dengan CardLabels.tsx — cuma untuk
+// swatch preview di form ini; yang disimpan tetap nama warnanya (string).
+const GA_LABEL_COLORS = {
+  green: "#22A06B", yellow: "#F5CD47", orange: "#E56910", red: "#CA3521",
+  purple: "#9F8FEF", blue: "#0C66E4", sky: "#4BADE8", lime: "#94C748",
+  pink: "#E774BB", gray: "#8590A2",
+};
+
+function CustomAutomationRulesSection({ divisions }) {
+  const qc = useQueryClient();
+  const { data: rules } = useQuery({
+    queryKey: ["global-automation-rules"],
+    queryFn: () => api.get("/global-automation-rules").then((r) => r.data),
+  });
+  const [trigger, setTrigger] = useState("card_created");
+  const [conditionValue, setConditionValue] = useState("dp");
+  const [action, setAction] = useState("add_label");
+  const [labelName, setLabelName] = useState("");
+  const [labelColor, setLabelColor] = useState("green");
+  const [priorityValue, setPriorityValue] = useState("high");
+  const [divisionKey, setDivisionKey] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["global-automation-rules"] });
+
+  const createRule = async () => {
+    let action_value = null;
+    if (action === "add_label") {
+      if (!labelName.trim()) return toast.error("Isi nama label dulu");
+      action_value = JSON.stringify({ name: labelName.trim(), color: labelColor });
+    } else if (action === "set_priority") {
+      action_value = priorityValue;
+    } else if (action === "send_to_division") {
+      if (!divisionKey) return toast.error("Pilih divisi tujuan dulu");
+      action_value = divisionKey;
+    }
+    setBusy(true);
+    try {
+      await api.post("/global-automation-rules", {
+        trigger,
+        condition_value: trigger === "payment_status_changed" ? conditionValue : null,
+        action,
+        action_value,
+      });
+      toast.success("Aturan dibuat");
+      setLabelName("");
+      invalidate();
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleRule = async (r) => {
+    try {
+      await api.patch(`/global-automation-rules/${r.id}`, { enabled: !r.enabled });
+      invalidate();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const deleteRule = async (id) => {
+    try {
+      await api.delete(`/global-automation-rules/${id}`);
+      invalidate();
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
+  };
+
+  const describe = (r) => {
+    const t = GA_TRIGGERS.find((x) => x.value === r.trigger)?.label || r.trigger;
+    const cond = r.trigger === "payment_status_changed"
+      ? ` "${GA_PAYMENT_STATUSES.find((s) => s.value === r.condition_value)?.label || r.condition_value}"`
+      : "";
+    const a = GA_ACTIONS.find((x) => x.value === r.action)?.label || r.action;
+    let val = "";
+    if (r.action === "add_label") {
+      try { val = JSON.parse(r.action_value || "{}").name || ""; } catch { val = ""; }
+    } else if (r.action === "set_priority") {
+      val = PRIORITIES.find((p) => p.value === r.action_value)?.label || r.action_value || "";
+    } else if (r.action === "send_to_division") {
+      val = (divisions || []).find((d) => d.key === r.action_value)?.name || r.action_value || "";
+    }
+    return `${t}${cond} → ${a}${val ? ` "${val}"` : ""}`;
+  };
+
+  const selectCls = "h-9 rounded-lg border border-[hsl(var(--hairline))] px-2 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
+
+  return (
+    <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5" data-testid="admin-global-automation">
+      <h3 className="font-heading font-bold text-foreground mb-1">Aturan Kustom</h3>
+      <p className="text-sm text-2 mb-4">Bikin aturan "kalau [kejadian] maka [aksi]" sendiri — berlaku ke semua kartu, tidak perlu per-board.</p>
+
+      <div className="bg-[hsl(var(--muted))] rounded-xl p-4 space-y-3 mb-4">
+        <p className="text-xs font-bold uppercase tracking-wider text-3">Buat aturan baru</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select data-testid="ga-trigger-select" className={selectCls} value={trigger} onChange={(e) => setTrigger(e.target.value)}>
+            {GA_TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          {trigger === "payment_status_changed" && (
+            <select data-testid="ga-condition-select" className={selectCls} value={conditionValue} onChange={(e) => setConditionValue(e.target.value)}>
+              {GA_PAYMENT_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select data-testid="ga-action-select" className={selectCls} value={action} onChange={(e) => setAction(e.target.value)}>
+            {GA_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+          {action === "add_label" && (
+            <>
+              <input
+                data-testid="ga-label-name"
+                value={labelName}
+                onChange={(e) => setLabelName(e.target.value)}
+                placeholder="Nama label"
+                className="h-9 w-40 rounded-lg border border-[hsl(var(--hairline))] px-2 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]"
+              />
+              <div className="flex gap-1">
+                {Object.entries(GA_LABEL_COLORS).map(([name, hex]) => (
+                  <button
+                    key={name}
+                    type="button"
+                    data-testid={`ga-label-color-${name}`}
+                    onClick={() => setLabelColor(name)}
+                    className={`h-7 w-7 rounded ${labelColor === name ? "ring-2 ring-[#0C66E4] ring-offset-1" : "border border-[hsl(var(--hairline))]"}`}
+                    style={{ backgroundColor: hex }}
+                    title={name}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          {action === "set_priority" && (
+            <select data-testid="ga-priority-select" className={selectCls} value={priorityValue} onChange={(e) => setPriorityValue(e.target.value)}>
+              {PRIORITIES.filter((p) => p.value !== "none").map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          )}
+          {action === "send_to_division" && (
+            <select data-testid="ga-division-select" className={selectCls} value={divisionKey} onChange={(e) => setDivisionKey(e.target.value)}>
+              <option value="">Pilih divisi...</option>
+              {(divisions || []).map((d) => <option key={d.id} value={d.key}>{d.name}</option>)}
+            </select>
+          )}
+          <button data-testid="ga-create-button" onClick={createRule} disabled={busy} className={`${btnPrimary} flex items-center gap-1.5`}>
+            <Plus size={14} /> Tambah
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2" data-testid="ga-rules-list">
+        {(rules || []).length === 0 && <p className="text-sm text-2">Belum ada aturan kustom.</p>}
+        {(rules || []).map((r) => (
+          <div key={r.id} className="flex items-center justify-between gap-3 bg-[hsl(var(--muted))] rounded-lg px-3 py-2" data-testid={`ga-rule-${r.id}`}>
+            <p className={`text-sm flex-1 ${r.enabled ? "text-foreground" : "text-3 line-through"}`}>{describe(r)}</p>
+            <div className="flex items-center gap-2 shrink-0">
+              <Toggle on={r.enabled} onChange={() => toggleRule(r)} testid={`ga-toggle-${r.id}`} />
+              <button aria-label="Hapus aturan" data-testid={`ga-delete-${r.id}`} onClick={() => deleteRule(r.id)} className="p-1 rounded hover:bg-[#FFECE8] text-[#CA3521]">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AutomationSettingsTab({ divisions }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["settings-auto-label-payment"],
@@ -741,6 +927,8 @@ function AutomationSettingsTab() {
           />
         </div>
       </div>
+
+      <CustomAutomationRulesSection divisions={divisions} />
     </div>
   );
 }
@@ -970,7 +1158,7 @@ export default function AdminPanel() {
             <TabsContent value="boards" className="mt-4"><BoardsTab divisions={divisions} /></TabsContent>
             <TabsContent value="flow" className="mt-4"><FlowTab /></TabsContent>
             <TabsContent value="checklist-templates" className="mt-4"><ChecklistTemplatesTab /></TabsContent>
-            <TabsContent value="automation" className="mt-4"><AutomationSettingsTab /></TabsContent>
+            <TabsContent value="automation" className="mt-4"><AutomationSettingsTab divisions={divisions} /></TabsContent>
             <TabsContent value="permissions" className="mt-4"><PermissionsTab /></TabsContent>
           </>
         )}

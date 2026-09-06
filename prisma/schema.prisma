@@ -366,6 +366,20 @@ model AutomationRule {
   triggerList List? @relation(fields: [triggerListId], references: [id], onDelete: Cascade)
 }
 
+// Aturan otomasi GLOBAL (semua kartu, lintas board) — beda dari AutomationRule
+// yang per-board. Dipakai untuk kejadian level Master Card/job (harga diisi,
+// status pembayaran berubah) yang wajar berlaku ke semua board sekaligus.
+model GlobalAutomationRule {
+  id             String   @id @default(uuid())
+  trigger        String // 'card_created' | 'price_set' | 'payment_status_changed'
+  conditionValue String? // payment_status_changed: 'belum' | 'dp' | 'lunas'
+  action         String // 'add_label' | 'set_priority' | 'send_to_division'
+  actionValue    String? // add_label: JSON {"name","color"}; lainnya: nilai polos
+  enabled        Boolean  @default(true)
+  createdById    String
+  createdAt      DateTime @default(now())
+}
+
 model Attachment {
   id               String   @id @default(uuid())
   workItemId       String
