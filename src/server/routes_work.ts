@@ -1575,6 +1575,35 @@ async function canonicalItem(item) {
   const rep = await prisma.workItem.findFirst({ where: { masterCardId: item.masterCardId, targetDivisionId: null } });
   return rep || item;
 }
+
+/**
+ * Versi batch dari canonicalItem() — buat endpoint LISTING (kalender, pencarian,
+ * peta HARI, daftar "Semua Pekerjaan") yang menampilkan banyak kartu sekaligus.
+ * Judul & nama klien kartu grup (assignment) = satu sumber di Master Card rep
+ * (lihat komentar di GET /work-items/:item_id) — tanpa ini, listing tetap
+ * menampilkan judul lama walau sudah diubah dari kartu master.
+ * Return: Map<masterCardId, {title, clientName}> untuk item yang PUNYA host lain.
+ */
+async function hostTitlesByMasterCardId(items: { masterCardId: string | null; targetDivisionId: string | null }[]) {
+  const mcIds = [...new Set(items.filter((i) => i.masterCardId && i.targetDivisionId).map((i) => i.masterCardId as string))];
+  if (!mcIds.length) return {} as Record<string, { title: string; clientName: string | null }>;
+  const reps = await prisma.workItem.findMany({
+    where: { masterCardId: { in: mcIds }, targetDivisionId: null },
+    select: { masterCardId: true, title: true, clientName: true },
+  });
+  const map: Record<string, { title: string; clientName: string | null }> = {};
+  for (const r of reps) if (r.masterCardId) map[r.masterCardId] = { title: r.title, clientName: r.clientName };
+  return map;
+}
+/** Judul kanonik satu item, pakai hasil hostTitlesByMasterCardId(). */
+function canonTitle(i: { masterCardId: string | null; targetDivisionId: string | null; title: string }, hostMap: Record<string, { title: string; clientName: string | null }>) {
+  if (i.masterCardId && i.targetDivisionId && hostMap[i.masterCardId]) return hostMap[i.masterCardId].title;
+  return i.title;
+}
+function canonClientName(i: { masterCardId: string | null; targetDivisionId: string | null; clientName: string | null }, hostMap: Record<string, { title: string; clientName: string | null }>) {
+  if (i.masterCardId && i.targetDivisionId && hostMap[i.masterCardId]) return hostMap[i.masterCardId].clientName ?? i.clientName;
+  return i.clientName;
+}
 function normChecklists(v) {
   let cl = v;
   if (typeof cl === 'string') { try { cl = JSON.parse(cl); } catch { cl = []; } }
@@ -1819,11 +1848,12 @@ router.get('/calendar', async (c) => {
     orderBy: { dueDate: 'asc' },
     include: { board: true, list: true, currentPic: true, members: true },
   });
+  const hostMap = await hostTitlesByMasterCardId(items);
 
   return c.json(items.map((i: any) => ({
     id: i.id,
-    title: i.title,
-    client_name: i.clientName || null,
+    title: canonTitle(i, hostMap),
+    client_name: canonClientName(i, hostMap) || null,
     due_date: i.dueDate,
     status: i.status,
     priority: i.priority || 'none',
@@ -1853,8 +1883,10 @@ router.get('/work-items', async (c) => {
     where, orderBy: { updatedAt: 'desc' },
     include: { board: true, list: true, currentPic: true, members: true },
   });
+  const hostMap = await hostTitlesByMasterCardId(items);
   return c.json(items.map((i: any) => ({
-    ...formatWorkItem(i), board_name: i.board.name, board_background: i.board.background, list_name: i.list.name,
+    ...formatWorkItem(i), title: canonTitle(i, hostMap), client_name: canonClientName(i, hostMap) || null,
+    board_name: i.board.name, board_background: i.board.background, list_name: i.list.name,
   })));
 });
 
@@ -1894,6 +1926,7 @@ router.get('/search', async (c) => {
     RELEASED: 'Dilepas',
   };
 
+  const hostMap = await hostTitlesByMasterCardId(rows);
   const items = rows.map((w: any) => {
     const isAssignment = !!w.targetDivisionId;
     const isMaster = !!w.masterCardId && !w.targetDivisionId;
@@ -1902,8 +1935,8 @@ router.get('/search', async (c) => {
     else if (isMaster) role = 'master';
     return {
       id: w.id,
-      title: w.title,
-      client_name: w.clientName || null,
+      title: canonTitle(w, hostMap),
+      client_name: canonClientName(w, hostMap) || null,
       board_id: w.boardId,
       board_name: w.board?.name || null,
       list_name: w.list?.name || null,
@@ -1932,13 +1965,13 @@ function daysSince(d: any): number {
   return Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86400000));
 }
 
-function globalCard(w: any) {
+function globalCard(w: any, hostMap: Record<string, { title: string; clientName: string | null }> = {}) {
   const enteredAt = w.hariStage ? w.hariEnteredAt : w.updatedAt;
   const days = daysSince(enteredAt);
   return {
     id: w.id,
-    title: w.title,
-    client_name: w.clientName || null,
+    title: canonTitle(w, hostMap),
+    client_name: canonClientName(w, hostMap) || null,
     board_id: w.boardId,
     board_name: w.board?.name || null,
     board_background: w.board?.background || null,
@@ -1960,7 +1993,8 @@ router.get('/global/hari', async (c) => {
     include: { board: true, list: true, members: true },
     orderBy: [{ hariStage: 'asc' }, { hariEnteredAt: 'asc' }],
   });
-  return c.json(rows.map(globalCard));
+  const hostMap = await hostTitlesByMasterCardId(rows);
+  return c.json(rows.map((w) => globalCard(w, hostMap)));
 });
 
 router.get('/global/skor', async (c) => {
@@ -2363,12 +2397,15 @@ router.get('/bank-data/:division_id', async (c) => {
     };
   });
 
+  const hostMap = await hostTitlesByMasterCardId(items);
   return c.json({
     division,
     boards,
     workload,
     items: items.map((i: any) => ({
       ...formatWorkItem(i),
+      title: canonTitle(i, hostMap),
+      client_name: canonClientName(i, hostMap) || null,
       board_name: i.board?.name,
       list_name: i.list?.name,
     })),

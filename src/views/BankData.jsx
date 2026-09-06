@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Database, Plus, Hand, X, Lock, CheckCircle2, Swords, Filter } from "lucide-react";
+import { Database, Plus, Hand, X, Lock, CheckCircle2, Swords, Filter, ChevronDown, ChevronRight } from "lucide-react";
 import { api, errMsg, PRIORITIES } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar, StatusBadge, PriorityFlag } from "../components/common";
@@ -28,14 +28,24 @@ function ageMinutes(iso) {
 
 function umurInfo(iso) {
   const mins = ageMinutes(iso);
-  if (mins == null) return { text: "-", cls: "text-3", mins: 0 };
+  if (mins == null) return { text: "-", cls: "text-3", dotColor: null, mins: 0 };
   let text;
   if (mins < 60) text = `${mins} mnt`;
   else if (mins < 1440) text = `${Math.floor(mins / 60)} jam ${mins % 60} mnt`;
   else text = `${Math.floor(mins / 1440)} hari ${Math.floor((mins % 1440) / 60)} jam`;
   const cls = mins < AGE_YELLOW_MIN ? "text-[#216E4E]" : mins < AGE_RED_MIN ? "text-[#946F00]" : "text-[#CA3521] font-bold";
-  const dot = mins < AGE_YELLOW_MIN ? "🟢" : mins < AGE_RED_MIN ? "🟡" : "🔴";
-  return { text: `${dot} ${text}`, cls, mins };
+  const dotColor = mins < AGE_YELLOW_MIN ? "#22A06B" : mins < AGE_RED_MIN ? "#F5CD47" : "#CA3521";
+  return { text, cls, dotColor, mins };
+}
+
+/** Titik warna umur pekerjaan — pengganti emoji 🟢🟡🔴 (konsisten lintas OS/browser). */
+function AgeDot({ umur }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${umur.cls}`}>
+      {umur.dotColor && <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: umur.dotColor }} />}
+      {umur.text}
+    </span>
+  );
 }
 
 const AGE_FILTERS = [
@@ -300,7 +310,7 @@ export default function BankData() {
                           <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[hsl(var(--muted))] text-2">{item.list_name}</span>
                         </td>
                         <td className="px-4 py-2.5"><PriorityFlag priority={item.priority} /></td>
-                        <td className={`px-4 py-2.5 text-xs font-semibold ${umur.cls}`} data-testid={`bankdata-umur-${item.id}`}>{umur.text}</td>
+                        <td className="px-4 py-2.5 text-xs font-semibold" data-testid={`bankdata-umur-${item.id}`}><AgeDot umur={umur} /></td>
                         <td className="px-4 py-2.5">
                           {isDivisionMember ? (
                             <button data-testid={`bankdata-claim-${item.id}`} onClick={() => claim(item.id)}
@@ -471,8 +481,8 @@ export default function BankData() {
               </div>
               <div className="border-t border-[hsl(var(--hairline))] pt-3">
                 <button type="button" data-testid="bankdata-extra-toggle" onClick={() => setShowExtra((v) => !v)}
-                  className="text-xs font-semibold text-[#0C66E4] hover:underline">
-                  {showExtra ? "▾" : "▸"} Opsi Tambahan
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#0C66E4] hover:underline">
+                  {showExtra ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Opsi Tambahan
                 </button>
                 {showExtra && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
@@ -537,7 +547,7 @@ function TakenRow({ item, idx, user, isSupervisorUp, onOpen, onTakeover }) {
           </span>
         ) : <span className="text-[11px] text-3">—</span>}
       </td>
-      <td className={`px-4 py-2.5 text-xs font-semibold ${claimAge.cls}`}>{item.claimed_at ? claimAge.text : "—"}</td>
+      <td className="px-4 py-2.5 text-xs font-semibold">{item.claimed_at ? <AgeDot umur={claimAge} /> : "—"}</td>
       <td className="px-4 py-2.5">
         {isDone ? <StatusBadge status="done" />
           : <span className={`inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold ${dist.c}`}>{dist.t}</span>}

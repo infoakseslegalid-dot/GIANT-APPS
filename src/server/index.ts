@@ -12,11 +12,29 @@ import reportRouter from './routes_report';
 import { realtimeBus } from './deps';
 import { syncPermissions, allowedKeysFor } from './permissions';
 import { prefetchDivisions } from './deps';
+import { advance_hari_job, notify_kelengkapan_pending } from './cron';
 
 // Katalog permission disinkronkan sekali saat modul dimuat: aksi kurasi +
 // table.<Model> untuk setiap model Prisma. Model baru → otomatis muncul di matriks.
 syncPermissions().catch((e) => console.error('[permissions] sync gagal:', e));
 prefetchDivisions().catch((e) => console.error('[divisions] prefetch gagal:', e));
+
+// ── Cron in-process: HARI auto-advance, notifikasi jatuh tempo & kelengkapan
+// pending (lihat src/server/cron.ts). Sebelumnya advance_hari_job() ada tapi
+// tidak pernah dipanggil siapa pun — jadi fitur "otomatis maju HARI" & "jatuh
+// tempo" itu mati. Guard lewat globalThis (pola sama dengan realtimeBus) biar
+// tidak dobel interval tiap kali Next dev hot-reload modul ini.
+const _gCron = globalThis as any;
+if (!_gCron.__CRON_STARTED__) {
+    _gCron.__CRON_STARTED__ = true;
+    const CRON_INTERVAL_MS = 30 * 60 * 1000; // 30 menit
+    const runCronJobs = async () => {
+        try { await advance_hari_job(); } catch (e) { console.error('[cron] advance_hari_job gagal:', e); }
+        try { await notify_kelengkapan_pending(); } catch (e) { console.error('[cron] notify_kelengkapan_pending gagal:', e); }
+    };
+    runCronJobs();
+    setInterval(runCronJobs, CRON_INTERVAL_MS);
+}
 
 const app = new Hono().basePath('/api');
 

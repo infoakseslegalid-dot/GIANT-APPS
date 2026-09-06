@@ -8,7 +8,7 @@ import {
   pointerWithin, rectIntersection, closestCorners,
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { Zap, Archive, Users, Plus, X, Filter } from "lucide-react";
+import { Zap, Archive, Users, Plus, X, Filter, Eye } from "lucide-react";
 import { api, errMsg } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { KanbanColumn, CardTile } from "../components/Kanban";
@@ -337,7 +337,7 @@ export default function BoardView() {
           <h1 className="font-heading text-lg font-bold truncate" data-testid="board-title">{board.name}</h1>
           {boardReadOnly && (
             <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[hsl(var(--elevated))]/20 px-2.5 py-1 text-[11px] font-bold" data-testid="board-readonly-badge">
-              👁 Hanya lihat
+              <Eye size={12} /> Hanya lihat
             </span>
           )}
           {division && (

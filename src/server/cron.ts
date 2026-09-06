@@ -127,3 +127,58 @@ export async function advance_hari_job() {
 
   return advanced;
 }
+
+// Item checklist "Diverifikasi Admin" (lihat fitur csSelfCheck template) yang
+// masih belum dicentang setelah kartu berumur > KELENGKAPAN_THRESHOLD_DAYS →
+// ingatkan supervisor/super admin, sekali per hari per kartu, supaya tidak
+// nunggu ada yang buka halaman Rekap & Performa duluan.
+const KELENGKAPAN_THRESHOLD_DAYS = 2;
+
+export async function notify_kelengkapan_pending() {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - KELENGKAPAN_THRESHOLD_DAYS * 86400000);
+
+  // Checklist "kelengkapan" hidup di kartu host/rep (targetDivisionId null) —
+  // sama seperti aturan single-source-of-truth checklist di routes_work.ts.
+  const hosts = await db.workItem.findMany({
+    where: { archived: false, targetDivisionId: null, status: { not: "done" }, createdAt: { lte: cutoff } },
+    select: { id: true, title: true, boardId: true, checklists: true, createdAt: true },
+  });
+
+  const pending = hosts.filter((h: any) => {
+    let cls: any[] = [];
+    try { cls = typeof h.checklists === "string" ? JSON.parse(h.checklists) : (h.checklists || []); } catch { cls = []; }
+    if (!Array.isArray(cls)) return false;
+    return cls.some((cl: any) => (cl.items || []).some((it: any) => !it.done && String(it.text || "").trim().toLowerCase() === "diverifikasi admin"));
+  });
+  if (!pending.length) return 0;
+
+  const supervisors = await db.user.findMany({ where: { role: { in: ["super_admin", "supervisor"] }, isActive: true }, select: { id: true } });
+  if (!supervisors.length) return 0;
+
+  const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+  let sent = 0;
+  for (const item of pending) {
+    const already = await db.notification.findFirst({
+      where: { workItemId: item.id, type: "kelengkapan_pending", createdAt: { gte: startOfDay } },
+    });
+    if (already) continue;
+
+    const days = Math.floor((now.getTime() - new Date(item.createdAt).getTime()) / 86400000);
+    for (const s of supervisors) {
+      await db.notification.create({
+        data: {
+          userId: s.id,
+          type: "kelengkapan_pending",
+          title: "Menunggu verifikasi Admin",
+          body: `"${item.title}" masih menunggu item "Diverifikasi Admin" — sudah ${days} hari.`,
+          workItemId: item.id,
+          boardId: item.boardId,
+          isRead: false,
+        },
+      });
+    }
+    sent += 1;
+  }
+  return sent;
+}

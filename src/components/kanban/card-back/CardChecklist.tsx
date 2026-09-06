@@ -400,19 +400,9 @@ function ChecklistBlock({
   );
 }
 
-const TEMPLATES = [
-  {
-    title: 'Template Pendirian PT',
-    items: ['Cek KTP Direksi', 'Cek NPWP', 'Drafting Akta', 'Approval Akta', 'SK Kemenkumham']
-  },
-  {
-    title: 'Template Pendirian CV',
-    items: ['Cek KTP Pengurus', 'Drafting Akta CV', 'Pendaftaran Sistem Kemenkumham']
-  }
-];
-
 export default function CardChecklist({
   card,
+  checklistTemplates,
   onAddChecklist,
   onRenameChecklist,
   onDeleteChecklist,
@@ -420,7 +410,8 @@ export default function CardChecklist({
   onUpdateChecklistItem,
   onDeleteChecklistItem,
   onReorderChecklistItems,
-}: Pick<CardBackProps, 'card' | 'onAddChecklist'> & ChecklistHandlers) {
+}: Pick<CardBackProps, 'card' | 'checklistTemplates' | 'onAddChecklist'> & ChecklistHandlers) {
+  const templates = checklistTemplates ?? [];
   const [open, setOpen] = useState(false);
   const handlers: ChecklistHandlers = {
     onRenameChecklist,
@@ -459,10 +450,10 @@ export default function CardChecklist({
               <button onClick={() => { onAddChecklist('Checklist'); setOpen(false); }} className="text-left px-3 py-2 text-sm rounded hover:bg-[hsl(var(--muted))]">
                 Blank Checklist
               </button>
-              <div className="px-3 py-1 mt-1 text-xs font-semibold text-3">Templates</div>
-              {TEMPLATES.map(t => (
-                <button key={t.title} onClick={() => { onAddChecklist(t.title, t.items); setOpen(false); }} className="text-left px-3 py-2 text-sm rounded hover:bg-[hsl(var(--muted))]">
-                  {t.title}
+              {templates.length > 0 && <div className="px-3 py-1 mt-1 text-xs font-semibold text-3">Templates</div>}
+              {templates.map((t) => (
+                <button key={t.id} onClick={() => { onAddChecklist(t.name, t.items, t.cs_self_check); setOpen(false); }} className="text-left px-3 py-2 text-sm rounded hover:bg-[hsl(var(--muted))]">
+                  {t.name}
                 </button>
               ))}
             </div>
