@@ -1,0 +1,47 @@
+# ══════════════════════════════════════════════════════════════════════
+#  Development stack. Database TIDAK ikut di sini — dipakai Supabase
+#  (isi DATABASE_URL di .env).
+#
+#      docker compose -f docker-compose.dev.yml up --build
+#
+#  Source di-bind-mount dari host, jadi menyimpan file langsung memicu
+#  hot reload di dalam container.
+# ══════════════════════════════════════════════════════════════════════
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    # Wajib ada file .env (salin dari .env.example).
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      # Port di dalam container dikunci 3000; yang bisa diubah lewat .env
+      # adalah port di sisi host (lihat blok ports).
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      # Bind mount dari Windows/macOS tidak meneruskan event inotify ke
+      # container, jadi file watcher harus polling supaya hot reload jalan.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      # Source code: host → container (inilah sumber hot reload).
+      - .:/app
+      # node_modules & cache build dipisah ke named volume supaya binary
+      # Linux di dalam container tidak tertimpa node_modules milik host
+      # (dan sebaliknya).
+      - giant_node_modules:/app/node_modules
+      - giant_next_cache:/app/.next
+    # Turbopack (default di Next 16) tidak punya opsi polling, jadi dev
+    # container memakai webpack yang menghormati WATCHPACK_POLLING.
+    command: ["yarn", "dev", "--webpack"]
+    stdin_open: true
+    tty: true
+
+volumes:
+  giant_node_modules:
+  giant_next_cache:

@@ -1,0 +1,87 @@
+# ══════════════════════════════════════════════════════════════════════
+#  Stack PRODUKSI untuk VPS, di belakang Traefik.
+#
+#      docker compose -f docker-compose.prod.yml up -d --build
+#
+#  Kredensial dibaca dari `.env` di folder yang sama (Compose membacanya
+#  otomatis). Yang wajib ada di sana cuma tiga: DATABASE_URL, DIRECT_URL,
+#  JWT_SECRET — sisanya (domain, NODE_ENV, port, cookie) sudah dipatok di
+#  file ini karena nilainya memang tidak berubah-ubah di produksi.
+#
+#  Database memakai Supabase (eksternal), jadi tidak ada service postgres.
+#
+#  Prasyarat di VPS:
+#    • Traefik sudah jalan, dengan entrypoint `websecure` dan resolver TLS
+#      terpasang di konfigurasi statisnya.
+#    • Network eksternal `proxy` sudah ada:  docker network create proxy
+#    • DNS A record ali-dev.web.id menunjuk ke IP VPS.
+# ══════════════════════════════════════════════════════════════════════
+services:
+  # Menyamakan skema database dengan prisma/schema.prisma sebelum aplikasi
+  # start. Kalau langkah ini gagal, `giant-apps` tidak ikut naik — versi lama
+  # tetap melayani, bukan versi baru yang skemanya tidak cocok.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    container_name: giant-apps-migrate
+    restart: on-failure
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+    networks:
+      - proxy
+
+  giant-apps:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: giant-apps
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.giant-apps.entrypoints=websecure
+      - traefik.http.routers.giant-apps.rule=Host(`ali-dev.web.id`)
+      - traefik.http.routers.giant-apps.service=giant-apps
+      - traefik.http.services.giant-apps.loadbalancer.server.port=3000
+    environment:
+      # Database (Supabase) — satu-satunya yang diambil dari .env, bersama
+      # JWT_SECRET di bawah.
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+
+      # Auth. Wajib terisi di .env — kalau kosong kode jatuh ke
+      # "default_secret" (src/server/deps.ts) dan token bisa dipalsukan.
+      JWT_SECRET: ${JWT_SECRET}
+
+      # Dipatok true, tidak diambil dari .env: di belakang Traefik seluruh
+      # trafik publik sudah HTTPS, sedangkan .env yang sama juga dipakai untuk
+      # dev di http://localhost (yang justru butuh false).
+      COOKIE_SECURE: "true"
+
+      # Object storage opsional. Dikosongkan = lampiran disimpan ke
+      # /app/local_storage (lihat volume uploads_data di bawah).
+      EMERGENT_LLM_KEY: ${EMERGENT_LLM_KEY:-}
+      INTEGRATION_PROXY_URL: ${INTEGRATION_PROXY_URL:-}
+
+      # Node
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    volumes:
+      - uploads_data:/app/local_storage
+    networks:
+      - proxy
+
+volumes:
+  uploads_data:
+
+networks:
+  proxy:
+    external: true

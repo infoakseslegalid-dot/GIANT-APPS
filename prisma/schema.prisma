@@ -5,6 +5,10 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Supabase: DATABASE_URL boleh lewat connection pooler, sedangkan
+  // migrate/db push wajib koneksi langsung. Kalau tidak memakai transaction
+  // pooler, isi DIRECT_URL sama persis dengan DATABASE_URL.
+  directUrl = env("DIRECT_URL")
 }
 
 enum DistributionStatus {

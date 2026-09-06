@@ -1,0 +1,35 @@
+# Dependencies & build output — di-install/di-build ulang di dalam image.
+node_modules
+.next
+out
+build
+coverage
+
+# Git & tooling
+.git
+.gitignore
+.gitconfig
+.vscode
+.idea
+
+# Secrets — env di-inject lewat env_file/compose, jangan ikut ke image layer.
+.env
+.env.*
+!.env.example
+
+# Data lokal & sampah
+local_storage
+scratch
+test_reports
+.emergent
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dump database besar — tidak dibutuhkan saat build image aplikasi.
+*.sql
+
+# Dokumen
+*.md
+!README.md

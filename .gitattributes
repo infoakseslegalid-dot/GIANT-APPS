@@ -1,0 +1,7 @@
+# Skrip shell dan file Docker harus selalu LF, termasuk saat di-checkout di
+# Windows. Skrip ber-CRLF yang di-COPY ke image Linux gagal dijalankan dengan
+# error "bad interpreter: /bin/sh^M".
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+Dockerfile.dev  text eol=lf
+docker/*        text eol=lf

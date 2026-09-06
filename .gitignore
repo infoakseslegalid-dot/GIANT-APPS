@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...kecuali templatenya, yang memang harus ikut ter-commit.
+!.env.example
+
+# salinan sementara yang dibuat scripts/db-import.*
+/.ali_dump_tmp.sql
 
 # vercel
 .vercel
