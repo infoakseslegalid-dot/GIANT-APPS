@@ -291,7 +291,7 @@ function doneChecklistTexts(item: any) {
   let checklists = item.checklists; if (typeof checklists === 'string') checklists = JSON.parse(checklists); checklists = Array.isArray(checklists) ? checklists : [];
   for (const cl of checklists) {
     for (const it of cl.items || []) {
-      if (it.done) done.push((it.text || '').toLowerCase());
+      if (it.done) done.push((it.text || '').trim().toLowerCase());
     }
   }
   return done;
@@ -306,10 +306,14 @@ function asReqArray(v: any): string[] {
   return [];
 }
 function unmetRequirements(item: any, required: any) {
-  const done = doneChecklistTexts(item);
+  // Syarat kini dipilih dari item Template Checklist (bukan teks bebas), jadi
+  // pencocokan = teks SAMA PERSIS dengan item checklist yang sudah tercentang di
+  // kartu — bukan lagi tebak-tebakan substring yang bikin sistem tak tahu item
+  // mana yang dimaksud.
+  const done = new Set(doneChecklistTexts(item));
   return asReqArray(required).filter((req) => {
     const r = req.trim().toLowerCase();
-    return r && !done.some((t) => t.includes(r));
+    return r && !done.has(r);
   });
 }
 async function ensureRequirementChecklist(item: any, lst: any) {
@@ -340,6 +344,17 @@ async function userDivision(user: any) {
   if (!user.divisionId) return null;
   return prisma.division.findUnique({ where: { id: user.divisionId } });
 }
+/** Posisi kartu baru = selalu SETELAH kartu terakhir di list. Jangan hitung dari
+ *  jumlah kartu ((count+1)*1000) — setelah ada kartu yang diarsipkan / diurut
+ *  ulang, angka itu bisa jatuh di tengah dan kartu baru tidak muncul di bawah. */
+async function nextCardPosition(db: any, listId: string): Promise<number> {
+  const last = await db.workItem.findFirst({
+    where: { listId, archived: false },
+    orderBy: { position: 'desc' },
+    select: { position: true },
+  });
+  return (Number(last?.position) || 0) + 1000;
+}
 async function canAccessHari(user: any) {
   if (ADMIN_ROLES.includes(user.role)) return true;
   const div = await userDivision(user);
@@ -356,8 +371,8 @@ router.post('/work-items', async (c) => {
   if (!(await canEditOnBoard(user, body.board_id))) {
     return c.json({ detail: 'Anda hanya bisa membuat kartu di board Anda sendiri.' }, 403);
   }
-  const count = await prisma.workItem.count({ where: { listId: body.list_id, archived: false } });
-  
+  const newPosition = await nextCardPosition(prisma, body.list_id);
+
   const divIds = body.division_ids?.length ? body.division_ids : (board?.divisionId ? [board.divisionId] : []);
 
   // Pembuat SELALU jadi anggota kartu. Untuk kartu di board CS (atau dibuat orang
@@ -370,7 +385,7 @@ router.post('/work-items', async (c) => {
   const item = await prisma.workItem.create({
     data: {
       id: newId(), title: body.title.trim(), clientName: body.clientName?.trim() || '', description: body.description || '',
-      boardId: body.board_id, listId: body.list_id, position: (count + 1) * 1000.0,
+      boardId: body.board_id, listId: body.list_id, position: newPosition,
       dueDate: body.due_date || null, priority: PRIORITIES.includes(body.priority) ? body.priority : 'none',
       status: 'active', archived: false, needsApproval: !!body.needs_approval,
       createdById: user.id, createdByName: user.name,
@@ -432,6 +447,18 @@ router.get('/work-items/:item_id', async (c) => {
   const lst = await prisma.list.findUnique({ where: { id: item.listId } });
   const board = await prisma.board.findUnique({ where: { id: item.boardId } });
 
+  // Daftar list board (urut) + syarat pindahnya — supaya kartu bisa menampilkan
+  // "aturan syarat tiap list" ke Admin & CS tanpa buka Admin Panel.
+  const boardListRows = await prisma.list.findMany({
+    where: { boardId: item.boardId, archived: false },
+    orderBy: { position: 'asc' },
+    select: { id: true, name: true, position: true, entryRequirements: true },
+  });
+  const boardListsOut = boardListRows.map((l) => ({
+    id: l.id, name: l.name, position: l.position,
+    entry_requirements: asReqArray(l.entryRequirements),
+  }));
+
   // Untuk assignment (kartu grup): judul, deskripsi & checklist DITAMPILKAN dari
   // Master Card rep (canonical) supaya "tampil sama" di semua board — konsisten
   // dengan field BERSAMA di PATCH /work-items/:item_id (judul, klien, deskripsi).
@@ -471,6 +498,7 @@ router.get('/work-items/:item_id', async (c) => {
     item: itemOut,
     comments, attachments, activities,
     board_labels: boardLabels, list_name: lst?.name, board_name: board?.name,
+    board_lists: boardListsOut,
     shared_labels: item.masterCardId ? normLabelList((item as any).masterCard?.sharedLabels) : null,
     mirror_boards: [],
     assignments: siblings,
@@ -653,7 +681,10 @@ router.post('/work-items/:item_id/move', async (c) => {
 
   const reqs = asReqArray(targetList.entryRequirements);
   if (reqs.length && targetList.id !== item.listId) {
-    const missing = unmetRequirements(item, reqs);
+    // Cek terhadap checklist yang DITAMPILKAN di kartu (untuk assignment = milik
+    // Master Card rep) supaya status di panel "Syarat Pindah List" == yang ditegakkan.
+    const host = await canonicalItem(item);
+    const missing = unmetRequirements({ ...item, checklists: host.checklists }, reqs);
     if (missing.length) {
       if (SUPERVISOR_ROLES.includes(user.role)) {
         await logActivity(itemId, targetBoard.id, user, `memindahkan "${item.title}" tanpa syarat: ${missing.join(', ')}`);
@@ -1516,7 +1547,7 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
         if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
       }
 
-      const count = await tx.workItem.count({ where: { listId } });
+      const assignmentPosition = await nextCardPosition(tx, listId);
       const assignment = await tx.workItem.create({
         data: {
           id: newId(),
@@ -1525,7 +1556,7 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
           description,
           boardId,
           listId,
-          position: (count + 1) * 1000,
+          position: assignmentPosition,
           priority,
           dueDate,
           status: 'active',
@@ -2140,18 +2171,19 @@ router.post('/work-items/:item_id/comments', async (c) => {
   const item = await getItemChecked(itemId, user);
   { const _d = await commentDenied(c, user, item); if (_d) return _d; }
   
+  const rawText = typeof body.text === 'string' ? body.text : '';
   const comment = await prisma.comment.create({
     data: {
       workItemId: itemId,
       createdById: user.id,
       createdByName: user.name,
-      text: body.text.trim(),
+      text: rawText.trim(),
       attachmentId: body.attachment_id || null,
     }
   });
-  
+
   await logActivity(itemId, item.boardId, user, "menambahkan komentar");
-  const snippet = body.text.replace(/<[^>]+>/g, '').trim().slice(0, 90);
+  const snippet = rawText.replace(/<[^>]+>/g, '').trim().slice(0, 90);
   const mentionIds: string[] = Array.isArray(body.mention_user_ids) ? body.mention_user_ids.filter(Boolean) : [];
   const mentionSet = new Set(mentionIds);
 
@@ -2340,7 +2372,7 @@ router.post('/bank-data/intake', async (c) => {
       if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
     }
 
-    const count = await tx.workItem.count({ where: { listId } });
+    const assignmentPosition = await nextCardPosition(tx, listId);
     const assignment = await tx.workItem.create({
       data: {
         id: newId(),
@@ -2349,7 +2381,7 @@ router.post('/bank-data/intake', async (c) => {
         description: body.note?.trim() || '',
         boardId,
         listId,
-        position: (count + 1) * 1000,
+        position: assignmentPosition,
         priority,
         dueDate: body.due_date || null,
         status: 'active',

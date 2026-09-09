@@ -12,6 +12,7 @@ import CardTitle from './CardTitle';
 import CardQuickActions from './CardQuickActions';
 import CardLabels from './CardLabels';
 import CardDescription from './CardDescription';
+import CardEntryRequirements from './CardEntryRequirements';
 import CardChecklist from './CardChecklist';
 import CardAttachments from './CardAttachments';
 import CardActivityPanel from './CardActivityPanel';
@@ -304,6 +305,7 @@ export default function CardBack(props: CardBackProps) {
             )}
 
             <CardDescription {...props} />
+            <CardEntryRequirements {...props} />
             <CardChecklist {...props} />
             <CardAttachments {...props} />
           </div>

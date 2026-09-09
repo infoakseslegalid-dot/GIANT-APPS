@@ -149,6 +149,10 @@ export interface CardBackProps {
   /** @mention: kandidat user yang bisa disebut (punya akses). */
   mentionableUsers?: CardMember[];
 
+  /** List board ini (urut kiri→kanan) beserta syarat pindah masuknya. Dipakai
+   *  panel "Syarat Pindah List" agar Admin & CS tahu aturan tiap list. */
+  boardLists?: Array<{ id: string; name: string; position: number; entry_requirements: string[] }>;
+
   /** Labels */
   availableLabels: CardLabel[];
   onToggleLabel: (labelId: string) => Promise<void>;

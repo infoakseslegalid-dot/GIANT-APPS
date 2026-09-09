@@ -6,9 +6,12 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Clock, Plus, SquareCheck, User, Tag, Image as ImageIcon, Paperclip, X } from 'lucide-react';
+import { Clock, Plus, SquareCheck, User, Tag, Image as ImageIcon, Paperclip, X, Sparkles } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import type { CardBackProps } from './types';
 import CardDatesPopover from './CardDates';
+import { api } from '@/lib/api';
+import { useAiAssistant } from '@/context/AiAssistantContext';
 
 const btn =
   'flex h-[30px] items-center gap-[5px] rounded-[5px] border border-[#d7dce2] bg-[hsl(var(--muted))] px-[10px] text-[12px] font-medium text-foreground transition-colors hover:bg-[hsl(var(--muted))]';
@@ -26,6 +29,13 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
   const [search, setSearch] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const { openForCard } = useAiAssistant();
+  const { data: perms } = useQuery({
+    queryKey: ['my-permissions'],
+    queryFn: () => api.get('/my-permissions').then((r) => r.data),
+  });
+  const canUseAi = !!perms?.permissions?.includes('ai.use');
 
   useEffect(() => {
     if (!openWhich) return;
@@ -194,6 +204,18 @@ export default function CardQuickActions(props: CardBackProps & { onLabels?: () 
           </div>
         )}
       </div>
+
+      {/* TANYA AI */}
+      {canUseAi && (
+        <button
+          type="button"
+          data-testid="card-ai-button"
+          className={`${btn} !border-[#0c66e4]/40 !text-[#0c66e4]`}
+          onClick={() => openForCard(card.id, card.title)}
+        >
+          <Sparkles size={14} /> Tanya AI
+        </button>
+      )}
     </div>
   );
 }

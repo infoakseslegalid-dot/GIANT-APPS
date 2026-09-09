@@ -53,11 +53,29 @@ export function useBoardPan(scrollRef) {
       }
       state.current = null;
     };
+    // Kalau pointer ada di atas area yang masih bisa scroll vertikal (mis. daftar
+    // kartu di dalam kolom), biarkan scroll vertikal native — jangan dibajak jadi
+    // geser horizontal. Board baru digeser horizontal kalau list-nya sudah mentok.
+    const canScrollVertically = (start, dir) => {
+      let node = start;
+      while (node && node !== el && node.nodeType === 1) {
+        const oy = getComputedStyle(node).overflowY;
+        if ((oy === "auto" || oy === "scroll") && node.scrollHeight > node.clientHeight + 1) {
+          const atTop = node.scrollTop <= 0;
+          const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+          if (!((dir < 0 && atTop) || (dir > 0 && atBottom))) return true;
+        }
+        node = node.parentNode;
+      }
+      return false;
+    };
+
     // Wheel mouse biasa (deltaY, tanpa deltaX) → geser horizontal. Trackpad
     // (punya deltaX) & Shift+wheel dibiarkan default. Listener non-passive
     // supaya preventDefault sah.
     const wheel = (e) => {
       if (e.deltaY !== 0 && e.deltaX === 0 && !e.shiftKey && el.scrollWidth > el.clientWidth) {
+        if (canScrollVertically(e.target, e.deltaY)) return; // biarkan list scroll vertikal
         const before = el.scrollLeft;
         el.scrollLeft += e.deltaY;
         if (el.scrollLeft !== before) e.preventDefault();

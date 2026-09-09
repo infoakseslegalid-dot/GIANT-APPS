@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   Home, Briefcase, CalendarDays, ListChecks, LayoutGrid, Database,
   BarChart3, CalendarClock, Settings, ChevronDown, Star, Search,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, TrendingUp,
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, TrendingUp, Sparkles,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -159,6 +159,7 @@ export default function Sidebar() {
   const canHari = user?.role === "super_admin" || permSet.has("hari.view");
   const canSkor = user?.role === "super_admin" || permSet.has("skor.view");
   const canReport = user?.role === "super_admin" || permSet.has("report.view");
+  const canAi = user?.role === "super_admin" || permSet.has("ai.use");
 
   const allBoards = boards || [];
   const starredBoards = allBoards.filter((b) => starred.includes(b.id));
@@ -179,6 +180,9 @@ export default function Sidebar() {
         <RailItem to="/calendar" icon={<CalendarDays size={16} />} label={t("nav.calendar")} testid="nav-calendar" collapsed={collapsed} active={path === "/calendar"} />
         {isSupervisorUp && (
           <RailItem to="/work" icon={<ListChecks size={16} />} label={t("nav.allWork")} testid="nav-all-work" collapsed={collapsed} active={path === "/work"} />
+        )}
+        {canAi && (
+          <RailItem to="/ai" icon={<Sparkles size={16} />} label={t("nav.aiAssistant")} testid="nav-ai" collapsed={collapsed} active={path.startsWith("/ai")} />
         )}
 
         {/* ── FAVORIT ── */}

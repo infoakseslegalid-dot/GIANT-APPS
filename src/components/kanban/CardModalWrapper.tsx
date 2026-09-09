@@ -262,6 +262,10 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       isAssignment={!!data.is_assignment}
       master={data.master ? { id: data.master.id, title: data.master.title, boardName: data.master.board_name, listName: data.master.list_name, picName: data.master.pic_name } : null}
       mentionableUsers={(data.mentionable_users || []).map((u: any) => ({ id: u.id, name: u.name, initials: initialsOf(u.name), avatarColor: u.avatar_color }))}
+      boardLists={(data.board_lists || []).map((l: any) => ({
+        id: l.id, name: l.name, position: l.position,
+        entry_requirements: Array.isArray(l.entry_requirements) ? l.entry_requirements : [],
+      }))}
       assignments={(data.assignments || []).map((a: any) => ({
         id: a.id, title: a.title, divisionName: a.division_name, divisionKey: a.division_key,
         picName: a.pic_name, distributionStatus: a.distribution_status, workStatus: a.work_status, listName: a.list_name,
@@ -332,18 +336,35 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
 
       onUploadInline={uploadInline}
       onAddComment={async (html, files, mentionIds) => {
-        let firstId: string | null = null;
+        // Upload semua file dulu → kumpulkan id-nya.
+        const ids: string[] = [];
         for (const f of files || []) {
           const id = await uploadFile(f);
-          if (id && !firstId) firstId = id;
+          if (id) ids.push(id);
         }
-        await run(() =>
-          api.post(`/work-items/${curId}/comments`, {
-            text: html,
-            attachment_id: firstId || undefined,
-            mention_user_ids: mentionIds && mentionIds.length ? mentionIds : undefined,
-          }),
-        );
+        const mentions = mentionIds && mentionIds.length ? mentionIds : undefined;
+        // Model Comment hanya menampung SATU lampiran. Kalau ada >1 file,
+        // buat satu komentar per file (teks & mention di komentar pertama saja)
+        // supaya semua file muncul di thread, bukan cuma yang pertama.
+        if (ids.length > 1) {
+          for (let i = 0; i < ids.length; i++) {
+            await run(() =>
+              api.post(`/work-items/${curId}/comments`, {
+                text: i === 0 ? html : '',
+                attachment_id: ids[i],
+                mention_user_ids: i === 0 ? mentions : undefined,
+              }),
+            );
+          }
+        } else {
+          await run(() =>
+            api.post(`/work-items/${curId}/comments`, {
+              text: html,
+              attachment_id: ids[0] || undefined,
+              mention_user_ids: mentions,
+            }),
+          );
+        }
       }}
       onUpdateComment={async (id, html) => { await run(() => api.patch(`/comments/${id}`, { text: html })); }}
       onDeleteComment={async (id) => { await run(() => api.delete(`/comments/${id}`)); }}

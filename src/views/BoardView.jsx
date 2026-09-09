@@ -17,6 +17,7 @@ import AutomationModal from "../components/AutomationModal";
 import { Avatar } from "../components/common";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import BoardBackgroundMenu from "../components/BoardBackgroundMenu";
+import RequirementPicker from "../components/RequirementPicker";
 
 const FILTERS = [
   { value: "all", label: "Semua" },
@@ -50,7 +51,7 @@ export default function BoardView() {
   const [addingList, setAddingList] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [reqList, setReqList] = useState(null);
-  const [reqText, setReqText] = useState("");
+  const [reqItems, setReqItems] = useState([]);
 
   const canvasRef = useRef(null);
   const pan = useBoardPan(canvasRef);
@@ -201,14 +202,13 @@ export default function BoardView() {
 
   const openRequirements = (list) => {
     setReqList(list);
-    setReqText((list.entry_requirements || []).join("\n"));
+    setReqItems((list.entry_requirements || []).filter(Boolean));
   };
 
   const saveRequirements = async () => {
     if (!reqList) return;
-    const items = reqText.split("\n").map((s) => s.trim()).filter(Boolean);
     try {
-      await api.patch(`/lists/${reqList.id}`, { entryRequirements: items });
+      await api.patch(`/lists/${reqList.id}`, { entryRequirements: reqItems });
       toast.success("Syarat masuk list diperbarui");
       setReqList(null);
       qc.invalidateQueries({ queryKey: ["board", boardId] });
@@ -555,16 +555,11 @@ export default function BoardView() {
               </button>
             </div>
             <p className="text-sm text-2 mb-3">
-              Kartu hanya bisa dipindah ke <span className="font-semibold">{reqList.name}</span> jika item checklist berikut sudah dicentang. Satu item per baris.
+              Kartu hanya bisa dipindah ke <span className="font-semibold">{reqList.name}</span> jika item checklist berikut sudah dicentang. Pilih dari item Template Checklist.
             </p>
-            <textarea
-              data-testid="requirements-input"
-              value={reqText}
-              onChange={(e) => setReqText(e.target.value)}
-              rows={5}
-              placeholder={"KTP\nNPWP"}
-              className="w-full rounded-lg border border-[hsl(var(--hairline))] p-3 text-sm outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y"
-            />
+            <div data-testid="requirements-input">
+              <RequirementPicker value={reqItems} onChange={setReqItems} />
+            </div>
             <button
               data-testid="requirements-save-button"
               onClick={saveRequirements}

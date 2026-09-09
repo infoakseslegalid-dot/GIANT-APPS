@@ -9,6 +9,7 @@ import { authApp } from './routes_auth';
 import { adminRouter } from './routes_admin';
 import workRouter from './routes_work';
 import reportRouter from './routes_report';
+import aiRouter from './routes_ai';
 import { realtimeBus } from './deps';
 import { syncPermissions, allowedKeysFor } from './permissions';
 import { prefetchDivisions } from './deps';
@@ -97,6 +98,7 @@ app.route('/auth', authApp);
 app.route('/', adminRouter);
 app.route('/', workRouter);
 app.route('/', reportRouter);
+app.route('/', aiRouter);
 
 export { app };
 

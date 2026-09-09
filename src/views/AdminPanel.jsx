@@ -9,6 +9,7 @@ import { Avatar } from "../components/common";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "../components/ui/tooltip";
+import RequirementPicker from "../components/RequirementPicker";
 
 const inputCls = "h-9 w-full rounded-lg border border-[hsl(var(--hairline))] px-3 text-sm text-foreground bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4]";
 const btnPrimary = "h-9 px-4 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold transition-colors active:scale-95";
@@ -411,14 +412,13 @@ function ActivityTab() {
 }
 
 // ── Alur & Syarat List ──────────────────────────────────────────────
-function ListRow({ list, idx, nextName }) {
+function ListRow({ list, idx }) {
   const qc = useQueryClient();
-  const [reqText, setReqText] = useState((list.entryRequirements || []).join("\n"));
+  const [reqs, setReqs] = useState(() => (list.entryRequirements || []).filter(Boolean));
   const [color, setColor] = useState(list.color || "#F1F2F4");
   const [dirty, setDirty] = useState(false);
 
   const save = async () => {
-    const reqs = reqText.split("\n").map((s) => s.trim()).filter(Boolean);
     try {
       await api.patch(`/lists/${list.id}`, { color, entryRequirements: reqs });
       toast.success(`List "${list.name}" disimpan`);
@@ -454,15 +454,9 @@ function ListRow({ list, idx, nextName }) {
           Syarat pindah kartu KE list ini
         </p>
         <p className="text-[11px] text-3 mb-1.5">
-          Satu syarat per baris. Kartu tidak bisa dipindah ke <b>{list.name}</b>{nextName ? "" : ""} sebelum item checklist dengan teks berikut tercentang (supervisor bisa paksa).
+          Pilih dari item Template Checklist. Kartu tidak bisa dipindah ke <b>{list.name}</b> sebelum item checklist tersebut tercentang di kartu (supervisor bisa paksa).
         </p>
-        <textarea
-          value={reqText}
-          onChange={(e) => { setReqText(e.target.value); setDirty(true); }}
-          rows={3}
-          placeholder={"mis:\nSK Kemenkumham\nPembayaran DP/Lunas"}
-          className="w-full rounded-lg border border-[hsl(var(--hairline))] px-3 py-2 text-sm bg-[hsl(var(--elevated))] outline-none focus:ring-2 focus:ring-[#0C66E4] resize-y font-mono"
-        />
+        <RequirementPicker value={reqs} onChange={(next) => { setReqs(next); setDirty(true); }} />
       </div>
 
       {dirty && (
@@ -504,7 +498,7 @@ function FlowTab() {
       {lists.length > 0 && (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {lists.map((l, i) => (
-            <ListRow key={l.id} list={l} idx={i} nextName={lists[i + 1]?.name} />
+            <ListRow key={l.id} list={l} idx={i} />
           ))}
         </div>
       )}

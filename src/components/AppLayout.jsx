@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutGrid, LogOut, Search, ChevronDown, Kanban, ChevronsUpDown, X, UserCog, Sun, Moon, Monitor,
+  LayoutGrid, LogOut, Search, ChevronDown, Kanban, ChevronsUpDown, X, UserCog, Sun, Moon, Monitor, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -9,6 +9,7 @@ import { useTheme } from "../lib/theme";
 import { api, errMsg } from "../lib/api";
 import { setLocale } from "../lib/i18n";
 import { useAuth } from "../context/AuthContext";
+import { useAiAssistant } from "../context/AiAssistantContext";
 import { Avatar } from "./common";
 import NotificationsMenu from "./NotificationsMenu";
 import Sidebar from "./Sidebar";
@@ -311,6 +312,18 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [editProfile, setEditProfile] = useState(false);
+  const { openForBoard } = useAiAssistant();
+
+  const { data: perms } = useQuery({
+    queryKey: ["my-permissions"],
+    queryFn: () => api.get("/my-permissions").then((r) => r.data),
+  });
+  const canUseAi = !!perms?.permissions?.includes("ai.use");
+  const { data: boardsList } = useQuery({
+    queryKey: ["boards"],
+    queryFn: () => api.get("/boards").then((r) => r.data),
+    enabled: canUseAi,
+  });
 
   useEffect(() => {
     const h = (e) => {
@@ -323,6 +336,8 @@ export default function AppLayout() {
     return () => window.removeEventListener("keydown", h);
   }, []);
   const isBoard = location.pathname.startsWith("/board/");
+  const curBoardId = isBoard ? location.pathname.split("/")[2] : null;
+  const curBoardName = (boardsList || []).find((b) => b.id === curBoardId)?.name;
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" data-testid="app-layout">
@@ -336,6 +351,18 @@ export default function AppLayout() {
         </div>
         <GlobalSearch />
         <div className="flex items-center gap-2 shrink-0">
+          {canUseAi && (
+            <button
+              data-testid="ai-assistant-button"
+              onClick={() => curBoardId && openForBoard(curBoardId, curBoardName)}
+              disabled={!curBoardId}
+              title={curBoardId ? "Tanya AI tentang board ini" : "Buka sebuah board dulu"}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors hover:bg-[hsl(var(--elevated))]/20 disabled:opacity-40"
+            >
+              <Sparkles size={16} />
+              <span className="hidden md:inline">Tanya AI</span>
+            </button>
+          )}
           <NotificationsMenu />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

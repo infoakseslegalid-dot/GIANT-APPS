@@ -81,6 +81,8 @@ export const FEATURE_PERMISSIONS = [
     description: 'Membuka halaman Peta Skor Global — ringkasan posisi semua kartu CS lintas board dalam satu tampilan.' },
   { key: 'report.view', label: 'Buka halaman Rekap & Performa (per user, per divisi, keuangan)', category: 'Halaman',
     description: 'Membuka halaman Rekap & Performa — omzet, performa per user/divisi, dan rekap data keuangan job.' },
+  { key: 'ai.use', label: 'Pakai Asisten AI (Tanya AI)', category: 'Halaman',
+    description: 'Membuka panel "Tanya AI" dan mengirim isi board / kartu / lampiran ke Claude untuk diringkas atau ditanya. Isi kartu yang dikirim mengikuti board yang boleh dilihat user.' },
   // Keuangan
   { key: 'finance.manage', label: 'Input harga job & catat pembayaran (DP / lunas)', category: 'Keuangan',
     description: 'Mengisi/mengubah harga job dan mencatat pembayaran masuk (DP/pelunasan) — tetap dibatasi hanya PIC/pembuat/owner job itu, kecuali supervisor/super admin.' },

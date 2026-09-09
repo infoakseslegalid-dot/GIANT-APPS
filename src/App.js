@@ -7,6 +7,7 @@ import "@/lib/i18n";
 import { setLocale } from "@/lib/i18n";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { RealtimeProvider } from "@/context/RealtimeContext";
+import { AiAssistantProvider } from "@/context/AiAssistantContext";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/views/Login";
 import Dashboard from "@/views/Dashboard";
@@ -19,6 +20,7 @@ import GlobalHari from "@/views/GlobalHari";
 import GlobalSkor from "@/views/GlobalSkor";
 import Calendar from "@/views/Calendar";
 import Reports from "@/views/Reports";
+import AiChat from "@/views/AiChat";
 
 /** Terapkan preferensi tema & bahasa milik user yang login. */
 function PrefsSync() {
@@ -71,7 +73,9 @@ function App() {
             element={
               <Protected>
                 <RealtimeProvider>
-                  <AppLayout />
+                  <AiAssistantProvider>
+                    <AppLayout />
+                  </AiAssistantProvider>
                 </RealtimeProvider>
               </Protected>
             }
@@ -86,6 +90,7 @@ function App() {
             <Route path="/global/skor" element={<GlobalSkor />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/ai" element={<AiChat />} />
             <Route path="/admin" element={<AdminPanel />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
