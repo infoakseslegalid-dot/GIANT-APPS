@@ -17,7 +17,6 @@
  */
 import { Hono } from 'hono';
 import Anthropic from '@anthropic-ai/sdk';
-import { PDFParse } from 'pdf-parse';
 import { db, getBoard, canViewBoard, getWorkItem, ROLE_LABELS } from './deps';
 import { requirePerm, can } from './permissions';
 import { getObject } from './storage';
@@ -310,8 +309,28 @@ async function buildAttachmentParts(itemId, masterCardId) {
 }
 
 // ── Ekstraksi teks PDF (dipakai saat provider = groq; Claude baca PDF native) ──
+//
+// pdf-parse v2 menarik pdfjs-dist yang butuh global DOM (DOMMatrix, Path2D,
+// ImageData) — tidak ada di Node. Kalau di-`import` statis di atas, modul ini
+// GAGAL DIMUAT saat server boot → seluruh /api ikut mati → web jadi 404.
+// Solusi: polyfill dari @napi-rs/canvas + import DINAMIS, dipanggil hanya saat
+// benar-benar mengekstrak PDF. Best-effort: kalau gagal, balikkan string kosong.
+let _pdfParseMod: any = null;
+async function loadPdfParse() {
+  if (_pdfParseMod) return _pdfParseMod;
+  try {
+    const canvas: any = await import('@napi-rs/canvas');
+    for (const k of ['DOMMatrix', 'Path2D', 'ImageData']) {
+      if (!(globalThis as any)[k] && canvas[k]) (globalThis as any)[k] = canvas[k];
+    }
+  } catch { /* polyfill opsional — lanjut saja */ }
+  _pdfParseMod = await import('pdf-parse');
+  return _pdfParseMod;
+}
+
 async function pdfToText(b64) {
   try {
+    const { PDFParse } = await loadPdfParse();
     const parser = new PDFParse({ data: Buffer.from(b64, 'base64') });
     const res = await parser.getText();
     return (res?.text || '').trim();
