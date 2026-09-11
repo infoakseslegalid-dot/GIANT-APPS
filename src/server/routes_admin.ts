@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { formatWorkItem, publicUser } from './deps';
+import { formatWorkItem, publicUser, userAvatarUrl } from './deps';
 import {
   Hono } from 'hono'
 import {
@@ -26,6 +26,8 @@ async function canEditBoardBg(user: any, board: any) {
 }
 const BG_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const BG_MAX_BYTES = 5 * 1024 * 1024
+const AVATAR_IMAGE_TYPES = BG_IMAGE_TYPES
+const AVATAR_MAX_BYTES = 3 * 1024 * 1024
 
 /** URL relatif gambar latar board (dengan cache-buster) atau null. */
 export function boardBgUrl(board: any): string | null {
@@ -64,7 +66,47 @@ adminRouter.patch('/permissions', async (c) => {
   return c.json({ ok: true, matrix: await fullMatrix() })
 })
 
+// Override per divisi. allowed: true | false | null (null = hapus override,
+// divisi kembali mengikuti perannya).
+adminRouter.patch('/permissions/divisions', async (c) => {
+  await requirePerm(c, 'permission.manage')
+  const body = await c.req.json()
+  const changes = Array.isArray(body.changes) ? body.changes
+    : (body.division_id && body.key ? [{ division_id: body.division_id, key: body.key, allowed: body.allowed }] : [])
+  if (!changes.length) return c.json({ error: 'Tidak ada perubahan' }, 400)
+  for (const ch of changes) {
+    const where = { divisionId_permKey: { divisionId: ch.division_id, permKey: ch.key } }
+    if (ch.allowed === null || ch.allowed === undefined) {
+      await db.divisionPermission.deleteMany({ where: { divisionId: ch.division_id, permKey: ch.key } })
+      continue
+    }
+    await db.divisionPermission.upsert({
+      where,
+      update: { allowed: !!ch.allowed },
+      create: { divisionId: ch.division_id, permKey: ch.key, allowed: !!ch.allowed },
+    })
+  }
+  invalidatePermCache()
+  return c.json({ ok: true, matrix: await fullMatrix() })
+})
 
+// Sajikan foto profil. Terbuka untuk semua user login — avatar muncul di mana
+// saja (anggota kartu, PIC, komentar), jadi tidak ada gunanya dibatasi.
+adminRouter.get('/users/:user_id/avatar', async (c) => {
+  const u = await db.user.findUnique({ where: { id: c.req.param('user_id') } })
+  if (!u || !u.avatarPath) return c.text('Not found', 404)
+  try {
+    const { data, contentType } = await getObject(u.avatarPath)
+    return new Response(data, {
+      headers: {
+        'Content-Type': u.avatarType || contentType || 'image/jpeg',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      },
+    })
+  } catch {
+    return c.text('Not found', 404)
+  }
+})
 
 // ---------- USERS ----------
 
@@ -114,6 +156,7 @@ adminRouter.post('/users', zValidator('json', CreateUserBody), async (c) => {
 
 const UpdateUserBody = z.object({
   name: z.string().optional(),
+  email: z.string().email().optional(),
   role: z.string().optional(),
   division_id: z.string().optional().nullable(),
   is_active: z.boolean().optional(),
@@ -129,6 +172,12 @@ adminRouter.patch('/users/:user_id', zValidator('json', UpdateUserBody), async (
   
   const updates: any = {}
   if (body.name !== undefined) updates.name = body.name
+  if (body.email !== undefined) {
+    const email = body.email.toLowerCase().trim()
+    const taken = await db.user.findFirst({ where: { email, id: { not: userId } } })
+    if (taken) return c.json({ error: 'Email sudah dipakai pengguna lain' }, 400)
+    updates.email = email
+  }
   if (body.role !== undefined) {
     if (!["super_admin", "admin", "cs", "supervisor", "staff", "viewer"].includes(body.role)) {
       return c.json({ error: "Peran tidak valid" }, 400)
@@ -152,6 +201,40 @@ adminRouter.patch('/users/:user_id', zValidator('json', UpdateUserBody), async (
     return c.json({ error: "Pengguna tidak ditemukan" }, 404)
   }
   
+  return c.json(publicUser(updated))
+})
+
+// Foto profil pengguna lain — dikelola lewat izin `user.manage`, terpisah dari
+// `profile.edit_photo` (itu untuk foto diri sendiri). Jadi admin tetap bisa
+// merapikan foto tim walau divisinya sendiri dikunci.
+adminRouter.post('/users/:user_id/avatar', async (c) => {
+  await requirePerm(c, 'user.manage')
+  const userId = c.req.param('user_id')
+  const target = await db.user.findUnique({ where: { id: userId } })
+  if (!target) return c.json({ error: 'Pengguna tidak ditemukan' }, 404)
+
+  const form = await c.req.parseBody()
+  const file = form['file'] as File
+  if (!file) return c.json({ error: 'Tidak ada berkas' }, 400)
+  const type = file.type || 'application/octet-stream'
+  if (!AVATAR_IMAGE_TYPES.includes(type)) return c.json({ error: 'Format harus JPG, PNG, WEBP, atau GIF' }, 400)
+  if (file.size > AVATAR_MAX_BYTES) return c.json({ error: 'Ukuran maksimal 3 MB' }, 400)
+
+  const buf = Buffer.from(await file.arrayBuffer())
+  const ext = (file.name || 'avatar').split('.').pop() || 'img'
+  const objectPath = `avatar/${userId}/${uuidv4()}.${ext}`
+  await putObject(objectPath, buf, type)
+
+  const updated = await db.user.update({ where: { id: userId }, data: { avatarPath: objectPath, avatarType: type } })
+  return c.json(publicUser(updated))
+})
+
+adminRouter.delete('/users/:user_id/avatar', async (c) => {
+  await requirePerm(c, 'user.manage')
+  const updated = await db.user.update({
+    where: { id: c.req.param('user_id') },
+    data: { avatarPath: null, avatarType: null },
+  })
   return c.json(publicUser(updated))
 })
 
@@ -696,11 +779,12 @@ adminRouter.patch('/lists/:list_id', zValidator('json', UpdateListBody), async (
     await broadcastBoard(lst.boardId)
 
     // "CS seragam semua" — board apa pun yang divisinya CS berbagi SATU
-    // config warna & syarat pindah list (staf CS punya board masing-masing
+    // config warna, nama, & syarat pindah list (staf CS punya board masing-masing
     // tapi list-nya identik). Board Admin per-divisi (draf/pajak/dst) tidak
     // ikut fan-out ini, tetap terpisah seperti sebelumnya.
     const isCsBoard = lst.board.division?.key === 'cs'
     const fanOutFields: any = {}
+    if (body.name !== undefined) fanOutFields.name = body.name
     if (body.color !== undefined) fanOutFields.color = body.color
     if (body.entryRequirements !== undefined) fanOutFields.entryRequirements = body.entryRequirements as any
     if (isCsBoard && Object.keys(fanOutFields).length > 0) {
@@ -1072,6 +1156,7 @@ adminRouter.get('/stats', async (c) => {
       id: uid,
       name: u ? u.name : "?",
       color: u && u.avatarColor ? u.avatarColor : "#0C66E4",
+      avatar_url: u ? userAvatarUrl(u) : null,
       count
     }
   })

@@ -57,7 +57,7 @@ function HariCard({ item, usersById, onClick, overlay, draggable = true }) {
         {item.due_date && <span className="text-[10px] text-2">Due {fmtDate(item.due_date)}</span>}
       </div>
       <div className="flex -space-x-1.5 justify-end">
-        {members.slice(0, 4).map((m) => <Avatar key={m.id} name={m.name} color={m.avatar_color} size="h-6 w-6 text-[10px]" />)}
+        {members.slice(0, 4).map((m) => <Avatar key={m.id} name={m.name} color={m.avatar_color} src={m.avatar_url} size="h-6 w-6 text-[10px]" />)}
       </div>
     </div>
   );

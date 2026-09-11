@@ -83,6 +83,13 @@ export const FEATURE_PERMISSIONS = [
     description: 'Membuka halaman Rekap & Performa — omzet, performa per user/divisi, dan rekap data keuangan job.' },
   { key: 'ai.use', label: 'Pakai Asisten AI (Tanya AI)', category: 'Halaman',
     description: 'Membuka panel "Tanya AI" dan mengirim isi board / kartu / lampiran ke Claude untuk diringkas atau ditanya. Isi kartu yang dikirim mengikuti board yang boleh dilihat user.' },
+  // Profil sendiri
+  { key: 'profile.edit_name', label: 'Ubah nama sendiri', category: 'Profil',
+    description: 'Mengubah nama sendiri di menu Profil. Kalau dimatikan, nama hanya bisa diubah oleh pengelola pengguna (Admin Panel).' },
+  { key: 'profile.edit_email', label: 'Ubah email sendiri', category: 'Profil',
+    description: 'Mengubah alamat email sendiri. Email adalah identitas login, jadi default-nya MATI — nyalakan hanya untuk divisi/peran yang boleh mengurus akunnya sendiri.' },
+  { key: 'profile.edit_photo', label: 'Ubah foto profil & warna avatar sendiri', category: 'Profil',
+    description: 'Mengunggah/menghapus foto profil dan mengganti warna avatar sendiri.' },
   // Keuangan
   { key: 'finance.manage', label: 'Input harga job & catat pembayaran (DP / lunas)', category: 'Keuangan',
     description: 'Mengisi/mengubah harga job dan mencatat pembayaran masuk (DP/pelunasan) — tetap dibatasi hanya PIC/pembuat/owner job itu, kecuali supervisor/super admin.' },
@@ -111,6 +118,13 @@ function defaultAllowed(role: string, def: { key: string; kind: string }): boole
   if (role === 'super_admin') return true;
   if (def.kind === 'table') return false; // Hanya super_admin (yg di atas) yg bisa akses tabel secara default
   const key = def.key;
+
+  // Profil sendiri: semua peran sudah bisa ubah nama & avatar sejak awal —
+  // pertahankan supaya menambah key ini tidak mendadak mengunci siapa pun.
+  // Email dikecualikan: itu identitas login, jadi admin yang membuka.
+  if (key === 'profile.edit_name' || key === 'profile.edit_photo') return true;
+  if (key === 'profile.edit_email') return false;
+
   if (role === 'viewer') return key === 'hari.view' || key === 'skor.view';
 
   // supervisor, admin (operasional), cs, staff
@@ -190,7 +204,7 @@ export async function syncPermissions() {
 }
 
 // ── cache matriks ───────────────────────────────────────────────────────
-let _cache: { at: number; map: Record<string, Set<string>> } | null = null;
+let _cache: { at: number; map: Record<string, Set<string>>; div: Record<string, Record<string, boolean>> } | null = null;
 const TTL_MS = 15_000;
 
 export function invalidatePermCache() {
@@ -198,20 +212,40 @@ export function invalidatePermCache() {
 }
 
 async function loadMatrix() {
-  if (_cache && Date.now() - _cache.at < TTL_MS) return _cache.map;
+  if (_cache && Date.now() - _cache.at < TTL_MS) return _cache;
   const rows = await db.rolePermission.findMany({ where: { allowed: true } });
   const map: Record<string, Set<string>> = {};
   for (const r of rows) (map[r.role] ||= new Set()).add(r.permKey);
-  _cache = { at: Date.now(), map };
-  return map;
+  // Override per divisi disimpan apa adanya (true DAN false), karena "false"
+  // di sini berarti "divisi ini dilarang walau perannya boleh".
+  const divRows = await db.divisionPermission.findMany();
+  const div: Record<string, Record<string, boolean>> = {};
+  for (const r of divRows) (div[r.divisionId] ||= {})[r.permKey] = r.allowed;
+  _cache = { at: Date.now(), map, div };
+  return _cache;
+}
+
+/**
+ * Override divisi untuk satu key: true/false kalau divisi user mengaturnya,
+ * null kalau tidak diatur (ikut peran).
+ */
+function divisionOverride(cache: any, user: any, key: string): boolean | null {
+  const divId = user?.divisionId || user?.division_id;
+  if (!divId) return null;
+  const row = cache.div[divId];
+  if (!row || !(key in row)) return null;
+  return row[key];
 }
 
 /** Apakah user boleh melakukan aksi `key`? super_admin selalu true. */
 export async function can(user: any, key: string): Promise<boolean> {
   if (!user) return false;
   if (user.role === 'super_admin') return true;
-  const map = await loadMatrix();
-  const set = map[user.role];
+  const cache = await loadMatrix();
+  // Divisi menang atas peran — itu gunanya override (lihat model DivisionPermission).
+  const ov = divisionOverride(cache, user, key);
+  if (ov !== null) return ov;
+  const set = cache.map[user.role];
   if (set && set.has(key)) return true;
   // Tidak ada baris "allowed": table.* → tolak; key di luar katalog → izinkan
   // (lenient, aksi yang belum sempat di-seed jangan mendadak memblokir);
@@ -234,9 +268,14 @@ export async function allowedKeysFor(user: any): Promise<string[]> {
   const defs = allPermissionDefs();
   if (!user) return [];
   if (user.role === 'super_admin') return defs.map((d) => d.key);
-  const map = await loadMatrix();
-  const set = map[user.role] || new Set();
-  return defs.filter((d) => set.has(d.key)).map((d) => d.key);
+  const cache = await loadMatrix();
+  const set = cache.map[user.role] || new Set();
+  return defs
+    .filter((d) => {
+      const ov = divisionOverride(cache, user, d.key);
+      return ov !== null ? ov : set.has(d.key);
+    })
+    .map((d) => d.key);
 }
 
 /** Matriks penuh untuk Panel Admin. */
@@ -247,8 +286,16 @@ export async function fullMatrix() {
   const rows = await db.rolePermission.findMany();
   const byKey: Record<string, Record<string, boolean>> = {};
   for (const r of rows) (byKey[r.permKey] ||= {})[r.role] = r.allowed;
+
+  const divisions = await db.division.findMany({ orderBy: { name: 'asc' } });
+  const divRows = await db.divisionPermission.findMany();
+  // null = ikut peran (belum di-override)
+  const divByKey: Record<string, Record<string, boolean>> = {};
+  for (const r of divRows) (divByKey[r.permKey] ||= {})[r.divisionId] = r.allowed;
+
   return {
     roles,
+    divisions: divisions.map((d: any) => ({ id: d.id, name: d.name, color: d.color })),
     permissions: defs.map((d) => ({
       key: d.key,
       label: d.label,
@@ -258,6 +305,10 @@ export async function fullMatrix() {
       allow: Object.fromEntries(roles.map((role) => [
         role,
         role === 'super_admin' ? true : (byKey[d.key]?.[role] ?? false),
+      ])),
+      division_allow: Object.fromEntries(divisions.map((dv: any) => [
+        dv.id,
+        divByKey[d.key]?.[dv.id] ?? null,
       ])),
     })),
   };

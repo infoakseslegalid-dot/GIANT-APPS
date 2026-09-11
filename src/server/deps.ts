@@ -76,6 +76,13 @@ export function createRefreshToken(userId: string): string {
     });
 }
 
+/** URL relatif foto profil (dengan cache-buster) atau null. */
+export function userAvatarUrl(u: any): string | null {
+    if (!u?.avatarPath) return null;
+    const v = String(u.avatarPath).slice(-12);
+    return `/api/users/${u.id}/avatar?v=${encodeURIComponent(v)}`;
+}
+
 export function publicUser(u: any): any {
     return {
         id: u.id,
@@ -84,6 +91,7 @@ export function publicUser(u: any): any {
         role: u.role,
         division_id: u.divisionId,
         avatar_color: u.avatarColor || "#0C66E4",
+        avatar_url: userAvatarUrl(u),
         is_active: u.isActive !== undefined ? u.isActive : true,
         theme: u.theme || "system",
         locale: u.locale || "id",

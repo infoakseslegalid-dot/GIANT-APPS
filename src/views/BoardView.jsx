@@ -421,7 +421,7 @@ export default function BoardView() {
                     onClick={() => toggleBoardMember(u.id)}
                     className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[hsl(var(--muted))] text-left disabled:cursor-default"
                   >
-                    <Avatar name={u.name} color={u.avatar_color} size="h-6 w-6 text-[10px]" />
+                    <Avatar name={u.name} color={u.avatar_color} src={u.avatar_url} size="h-6 w-6 text-[10px]" />
                     <span className="text-sm text-foreground flex-1">{u.name}</span>
                     {(board.member_ids || []).includes(u.id) && <span className="text-[#22A06B] text-xs font-bold">✓</span>}
                   </button>
@@ -457,7 +457,7 @@ export default function BoardView() {
           <div className="flex -space-x-1.5 ml-1">
             {(board.member_ids || []).slice(0, 5).map((id) => {
               const u = usersById[id];
-              return u ? <Avatar key={id} name={u.name} color={u.avatar_color} size="h-7 w-7 text-[10px]" /> : null;
+              return u ? <Avatar key={id} name={u.name} color={u.avatar_color} src={u.avatar_url} size="h-7 w-7 text-[10px]" /> : null;
             })}
           </div>
         </div>

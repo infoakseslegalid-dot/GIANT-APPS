@@ -11,12 +11,12 @@ const SUGGESTIONS = {
   board: [
     "Ringkas isi board ini",
     "Kartu mana yang deadline-nya minggu ini?",
-    "Kartu apa saja yang belum ada PIC-nya?",
+    "Cek di seluruh database, divisi apa saja yang ada?",
   ],
   card: [
     "Apa status kartu ini dan langkah berikutnya?",
-    "Ringkas semua komentar di kartu ini",
-    "Apa saja checklist yang belum selesai?",
+    "Cek database, apa ada kartu tugas yang berstatus URGENT?",
+    "Carikan pengguna yang punya email dengan domain @ali.id",
   ],
 };
 

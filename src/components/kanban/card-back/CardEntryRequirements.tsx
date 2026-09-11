@@ -61,6 +61,15 @@ export default function CardEntryRequirements(props: CardBackProps) {
   const focusReqs = focusList?.entry_requirements || [];
   const focusMet = focusReqs.filter(isMet).length;
 
+  const [expandedListId, setExpandedListId] = useState<string | null>(null);
+
+  // set expandedListId to focusList on first render
+  React.useEffect(() => {
+    if (focusList && !expandedListId) {
+      setExpandedListId(focusList.id);
+    }
+  }, [focusList, expandedListId]);
+
   const toggle = async (req: string) => {
     if (!canEdit) return;
     const loc = locs(req)[0];
@@ -121,16 +130,23 @@ export default function CardEntryRequirements(props: CardBackProps) {
             const met = reqs.filter(isMet).length;
             const isCurrent = l.id === card.listId;
             const anyMissing = reqs.some((r) => !hasItem(r));
+            const isFocus = l.id === focusList?.id;
+            const isExpanded = expandedListId === l.id;
+            
             return (
               <div
                 key={l.id}
-                className={`rounded-[6px] border px-2.5 py-2 ${
-                  l.id === focusList?.id
+                className={`rounded-[6px] border transition-colors ${
+                  isFocus
                     ? 'border-[#0c66e4] bg-[#E9F2FF] dark:bg-[#0c66e4]/10'
-                    : 'border-[hsl(var(--hairline))]'
+                    : 'border-[hsl(var(--hairline))] bg-[hsl(var(--surface))]'
                 }`}
               >
-                <div className="mb-1 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setExpandedListId(isExpanded ? null : l.id)}
+                  className="flex w-full items-center gap-1.5 px-2.5 py-2 text-left"
+                >
                   <span className="text-[12px] font-semibold text-foreground">{l.name}</span>
                   {isCurrent && (
                     <span className="rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 text-[10px] font-semibold text-3">
@@ -140,59 +156,64 @@ export default function CardEntryRequirements(props: CardBackProps) {
                   <span className="ml-auto text-[11px] font-semibold text-3">
                     {met}/{reqs.length}
                   </span>
-                </div>
+                  {isExpanded ? <ChevronDown size={14} className="text-3 shrink-0 ml-1" /> : <ChevronRight size={14} className="text-3 shrink-0 ml-1" />}
+                </button>
 
-                <ul className="space-y-0.5">
-                  {reqs.map((r) => {
-                    const met1 = isMet(r);
-                    const exists = hasItem(r);
-                    return (
-                      <li key={r}>
-                        <button
-                          type="button"
-                          disabled={!canEdit || !exists}
-                          onClick={() => toggle(r)}
-                          className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left text-[12px] ${
-                            canEdit && exists ? 'hover:bg-[hsl(var(--muted))]' : 'cursor-default'
-                          }`}
-                        >
-                          <span
-                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                              met1
-                                ? 'border-[#22A06B] bg-[#22A06B] text-white'
-                                : 'border-[#B3BAC5] text-transparent'
-                            }`}
-                          >
-                            <Check size={11} strokeWidth={3} />
-                          </span>
-                          <span
-                            className={
-                              met1 ? 'text-foreground line-through decoration-[#22A06B]/60' : 'text-foreground'
-                            }
-                          >
-                            {r}
-                          </span>
-                          {!exists ? (
-                            <span className="ml-auto shrink-0 text-[10px] text-3">belum ada di kartu</span>
-                          ) : !met1 ? (
-                            <span className="ml-auto shrink-0 text-[10px] font-semibold text-[#7F5F01]">belum</span>
-                          ) : null}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                {isExpanded && (
+                  <div className="px-2.5 pb-2 border-t border-[hsl(var(--hairline))] pt-2 mt-1">
+                    <ul className="space-y-0.5">
+                      {reqs.map((r) => {
+                        const met1 = isMet(r);
+                        const exists = hasItem(r);
+                        return (
+                          <li key={r}>
+                            <button
+                              type="button"
+                              disabled={!canEdit || !exists}
+                              onClick={() => toggle(r)}
+                              className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left text-[12px] ${
+                                canEdit && exists ? 'hover:bg-[hsl(var(--muted))]' : 'cursor-default'
+                              }`}
+                            >
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                  met1
+                                    ? 'border-[#22A06B] bg-[#22A06B] text-white'
+                                    : 'border-[#B3BAC5] text-transparent'
+                                }`}
+                              >
+                                <Check size={11} strokeWidth={3} />
+                              </span>
+                              <span
+                                className={
+                                  met1 ? 'text-foreground line-through decoration-[#22A06B]/60' : 'text-foreground'
+                                }
+                              >
+                                {r}
+                              </span>
+                              {!exists ? (
+                                <span className="ml-auto shrink-0 text-[10px] text-3">belum ada di kartu</span>
+                              ) : !met1 ? (
+                                <span className="ml-auto shrink-0 text-[10px] font-semibold text-[#7F5F01]">belum</span>
+                              ) : null}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
 
-                {canEdit && anyMissing && (
-                  <button
-                    type="button"
-                    disabled={busyList === l.id}
-                    onClick={() => pullChecklist(l)}
-                    className="mt-1.5 inline-flex items-center gap-1 rounded border border-[hsl(var(--hairline))] px-2 py-1 text-[11px] font-semibold text-2 hover:bg-[hsl(var(--muted))] disabled:opacity-50"
-                  >
-                    <Plus size={12} />
-                    {busyList === l.id ? 'Membuat…' : `Buat checklist "Syarat ${l.name}" di kartu`}
-                  </button>
+                    {canEdit && anyMissing && (
+                      <button
+                        type="button"
+                        disabled={busyList === l.id}
+                        onClick={() => pullChecklist(l)}
+                        className="mt-1.5 inline-flex items-center gap-1 rounded border border-[hsl(var(--hairline))] px-2 py-1 text-[11px] font-semibold text-2 hover:bg-[hsl(var(--muted))] disabled:opacity-50"
+                      >
+                        <Plus size={12} />
+                        {busyList === l.id ? 'Membuat…' : `Buat checklist "Syarat ${l.name}"`}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );

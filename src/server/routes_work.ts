@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { formatWorkItem, canViewBoard, canEditBoard, runAutomation as realRunAutomation, broadcastItem as depsBroadcastItem, wsManager, autoSpawnAssignment } from './deps';
+import { formatWorkItem, canViewBoard, canEditBoard, runAutomation as realRunAutomation, broadcastItem as depsBroadcastItem, wsManager, autoSpawnAssignment, userAvatarUrl } from './deps';
 import {  Hono } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
@@ -354,6 +354,22 @@ async function nextCardPosition(db: any, listId: string): Promise<number> {
     select: { position: true },
   });
   return (Number(last?.position) || 0) + 1000;
+}
+
+/**
+ * Posisi paling ATAS sebuah list. Pekerjaan yang baru masuk lewat Bank Data
+ * (kirim ke divisi / intake / claim / ambil alih) harus langsung kelihatan —
+ * tim mengerjakan antrean dari atas, jadi kartu baru TIDAK boleh tenggelam di
+ * dasar list. Posisi negatif wajar di sini: kartu diurutkan by position asc dan
+ * drag-and-drop pun memakai pola yang sama (lihat BoardView.jsx).
+ */
+async function topCardPosition(db: any, listId: string): Promise<number> {
+  const first = await db.workItem.findFirst({
+    where: { listId, archived: false },
+    orderBy: { position: 'asc' },
+    select: { position: true },
+  });
+  return first ? Number(first.position) - 1000 : 1000;
 }
 async function canAccessHari(user: any) {
   if (ADMIN_ROLES.includes(user.role)) return true;
@@ -902,7 +918,7 @@ async function masterInfo(item: any) {
 /** User yang relevan untuk di-mention (punya akses ke kartu ini). */
 async function mentionableUsers(item: any): Promise<any[]> {
   const set = new Map<string, any>();
-  const add = (u: any) => { if (u) set.set(u.id, { id: u.id, name: u.name, avatar_color: u.avatarColor }); };
+  const add = (u: any) => { if (u) set.set(u.id, { id: u.id, name: u.name, avatar_color: u.avatarColor, avatar_url: userAvatarUrl(u) }); };
   (await prisma.user.findMany({ where: { role: { in: TAKEOVER_ROLES }, isActive: true } })).forEach(add);
   if (item.targetDivisionId) (await prisma.user.findMany({ where: { divisionId: item.targetDivisionId, isActive: true } })).forEach(add);
   const bd = await prisma.board.findUnique({
@@ -996,6 +1012,13 @@ async function commentDenied(c: any, user: any, item: any) {
  */
 async function resolveDivisionBoardList(tx: any, divisionId: string, preferBoardId?: string, preferListId?: string) {
   let board: any = null;
+  // List yang dipilih pengirim menentukan board-nya — form Bank Data menampilkan
+  // list dari board divisi mana pun, jadi jangan sampai pilihannya terbuang
+  // karena board "kandidat terbaik" ternyata board lain.
+  if (!preferBoardId && preferListId) {
+    const l = await tx.list.findUnique({ where: { id: preferListId }, select: { board: { select: { id: true, divisionId: true } } } });
+    if (l?.board?.divisionId === divisionId) preferBoardId = l.board.id;
+  }
   if (preferBoardId) {
     board = await tx.board.findFirst({ where: { id: preferBoardId, isArchived: false }, include: { lists: { where: { archived: false }, orderBy: { position: 'asc' } } } });
     if (board && board.lists.length === 0) board = null;
@@ -1033,6 +1056,32 @@ async function resolveDivisionBoardListByCreator(tx: any, userId: string) {
   return { board, listId: board?.lists[0]?.id || null };
 }
 
+/**
+ * List tujuan yang VALID di `boardId` ketika kartu berpindah board (claim /
+ * takeover / oper kepemilikan / direct assign). Board tujuan punya list sendiri,
+ * jadi list pilihan pengirim (mis. "SKOR 1") dicocokkan lewat NAMA — pola yang
+ * sama dengan label grup yang dicermin per-board by name. Tanpa ini kartu selalu
+ * mendarat di list PERTAMA board tujuan (mis. "COWORKING & VO"), mengabaikan
+ * pilihan pengirim. Fallback: list pertama board tujuan.
+ */
+async function listInBoardByName(tx: any, boardId: string | null, srcListId: string | null): Promise<string | null> {
+  if (!boardId) return null;
+  const lists = await tx.list.findMany({
+    where: { boardId, archived: false },
+    orderBy: { position: 'asc' },
+    select: { id: true, name: true },
+  });
+  if (!lists.length) return null;
+  if (srcListId) {
+    const src = await tx.list.findUnique({ where: { id: srcListId }, select: { name: true, boardId: true } });
+    if (src?.boardId === boardId) return srcListId; // sudah di board yang sama
+    const want = src?.name?.trim().toLowerCase();
+    const hit = want ? lists.find((l: any) => l.name.trim().toLowerCase() === want) : null;
+    if (hit) return hit.id;
+  }
+  return lists[0].id;
+}
+
 router.post('/work-items/:item_id/claim', async (c) => {
   await requirePerm(c, 'bankdata.claim');
   const user = c.get('user');
@@ -1046,7 +1095,12 @@ router.post('/work-items/:item_id/claim', async (c) => {
   let userListId = body.list_id;
   if (!userBoardId || !userListId) {
     const pb = await resolveDivisionBoardListByCreator(prisma, user.id);
-    if (pb.board) { userBoardId = userBoardId || pb.board.id; userListId = userListId || pb.listId; }
+    if (pb.board) {
+      userBoardId = userBoardId || pb.board.id;
+      // Hormati list yang dipilih pengirim (mis. "SKOR 1"): cari list bernama
+      // sama di board PIC, bukan asal list pertama.
+      userListId = userListId || (await listInBoardByName(prisma, userBoardId, item.targetListId || item.listId));
+    }
   }
 
   // Flow B: Assignment masuk Bank Data Customer Service & belum ada Owner
@@ -1057,6 +1111,9 @@ router.post('/work-items/:item_id/claim', async (c) => {
   let picName = '';
 
   const result = await prisma.$transaction(async (tx) => {
+    // Pindah list = pindah board juga, jadi posisi lama tidak relevan.
+    // Pekerjaan yang baru diambil naik ke PALING ATAS list PIC.
+    const newPosition = userListId && userListId !== item.listId ? await topCardPosition(tx, userListId) : null;
     // Klaim ATOMIC — hanya lolos bila masih AVAILABLE & belum ada PIC (§7.4 / §12)
     const upd = await tx.workItem.updateMany({
       where: { id: itemId, currentPicId: null, distributionStatus: 'AVAILABLE', archived: false },
@@ -1068,6 +1125,7 @@ router.post('/work-items/:item_id/claim', async (c) => {
         releasedAt: null,
         ...(userBoardId ? { boardId: userBoardId } : {}),
         ...(userListId ? { listId: userListId } : {}),
+        ...(newPosition != null ? { position: newPosition } : {}),
         // Flow B: kartu ini LAHIR sebagai "assignment ke Bank Data CS"
         // (targetDivisionId = divisi CS) karena belum ada Master Card. Begitu
         // di-claim, dia LULUS jadi Master Card / kartu representatif sendiri —
@@ -1137,8 +1195,15 @@ router.post('/work-items/:item_id/release', async (c) => {
 
   const releasedAt = new Date();
   const mc = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+  // Kembalikan ke board tujuan — list-nya harus milik board itu (targetListId bisa
+  // menunjuk list board PIC pada direct assign lama), jadi cocokkan by name.
+  const backListId = item.targetBoardId
+    ? await listInBoardByName(prisma, item.targetBoardId, item.targetListId || item.listId)
+    : null;
 
   await prisma.$transaction(async (tx) => {
+    // Kembali ke antrean divisi = pekerjaan baru lagi → tampil di PALING ATAS.
+    const backPosition = backListId && backListId !== item.listId ? await topCardPosition(tx, backListId) : null;
     await tx.workItem.update({
       where: { id: itemId },
       data: {
@@ -1147,8 +1212,8 @@ router.post('/work-items/:item_id/release', async (c) => {
         workStatus: 'WAITING_CLAIM',
         releasedAt,
         updatedAt: new Date(),
-        ...(item.targetBoardId ? { boardId: item.targetBoardId } : {}),
-        ...(item.targetListId ? { listId: item.targetListId } : {}),
+        ...(item.targetBoardId && backListId ? { boardId: item.targetBoardId, listId: backListId } : {}),
+        ...(backPosition != null ? { position: backPosition } : {}),
         members: item.currentPicId ? { deleteMany: { userId: item.currentPicId } } : undefined,
       },
     });
@@ -1201,10 +1266,16 @@ router.post('/work-items/:item_id/takeover', async (c) => {
   let picListId = body.list_id;
   if (!picBoardId || !picListId) {
     const pb = await resolveDivisionBoardListByCreator(prisma, newPicId);
-    if (pb.board) { picBoardId = picBoardId || pb.board.id; picListId = picListId || pb.listId; }
+    if (pb.board) {
+      picBoardId = picBoardId || pb.board.id;
+      // Progres tetap: kartu mendarat di list bernama sama di board PIC baru.
+      picListId = picListId || (await listInBoardByName(prisma, picBoardId, item.listId || item.targetListId));
+    }
   }
 
   await prisma.$transaction(async (tx) => {
+    // Pekerjaan yang baru dialihkan naik ke PALING ATAS list PIC baru.
+    const newPosition = picListId && picListId !== item.listId ? await topCardPosition(tx, picListId) : null;
     await tx.workItem.update({
       where: { id: itemId },
       data: {
@@ -1215,6 +1286,7 @@ router.post('/work-items/:item_id/takeover', async (c) => {
         updatedAt: new Date(),
         ...(picBoardId ? { boardId: picBoardId } : {}),
         ...(picListId ? { listId: picListId } : {}),
+        ...(newPosition != null ? { position: newPosition } : {}),
       },
     });
     if (oldPicId) await tx.workItemMember.deleteMany({ where: { workItemId: itemId, userId: oldPicId } });
@@ -1373,13 +1445,16 @@ router.post('/work-items/:item_id/transfer-owner', async (c) => {
   // Pindahkan fisik kartu ke board milik pemilik baru (sama seperti /claim &
   // /takeover) — supaya TIDAK nyangkut di board pemilik lama.
   const pb = await resolveDivisionBoardListByCreator(prisma, targetId);
+  const pbListId = pb.board ? await listInBoardByName(prisma, pb.board.id, item.listId) : null;
+  // Kartu yang baru dioper naik ke PALING ATAS list pemilik baru.
+  const pbPosition = pbListId && pbListId !== item.listId ? await topCardPosition(prisma, pbListId) : null;
   await prisma.workItem.update({
     where: { id: itemId },
     data: {
       currentPicId: targetId,
       workStatus: item.workStatus === 'COMPLETED' ? item.workStatus : 'IN_PROGRESS',
-      ...(pb.board ? { boardId: pb.board.id } : {}),
-      ...(pb.listId ? { listId: pb.listId } : {}),
+      ...(pb.board && pbListId ? { boardId: pb.board.id, listId: pbListId } : {}),
+      ...(pbPosition != null ? { position: pbPosition } : {}),
     },
   });
   await prisma.workItemMember.upsert({
@@ -1538,16 +1613,21 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
       );
       if (!resolved.board || !resolved.listId) throw new Error('Divisi tujuan belum punya board/list yang valid');
       const targetBoardId = resolved.board.id;
-      let listId = resolved.listId;
+      const targetListId = resolved.listId; // list pilihan pengirim, di board divisi
+      let listId = targetListId;
 
-      // Direct assignment → langsung ke board PIC
+      // Direct assignment → langsung ke board PIC, di list bernama sama.
       let boardId = targetBoardId;
       if (currentDirect && currentAssignTo) {
         const pb = await resolveDivisionBoardListByCreator(tx, currentAssignTo);
-        if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
+        if (pb.board) {
+          const picListId = await listInBoardByName(tx, pb.board.id, targetListId);
+          if (picListId) { boardId = pb.board.id; listId = picListId; }
+        }
       }
 
-      const assignmentPosition = await nextCardPosition(tx, listId);
+      // Pekerjaan yang baru masuk divisi tampil di PALING ATAS list.
+      const assignmentPosition = await topCardPosition(tx, listId);
       const assignment = await tx.workItem.create({
         data: {
           id: newId(),
@@ -1568,7 +1648,7 @@ router.post('/work-items/:item_id/send-to-division', async (c) => {
           sourceListId: item.listId,
           targetDivisionId: divId,
           targetBoardId,
-          targetListId: listId,
+          targetListId,
           distributionStatus: currentDirect ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
           workStatus: currentDirect ? 'CLAIMED' : 'WAITING_CLAIM',
           currentPicId: currentDirect ? currentAssignTo : null,
@@ -2352,7 +2432,8 @@ router.post('/bank-data/intake', async (c) => {
     const resolved = await resolveDivisionBoardList(tx, body.target_division_id, body.target_board_id, body.target_list_id);
     if (!resolved.board || !resolved.listId) throw new Error('Divisi tujuan belum punya board/list yang valid');
     const targetBoard = resolved.board;
-    let listId = resolved.listId;
+    const targetListId = resolved.listId; // list pilihan pengirim, di board divisi
+    let listId = targetListId;
 
     let currentDirect = direct;
     let currentAssignTo = body.assign_to_user_id;
@@ -2366,13 +2447,18 @@ router.post('/bank-data/intake', async (c) => {
       data: { title: body.title.trim(), client: body.client_name?.trim() || null, ownerUserId: currentDirect ? currentAssignTo : null, ownerDivisionId: div?.id || null },
     });
 
+    // Direct assignment → langsung ke board PIC, di list bernama sama.
     let boardId = targetBoard.id;
     if (currentDirect) {
       const pb = await resolveDivisionBoardListByCreator(tx, currentAssignTo);
-      if (pb.board && pb.listId) { boardId = pb.board.id; listId = pb.listId; }
+      if (pb.board) {
+        const picListId = await listInBoardByName(tx, pb.board.id, targetListId);
+        if (picListId) { boardId = pb.board.id; listId = picListId; }
+      }
     }
 
-    const assignmentPosition = await nextCardPosition(tx, listId);
+    // Pekerjaan yang baru masuk divisi tampil di PALING ATAS list.
+    const assignmentPosition = await topCardPosition(tx, listId);
     const assignment = await tx.workItem.create({
       data: {
         id: newId(),
@@ -2391,7 +2477,7 @@ router.post('/bank-data/intake', async (c) => {
         sourceUserId: user.id,
         targetDivisionId: body.target_division_id,
         targetBoardId: targetBoard.id,
-        targetListId: listId,
+        targetListId,
         distributionStatus: currentDirect ? 'DIRECT_ASSIGNED' : 'AVAILABLE',
         workStatus: currentDirect ? 'CLAIMED' : 'WAITING_CLAIM',
         currentPicId: currentDirect ? currentAssignTo : null,
@@ -2460,9 +2546,16 @@ router.get('/bank-data/:division_id', async (c) => {
 
   const items = await prisma.workItem.findMany({
     where: {
-      targetDivisionId: divisionId,
       archived: false,
       masterCardId: { not: null }, // hanya Assignment (bukan kartu biasa)
+      OR: [
+        { targetDivisionId: divisionId },
+        // Flow B: begitu di-claim, kartu Bank Data CS "lulus" jadi Master Card
+        // rep dan targetDivisionId-nya dilepas (lihat /claim). Jejak asalnya
+        // tetap ada di WorkItemDivision + sourceUserId, jadi pekerjaan yang
+        // sudah diambil TIDAK ikut hilang dari tabel Bank Data divisinya.
+        { targetDivisionId: null, sourceUserId: { not: null }, divisionIds: { some: { divisionId } } },
+      ],
     },
     orderBy: [{ distributionStatus: 'asc' }, { createdAt: 'asc' }],
     include: {
@@ -2484,7 +2577,7 @@ router.get('/bank-data/:division_id', async (c) => {
       by_list[name] = (by_list[name] || 0) + 1;
     }
     return {
-      user: { id: u.id, name: u.name, avatar_color: u.avatarColor },
+      user: { id: u.id, name: u.name, avatar_color: u.avatarColor, avatar_url: userAvatarUrl(u) },
       total: mine.length,
       claimed: mine.length,
       available_in_bank: items.filter((i: any) => !i.currentPicId).length,

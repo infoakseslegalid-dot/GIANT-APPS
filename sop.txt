@@ -1,0 +1,210 @@
+AKSES LEGAL INDONESIA
+Legal Services & Business Licensing
+STANDARD OPERATING PROCEDURE
+TIM CUSTOMER SERVICE
+Nomor Dokumen
+SOP/CS/AL/2026-01
+Divisi
+Customer Service
+Versi
+1.0
+Tanggal Berlaku
+Juli 2026
+Disusun oleh
+Manajer Operasional
+Disetujui oleh
+Direktur / Pimpinan
+1.  Tujuan
+Standard Operating Procedure (SOP) ini disusun sebagai panduan baku bagi seluruh tim Customer Service (CS) Akses Legal Indonesia dalam melayani, menindaklanjuti, dan mengelola komunikasi dengan klien. Tujuannya adalah:
+Memastikan setiap klien menerima pelayanan yang cepat, ramah, konsisten, dan profesional sejak kontak pertama hingga dokumen selesai diserahkan.
+Menyeragamkan alur kerja, penilaian tahapan klien, dan gaya komunikasi seluruh anggota tim CS.
+Meminimalkan klien yang berhenti merespon (drop-off) melalui mekanisme follow-up yang terstruktur namun tidak terkesan spam.
+Mempercepat konversi dari calon klien menjadi klien yang melakukan pembayaran, serta menjaga kepuasan klien selama proses berlangsung.
+2.  Ruang Lingkup
+SOP ini berlaku untuk seluruh personel Customer Service Akses Legal Indonesia yang menangani interaksi klien melalui WhatsApp, chat, telepon, maupun kanal komunikasi resmi lainnya. SOP ini mencakup penanganan calon klien (lead) baru, klien yang sedang dalam proses pengerjaan dokumen, hingga klien yang dokumennya telah selesai. Ketentuan dalam dokumen ini wajib dijalankan dan menjadi standar penilaian kinerja tim CS.
+3.  Definisi & Istilah
+Istilah
+Penjelasan
+Klien / Lead
+Calon klien atau klien yang menghubungi atau dihubungi oleh CS untuk kebutuhan legalitas dan perizinan usaha.
+Skor
+Sistem penilaian untuk menandai sampai di tahap mana proses seorang klien berjalan (Skor 1 s/d Skor 6). Menentukan prioritas dan jenis tindak lanjut.
+FU (Follow-Up)
+Tindak lanjut aktif dari CS kepada klien, baik melalui chat maupun telepon, untuk menjaga proses tetap berjalan.
+DP
+Down Payment / uang muka; pembayaran sebagian dari total biaya layanan.
+Lunas
+Klien telah membayar penuh seluruh biaya layanan.
+Card
+Kartu pekerjaan klien pada papan/aplikasi manajemen tugas internal, yang penamaannya harus diseragamkan.
+Dashboard
+Akun/halaman yang diberikan kepada klien untuk memantau perkembangan dokumen secara mandiri.
+Draft
+Rancangan dokumen legal yang disiapkan tim untuk direview dan disetujui klien sebelum finalisasi.
+4.  Prinsip Dasar Layanan
+Seluruh interaksi CS wajib berpegang pada prinsip berikut:
+Responsif — balas pesan klien secepat mungkin sesuai standar waktu respon (lihat Bagian 5).
+Ramah & Profesional — gunakan sapaan “Bapak/Ibu”, bahasa yang sopan, dan hindari singkatan yang membingungkan.
+Proaktif — jangan menunggu klien bertanya; berikan update dan arahan langkah berikutnya lebih dahulu.
+Jelas & Terarah — setiap pesan memiliki tujuan; sampaikan dengan singkat apa yang perlu dilakukan klien.
+Konsisten — ikuti template dan alur yang sama, namun variasikan kalimat FU agar tidak terkesan spam.
+Menjaga Kerahasiaan — data pribadi klien (KTP, NPWP, dsb.) hanya digunakan untuk keperluan pekerjaan dan tidak disebarluaskan.
+5.  Standar Waktu Respon (SLA)
+Kecepatan respon adalah faktor utama konversi. Tim CS wajib memenuhi standar waktu berikut pada jam kerja:
+Jenis Interaksi
+Target Waktu
+Keterangan
+Chat masuk (lead baru)
+Maks. 5 menit
+Balas dengan sapaan pembuka.
+Chat klien berjalan
+Maks. 15 menit
+Selama jam kerja.
+Pengiriman draft
+Maks. 1 x 24 jam
+Sejak data lengkap diterima.
+Update proses (Skor 5)
+Setiap hari kerja
+Selama 1–7 hari kerja pengerjaan.
+Pesan di luar jam kerja
+Awal hari kerja berikutnya
+Prioritaskan yang tertunda.
+6.  Sistem Skor Klien
+Setiap klien diberi skor sesuai tahapan prosesnya. Skor menentukan prioritas penanganan dan jenis follow-up yang dikirim.
+Skor
+Definisi / Kondisi
+Tindakan CS
+1
+Hanya membalas kata pembuka; belum menjawab beberapa pertanyaan dari AI.
+Ajak klien melanjutkan; gali kebutuhan & jenis usahanya.
+2
+Sudah mengisi form (nama usaha / domisili / bidang usaha / nama pengurus), namun data KTP & NPWP belum ada.
+Minta softcopy KTP & NPWP pengurus.
+3
+KTP & NPWP sudah ada; menuju draft final, sudah bisa dijadwalkan tanda tangan.
+PRIORITAS UTAMA.
+Kirim draft via dashboard & jadwalkan tanda tangan.
+4
+Sudah melakukan pembayaran DP/lunas; butuh konfirmasi atau revisi dari klien.
+Konfirmasi ulang / tindak lanjuti revisi.
+5
+Bisnis proses berjalan; diupdate setiap hari selama 1–7 hari kerja; menuju penyerahan.
+Update progres harian sampai dokumen diserahkan.
+6
+Finish — dokumen selesai dan telah diserahkan.
+Pastikan klien puas; minta testimoni bila memungkinkan.
+Skala Prioritas Penanganan
+1.  Hal yang paling utama dikerjakan: klien Skor 3 (menuju tanda tangan).
+2.  Prioritas kedua: update proses (Skor 5).
+3.  Prioritas ketiga: follow-up klien yang belum merespon.
+7.  Alur Kerja Customer Service
+Secara umum, klien bergerak melalui tahapan berikut. Tugas CS adalah mendorong klien naik dari satu skor ke skor berikutnya:
+Lead masuk → CS membalas dengan sapaan pembuka & menggali kebutuhan (menuju Skor 1–2).
+Klien mengisi data usaha → CS meminta KTP & NPWP (menuju Skor 3).
+Data lengkap → CS menyusun/mengirim draft via dashboard & menjadwalkan tanda tangan (Skor 3).
+Pembayaran DP/lunas → CS konfirmasi & tindak lanjuti revisi bila ada (Skor 4).
+Dokumen diproses → CS update progres setiap hari kerja (Skor 5).
+Dokumen selesai & diserahkan → CS pastikan kepuasan klien (Skor 6).
+Diagram Alur Layanan Customer Service
+8.  Siklus Follow-Up (FU)
+Catatan penting: untuk FU melalui chat, jangan menyamakan pesan yang dikirim setiap harinya. Variasikan kalimat agar tidak terbaca sebagai spam. Gunakan pilihan template pada Bagian 9.
+8.1  Siklus FU untuk Klien DP
+Kondisi
+Tindakan Follow-Up
+DP – Skor 4, belum proses
+Mengikuti siklus FU Lunas (lihat 8.2).
+DP – Skor 5
+2 hari chat tanpa respon; selanjutnya telepon terus hingga direspon.
+8.2  Siklus FU untuk Klien Lunas
+Skenario A — tidak ada respon sama sekali
+2 hari chat tanpa respon → hari ke-3 ditelepon, tetap tanpa respon → STOP follow-up.
+Skenario B — respon setelah ditelepon
+2 hari chat tanpa respon → hari ke-3 ditelepon & direspon → hari ke-4 belum ada update, cukup di-chat saja. Jika tetap tanpa respon → STOP follow-up.
+9.  Template Pesan (Script)
+Berikut template baku yang dapat digunakan tim CS. Ganti bagian dalam kurung siku [ ... ] sesuai data klien. Untuk FU harian, gunakan variasi yang berbeda (Opsi A/B/C) agar tidak terkesan spam.
+9.1  Sapaan Pembuka
+Halo Bapak/Ibu [Nama], perkenalkan saya [Nama CS] dari Akses Legal Indonesia. Terima kasih telah menghubungi kami 🙏
+Boleh diinformasikan jenis usaha dan layanan legalitas/perizinan yang Bapak/Ibu butuhkan, agar kami bisa bantu siapkan solusi yang paling sesuai?
+9.2  Follow-Up Berdasarkan Skor
+FU Skor 1 — klien baru membalas pembuka, belum mengisi data
+Opsi A: Halo Bapak/Ibu, apakah masih berkenan kami bantu untuk kebutuhan legalitas usahanya? Boleh diinformasikan jenis usaha & layanan yang dibutuhkan, agar kami siapkan penawaran yang sesuai 🙏
+Opsi B: Selamat [pagi/siang] Bapak/Ibu, menyambung obrolan kita sebelumnya — ada yang bisa kami bantu jelaskan lebih dulu? Kami siap dampingi dari awal hingga dokumennya selesai.
+Opsi C: Izin follow up ya Bapak/Ibu. Kami ingin memastikan kebutuhan Bapak/Ibu tidak terkendala. Silakan kabari kapan saja bila sudah siap kami bantu prosesnya.
+FU Skor 2 — data usaha sudah ada, KTP & NPWP belum
+Opsi A: Halo Bapak/Ibu, data usahanya sudah kami terima ✅ Untuk lanjut ke tahap penyusunan draft, kami membutuhkan softcopy KTP dan NPWP pengurus. Boleh dibantu kirimkan di sini ya 🙏
+Opsi B: Selamat [pagi/siang] Bapak/Ibu, prosesnya tinggal satu langkah lagi. Mohon dilengkapi KTP & NPWP agar tim kami bisa segera menyiapkan draft dokumennya.
+Opsi C: Izin mengingatkan Bapak/Ibu, berkas KTP & NPWP belum kami terima. Setelah dikirim, draft dapat kami proses maksimal 1x24 jam.
+FU Skor 3 — data lengkap, menuju tanda tangan (PRIORITAS)
+Opsi A: Halo Bapak/Ibu, kabar baik! Draft dokumen Bapak/Ibu sudah siap. Silakan dicek melalui dashboard; bila sudah sesuai, kami jadwalkan tanda tangan. Kira-kira Bapak/Ibu berkenan dijadwalkan kapan?
+Opsi B: Selamat [pagi/siang] Bapak/Ibu, draft sudah kami kirim ke dashboard. Mohon dikonfirmasi apakah sudah sesuai, agar kami bisa lanjut ke tahap tanda tangan 🙏
+Opsi C: Izin follow up untuk penjadwalan tanda tangan dokumen. Apakah hari ini atau besok ada waktu yang cocok untuk Bapak/Ibu?
+FU Skor 4 — sudah bayar, butuh konfirmasi / revisi
+Opsi A: Halo Bapak/Ibu, terima kasih atas pembayarannya 🙏 Untuk melanjutkan proses, kami membutuhkan konfirmasi terkait [poin konfirmasi/revisi]. Mohon dibantu ya.
+Opsi B: Selamat [pagi/siang] Bapak/Ibu, dokumen Bapak/Ibu menunggu konfirmasi/revisi dari sisi Bapak/Ibu. Setelah dikonfirmasi, langsung kami lanjutkan prosesnya.
+Opsi C: Izin mengingatkan, ada beberapa poin yang perlu dikonfirmasi sebelum kami proses lebih lanjut. Boleh kita diskusikan sebentar?
+FU Skor 5 — dokumen sedang diproses (update harian)
+Opsi A: Halo Bapak/Ibu, update proses hari ini: [status terkini]. Estimasi selesai [tanggal]. Kami akan terus kabari perkembangannya ya 🙏
+Opsi B: Selamat [pagi/siang] Bapak/Ibu, dokumen sedang dalam proses di [tahap/instansi]. Mohon ditunggu, kami update setiap ada perkembangan.
+Opsi C: Izin update, proses berjalan sesuai jadwal. Perkiraan selesai [X] hari kerja lagi. Terima kasih atas kepercayaannya 🙏
+9.3  Konfirmasi Setelah Pembayaran
+Terima kasih Bapak/Ibu telah melakukan pembayaran 🙏 Dokumen Bapak/Ibu sudah kami proses.
+Untuk memantau perkembangannya, Bapak/Ibu dapat mengecek melalui link/akun dashboard berikut: [link dashboard].
+Estimasi pengerjaan [X] hari kerja. Kami akan memberi kabar di setiap tahap. Bila ada pertanyaan, silakan hubungi kami kapan saja.
+9.4  Penjadwalan Tanda Tangan
+Halo Bapak/Ibu, dokumen sudah siap untuk ditandatangani. Kami tawarkan jadwal [opsi hari/jam]. Mohon dipilih yang paling sesuai, atau sampaikan waktu lain yang lebih cocok untuk Bapak/Ibu.
+9.5  Penyerahan Dokumen (Finish)
+Halo Bapak/Ibu, dokumen [nama dokumen] Bapak/Ibu telah selesai dan dapat diakses melalui dashboard ✅ Terima kasih atas kepercayaannya kepada Akses Legal Indonesia.
+Bila layanan kami memuaskan, kami akan sangat berterima kasih apabila Bapak/Ibu berkenan memberikan testimoni/ulasan singkat 🙏
+10.  Aturan Baku Operasional
+Selain alur dan template di atas, seluruh CS wajib mematuhi aturan operasional berikut:
+Penamaan card diseragamkan untuk semua pekerjaan, misalnya: “Perubahan CV – [Nama Klien]”. Format penamaan konsisten agar mudah dilacak.
+Kirimkan akun dashboard ke klien, bukan softfile. Klien memantau progres melalui dashboard resmi, bukan menerima berkas mentah langsung.
+Ceklis harus sesuai produk dan keadaan (menggunakan surat kuasa atau tidak). Pastikan kelengkapan berkas mengikuti jenis layanan yang diambil klien.
+Draft maksimal 1x24 jam sudah dishare ke klien terhitung sejak data lengkap diterima.
+Selalu perbarui skor klien di sistem/card setiap ada perubahan tahapan, agar prioritas penanganan selalu akurat.
+Catat setiap janji & jadwal (waktu tanda tangan, estimasi selesai) dan tepati. Bila mundur, informasikan klien lebih awal.
+11.  Penanganan Situasi Khusus
+Situasi
+Cara Penanganan
+Klien komplain / kecewa
+Dengarkan, minta maaf atas ketidaknyamanan, jangan defensif. Catat keluhan, berikan solusi/estimasi perbaikan, dan eskalasi bila perlu.
+Permintaan revisi
+Konfirmasi detail revisi secara tertulis, teruskan ke tim terkait, dan beri estimasi waktu penyelesaian revisi.
+Klien menanyakan refund
+Jangan menjanjikan apa pun sepihak. Sampaikan bahwa permintaan akan ditinjau, lalu eskalasi ke atasan/manajer.
+Klien meminta harga di luar ketentuan
+Sampaikan harga sesuai daftar resmi. Untuk permintaan khusus/negosiasi, eskalasi ke atasan.
+Klien tidak merespon
+Ikuti Siklus FU (Bagian 8) sesuai status DP/Lunas. Hentikan FU sesuai batas yang ditentukan.
+Pertanyaan hukum di luar wewenang CS
+Jangan memberi opini hukum sendiri. Teruskan ke tim legal/konsultan yang berwenang.
+12.  Larangan (Do’s & Don’ts)
+Wajib Dilakukan
+Membalas pesan sesuai standar waktu respon.
+Memperbarui skor & card setiap ada perkembangan.
+Menggunakan bahasa sopan dan variasi kalimat FU.
+Mengirim akun dashboard, bukan softfile mentah.
+Dilarang
+Mengirim pesan FU yang identik setiap hari (berisiko terbaca spam).
+Menjanjikan refund, diskon, atau hasil di luar kewenangan.
+Memberikan opini hukum pribadi kepada klien.
+Menyebarkan atau menyalahgunakan data pribadi klien (KTP, NPWP, dll.).
+Membiarkan chat klien Skor 3 & Skor 5 tidak ditangani.
+13.  Eskalasi
+CS wajib mengeskalasi (meneruskan ke atasan/tim terkait) untuk situasi berikut:
+Permintaan refund atau komplain berat.
+Negosiasi harga di luar daftar resmi.
+Pertanyaan atau kasus hukum yang memerlukan pendapat konsultan/legal.
+Klien bernilai besar yang berisiko batal (drop-off).
+Kendala teknis pada dashboard atau sistem internal.
+14.  Lembar Pengesahan
+SOP ini berlaku efektif sejak tanggal ditetapkan dan wajib dipatuhi seluruh tim Customer Service. Perubahan hanya sah bila disetujui oleh pimpinan.
+Disusun oleh
+Diperiksa oleh
+Disetujui oleh
+(............................)
+Manajer Operasional
+(............................)
+Supervisor CS
+(............................)
+Direktur / Pimpinan

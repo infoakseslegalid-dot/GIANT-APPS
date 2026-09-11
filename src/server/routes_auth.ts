@@ -17,6 +17,9 @@ import {
     jwtSecret,
     JWT_ALGORITHM,
 } from './deps';
+import { can } from './permissions';
+import { putObject } from './storage';
+import { v4 as uuidv4 } from 'uuid';
 
 const authApp = new Hono();
 
@@ -95,17 +98,86 @@ authApp.get('/me', async (c) => {
     return c.json(publicUser(user));
 });
 
-// Setiap user boleh mengubah profilnya sendiri (nama & warna avatar).
+/**
+ * Ubah profil sendiri. Nama / email / avatar masing-masing dijaga izinnya
+ * (`profile.*`), yang bisa diatur per peran MAUPUN per divisi di Hak Akses.
+ * Tema & bahasa adalah preferensi tampilan pribadi — selalu boleh.
+ */
 authApp.patch('/me', async (c) => {
     const user = await getCurrentUser(c);
     const body = await c.req.json();
     const data: any = {};
-    if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
-    if (typeof body.avatar_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.avatar_color)) data.avatarColor = body.avatar_color;
+
+    if (typeof body.name === 'string' && body.name.trim() && body.name.trim() !== user.name) {
+        if (!(await can(user, 'profile.edit_name'))) {
+            throw new HTTPException(403, { message: 'Anda tidak diizinkan mengubah nama sendiri. Hubungi admin.' });
+        }
+        data.name = body.name.trim();
+    }
+
+    if (typeof body.email === 'string' && body.email.trim().toLowerCase() !== user.email) {
+        if (!(await can(user, 'profile.edit_email'))) {
+            throw new HTTPException(403, { message: 'Anda tidak diizinkan mengubah email sendiri. Hubungi admin.' });
+        }
+        const email = body.email.trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            throw new HTTPException(400, { message: 'Format email tidak valid' });
+        }
+        const taken = await db.user.findFirst({ where: { email, id: { not: user.id } } });
+        if (taken) throw new HTTPException(400, { message: 'Email sudah dipakai pengguna lain' });
+        data.email = email;
+    }
+
+    if (typeof body.avatar_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.avatar_color) && body.avatar_color !== user.avatarColor) {
+        if (!(await can(user, 'profile.edit_photo'))) {
+            throw new HTTPException(403, { message: 'Anda tidak diizinkan mengubah avatar sendiri. Hubungi admin.' });
+        }
+        data.avatarColor = body.avatar_color;
+    }
+
     if (['light', 'dark', 'system'].includes(body.theme)) data.theme = body.theme;
     if (['id', 'en'].includes(body.locale)) data.locale = body.locale;
-    if (Object.keys(data).length === 0) return c.json({ error: 'Tidak ada perubahan' }, 400);
+    if (Object.keys(data).length === 0) return c.json(publicUser(user));
     const updated = await db.user.update({ where: { id: user.id }, data });
+    return c.json(publicUser(updated));
+});
+
+const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const AVATAR_MAX_BYTES = 3 * 1024 * 1024;
+
+authApp.post('/me/avatar', async (c) => {
+    const user = await getCurrentUser(c);
+    if (!(await can(user, 'profile.edit_photo'))) {
+        throw new HTTPException(403, { message: 'Anda tidak diizinkan mengubah foto profil. Hubungi admin.' });
+    }
+    const form = await c.req.parseBody();
+    const file = form['file'] as File;
+    if (!file) throw new HTTPException(400, { message: 'Tidak ada berkas' });
+    const type = file.type || 'application/octet-stream';
+    if (!AVATAR_TYPES.includes(type)) throw new HTTPException(400, { message: 'Format harus JPG, PNG, WEBP, atau GIF' });
+    if (file.size > AVATAR_MAX_BYTES) throw new HTTPException(400, { message: 'Ukuran maksimal 3 MB' });
+
+    const buf = Buffer.from(await file.arrayBuffer());
+    const ext = (file.name || 'avatar').split('.').pop() || 'img';
+    const objectPath = `avatar/${user.id}/${uuidv4()}.${ext}`;
+    await putObject(objectPath, buf, type);
+
+    const updated = await db.user.update({
+        where: { id: user.id },
+        data: { avatarPath: objectPath, avatarType: type },
+    });
+    return c.json(publicUser(updated));
+});
+
+authApp.delete('/me/avatar', async (c) => {
+    const user = await getCurrentUser(c);
+    if (!(await can(user, 'profile.edit_photo'))) {
+        throw new HTTPException(403, { message: 'Anda tidak diizinkan mengubah foto profil. Hubungi admin.' });
+    }
+    const updated = await db.user.update({
+        where: { id: user.id },
+        data: { avatarPath: null, avatarType: null },
+    });
     return c.json(publicUser(updated));
 });
 

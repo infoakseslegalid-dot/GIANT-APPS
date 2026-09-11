@@ -508,36 +508,136 @@ async function runAnthropic({ contextText, mediaParts, history }) {
 }
 
 async function runGroq({ contextText, mediaParts, history }) {
-  const firstUser = [{ type: 'text', text: `KONTEKS:\n${contextText}` }, ...(await partsToOpenAI(mediaParts))];
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: firstUser },
-    { role: 'assistant', content: 'Konteks diterima. Silakan ajukan pertanyaan.' },
-    ...history.map((m) => ({ role: m.role, content: m.content })),
+  // Cegah konteks UI menghabiskan semua limit token Groq
+  const maxContext = 2000;
+  const safeContextText = contextText.length > maxContext 
+    ? contextText.substring(0, maxContext) + '\n... [KONTEKS DIPOTONG KARENA TERLALU PANJANG] ...' 
+    : contextText;
+  
+  const firstUser = [{ type: 'text', text: `KONTEKS UI:\n${safeContextText}` }, ...(await partsToOpenAI(mediaParts))];
+  
+  const groqTools = [
+    {
+      type: "function",
+      function: {
+        name: "get_db_schema",
+        description: "Melihat skema tabel database (Prisma schema) untuk mengetahui struktur data yang bisa kamu query.",
+        parameters: { type: "object", properties: {} }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_sql_select",
+        description: "Menjalankan query SQL SELECT ke database PostgreSQL untuk mengeksplorasi seluruh data aplikasi secara real-time. HANYA query SELECT yang diizinkan.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Query SQL SELECT yang valid. Gunakan nama tabel dan kolom sesuai dengan get_db_schema (ingat menggunakan tanda kutip ganda untuk nama tabel seperti \"User\", \"WorkItem\" dll)." }
+          },
+          required: ["query"]
+        }
+      }
+    }
   ];
-  let res;
-  try {
-    res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({ model: MODEL(), messages, max_tokens: 4000, temperature: 0.3 }),
-    });
-  } catch (e) {
-    throw new LLMError(502, `Gagal menghubungi Groq: ${e?.message || e}`);
+
+  const agentPrompt = SYSTEM_PROMPT + '\n\nPENTING: Kamu kini dilengkapi dengan "Tool Calling" untuk membaca SELURUH database secara real-time. Jika user bertanya tentang data di luar KONTEKS UI, JANGAN bilang data tidak tersedia. Gunakan get_db_schema untuk mempelajari tabel, lalu gunakan run_sql_select untuk mencari data yang diminta. Ingat menggunakan tanda kutip ganda untuk nama tabel (contoh: SELECT * FROM "User").';
+
+  const messages = [
+    { role: 'system', content: agentPrompt },
+    { role: 'user', content: firstUser },
+    { role: 'assistant', content: 'Konteks diterima. Saya siap mengeksplorasi data.' },
+    ...history.map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) })),
+  ];
+
+  let usage = null;
+  let finalReply = '';
+
+  for (let i = 0; i < 5; i++) {
+    let res;
+    try {
+      res = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({ 
+          model: MODEL(), 
+          messages, 
+          tools: groqTools, 
+          tool_choice: 'auto', 
+          max_tokens: 2000, 
+          temperature: 0.3 
+        }),
+      });
+    } catch (e) {
+      throw new LLMError(502, `Gagal menghubungi Groq: ${e?.message || e}`);
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      if (res.status === 401) throw new LLMError(502, 'GROQ_API_KEY ditolak (401). Periksa kunci di server.');
+      if (res.status === 429) throw new LLMError(429, 'Kena rate limit Groq (tier gratis). Coba lagi sebentar.');
+      if (res.status === 413 || /too large|context/i.test(body)) throw new LLMError(502, 'Konteks kelewat besar untuk model Groq ini. Kurangi entitas/lampiran yang di-tag.');
+      throw new LLMError(502, `Groq error ${res.status}: ${body.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    usage = data?.usage || usage;
+    const msg = data?.choices?.[0]?.message;
+    
+    if (!msg) break;
+
+    messages.push(msg);
+
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      for (const tc of msg.tool_calls) {
+        let toolResult = "";
+        try {
+          const args = JSON.parse(tc.function.arguments || '{}');
+          if (tc.function.name === 'get_db_schema') {
+            const fs = require('fs');
+            const path = require('path');
+            const schema = fs.readFileSync(path.join(process.cwd(), 'prisma', 'schema.prisma'), 'utf-8');
+            // Hanya ambil nama model dan field dasar tanpa @relation agar sangat ringkas
+            const models = schema.split('model ').slice(1).map(m => {
+              return 'model ' + m.split('\n')
+                .filter(l => l.trim() && !l.includes('@relation') && !l.includes('@@'))
+                .join('\n');
+            }).join('\n');
+            toolResult = models.length > 1500 ? models.substring(0, 1500) + '... (truncated)' : (models || 'Schema tidak ditemukan');
+          } else if (tc.function.name === 'run_sql_select') {
+            const q = (args.query || '').trim();
+            if (!q.toUpperCase().startsWith('SELECT')) {
+              toolResult = "Error: Hanya query SELECT yang diizinkan.";
+            } else if (/(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|REPLACE|GRANT|REVOKE|COMMIT|ROLLBACK)\s/i.test(q)) {
+              toolResult = "Error: Ditemukan keyword terlarang. Hanya boleh SELECT murni.";
+            } else {
+              const rows = await db.$queryRawUnsafe(q);
+              toolResult = JSON.stringify(rows, (key, value) => typeof value === 'bigint' ? value.toString() : value);
+            }
+          } else {
+            toolResult = `Error: Tool ${tc.function.name} tidak dikenal.`;
+          }
+        } catch (err) {
+          toolResult = "Error executing tool: " + (err.message || err);
+        }
+        
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          name: tc.function.name,
+          content: String(toolResult).substring(0, 2000)
+        });
+      }
+    } else {
+      finalReply = msg.content || '';
+      break;
+    }
   }
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    if (res.status === 401) throw new LLMError(502, 'GROQ_API_KEY ditolak (401). Periksa kunci di server.');
-    if (res.status === 429) throw new LLMError(429, 'Kena rate limit Groq (tier gratis). Coba lagi sebentar.');
-    if (res.status === 413 || /too large|context/i.test(body)) throw new LLMError(502, 'Konteks kelewat besar untuk model Groq ini. Kurangi entitas/lampiran yang di-tag.');
-    throw new LLMError(502, `Groq error ${res.status}: ${body.slice(0, 300)}`);
-  }
-  const data = await res.json();
-  const reply = (data?.choices?.[0]?.message?.content || '').trim();
-  return { reply: reply || '(tidak ada jawaban)', usage: data?.usage || null, model: data?.model || MODEL() };
+
+  return { reply: finalReply || '(tidak ada jawaban)', usage, model: MODEL() };
 }
 
 async function runLLM(input) {

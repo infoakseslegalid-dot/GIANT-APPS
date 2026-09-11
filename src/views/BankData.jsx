@@ -21,18 +21,42 @@ const filterCls = "h-8 rounded-lg border border-[hsl(var(--hairline))] px-2 text
 const AGE_YELLOW_MIN = 60;
 const AGE_RED_MIN = 120;
 
-function ageMinutes(iso) {
+/** Menit antara `iso` dan `endIso` (default: sekarang). */
+function ageMinutes(iso, endIso) {
   if (!iso) return null;
-  return Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  const end = endIso ? new Date(endIso).getTime() : Date.now();
+  return Math.max(1, Math.floor((end - new Date(iso).getTime()) / 60000));
 }
 
-function umurInfo(iso) {
-  const mins = ageMinutes(iso);
+const isDone = (i) => i.status === "done" || i.work_status === "COMPLETED";
+
+/** Waktu selesai sebuah pekerjaan — jam berhenti di sini, bukan terus berjalan. */
+const doneAt = (i) => i.completed_at || i.updated_at || null;
+
+const ts = (iso) => (iso ? new Date(iso).getTime() : 0);
+/** Sedang dikerjakan: yang paling lama menggantung di atas, yang baru masuk ke bawah. */
+const byOldestClaim = (a, b) => ts(a.claimed_at || a.created_at) - ts(b.claimed_at || b.created_at);
+/** Selesai: yang baru saja kelar naik ke paling atas. */
+const byNewestDone = (a, b) => ts(doneAt(b)) - ts(doneAt(a));
+
+function fmtDuration(mins) {
+  if (mins < 60) return `${mins} mnt`;
+  if (mins < 1440) return `${Math.floor(mins / 60)} jam ${mins % 60} mnt`;
+  return `${Math.floor(mins / 1440)} hari ${Math.floor((mins % 1440) / 60)} jam`;
+}
+
+const fmtDateTime = (iso) =>
+  iso ? new Date(iso).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+
+/**
+ * Umur pekerjaan. Bila `endIso` diisi (pekerjaan sudah selesai) jam BERHENTI di
+ * situ dan tampil netral — durasi final bukan alarm, jadi jangan merah.
+ */
+function umurInfo(iso, endIso) {
+  const mins = ageMinutes(iso, endIso);
   if (mins == null) return { text: "-", cls: "text-3", dotColor: null, mins: 0 };
-  let text;
-  if (mins < 60) text = `${mins} mnt`;
-  else if (mins < 1440) text = `${Math.floor(mins / 60)} jam ${mins % 60} mnt`;
-  else text = `${Math.floor(mins / 1440)} hari ${Math.floor((mins % 1440) / 60)} jam`;
+  const text = fmtDuration(mins);
+  if (endIso) return { text, cls: "text-2", dotColor: null, mins };
   const cls = mins < AGE_YELLOW_MIN ? "text-[#216E4E]" : mins < AGE_RED_MIN ? "text-[#946F00]" : "text-[#CA3521] font-bold";
   const dotColor = mins < AGE_YELLOW_MIN ? "#22A06B" : mins < AGE_RED_MIN ? "#F5CD47" : "#CA3521";
   return { text, cls, dotColor, mins };
@@ -109,7 +133,7 @@ export default function BankData() {
     if (filters.sender !== "all" && (i.source_user_name || i.created_by_name || "—") !== filters.sender) return false;
     if (filters.priority !== "all" && (i.priority || "none") !== filters.priority) return false;
     if (filters.age !== "all") {
-      const m = ageMinutes(i.claimed_at || i.created_at) || 0;
+      const m = ageMinutes(i.claimed_at || i.created_at, isDone(i) ? doneAt(i) : null) || 0;
       if (filters.age === "gt2h" && m <= 120) return false;
       if (filters.age === "gt1d" && m <= 1440) return false;
     }
@@ -118,14 +142,18 @@ export default function BankData() {
     return true;
   };
 
-  const isDone = (i) => i.status === "done" || i.work_status === "COMPLETED";
   const allWaiting = items.filter((i) => i.distribution_status === "AVAILABLE" && !isDone(i));
   const allTaken = items.filter((i) => (i.current_pic_id || (i.member_ids || []).length > 0 || isDone(i)) && i.distribution_status !== "AVAILABLE");
+  // Indikator pekerjaan dipisah: yang masih jalan vs yang sudah kelar.
+  const allProgress = allTaken.filter((i) => !isDone(i));
+  const allDone = allTaken.filter(isDone);
 
   const showWaiting = filters.status === "all" || filters.status === "waiting";
-  const showTaken = filters.status === "all" || filters.status === "taken" || filters.status === "done";
+  const showProgress = filters.status === "all" || filters.status === "taken";
+  const showDone = filters.status === "all" || filters.status === "done";
   const waiting = showWaiting ? allWaiting.filter(matchFilters) : [];
-  const taken = (showTaken ? allTaken.filter(matchFilters) : []).filter((i) => filters.status !== "done" || isDone(i));
+  const progress = (showProgress ? allProgress.filter(matchFilters) : []).sort(byOldestClaim);
+  const done = (showDone ? allDone.filter(matchFilters) : []).sort(byNewestDone);
   const activeFilterCount = Object.values(filters).filter((v) => v && v !== "all").length;
 
   const formBoards = formDivData?.boards || [];
@@ -267,6 +295,15 @@ export default function BankData() {
 
       {data && (
         <>
+          {/* Ringkasan divisi jadi pembuka halaman — konteks dulu, baru daftar kerjanya. */}
+          <WorkloadPanel
+            division={division}
+            workload={workload}
+            waitingCount={allWaiting.length}
+            progressCount={allProgress.length}
+            doneCount={allDone.length}
+          />
+
           <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm mb-5 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-[hsl(var(--hairline))] bg-[#FFF8E6]">
               <h2 className="font-heading font-bold text-foreground" data-testid="bank-data-waiting-title">
@@ -334,86 +371,28 @@ export default function BankData() {
             </div>
           </div>
 
-          <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm mb-5 overflow-hidden">
-            <div className="px-5 py-3 border-b border-[hsl(var(--hairline))]">
-              <h2 className="font-heading font-bold text-foreground" data-testid="bank-data-taken-title">
-                Sedang Dikerjakan / Selesai
-                <span className="ml-2 text-xs font-normal text-3">{taken.length}{activeFilterCount ? ` / ${allTaken.length}` : ""} pekerjaan</span>
-              </h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" data-testid="bank-data-taken-table">
-                <thead>
-                  <tr className="border-b border-[hsl(var(--hairline))] text-left bg-[hsl(var(--muted))]">
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3 w-12">No</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Pekerjaan</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Owner</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Dari</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">PIC</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Umur klaim</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Status</th>
-                    <th className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {taken.map((item, idx) => (
-                    <TakenRow key={item.id} item={item} idx={idx} user={user} isSupervisorUp={isSupervisorUp}
-                      onOpen={() => setOpenItem(item.id)} onTakeover={() => takeover(item.id)} />
-                  ))}
-                  {taken.length === 0 && (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-3">
-                      {activeFilterCount ? "Tidak ada yang cocok dengan filter." : "Belum ada pekerjaan yang diambil."}
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <TakenTable
+            variant="progress"
+            items={progress}
+            totalCount={allProgress.length}
+            activeFilterCount={activeFilterCount}
+            user={user}
+            isSupervisorUp={isSupervisorUp}
+            onOpen={setOpenItem}
+            onTakeover={takeover}
+          />
 
-          <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5" data-testid="bank-data-workload">
-            <h2 className="font-heading font-bold text-foreground mb-4">Beban Kerja Anggota {division?.name}</h2>
+          <TakenTable
+            variant="done"
+            items={done}
+            totalCount={allDone.length}
+            activeFilterCount={activeFilterCount}
+            user={user}
+            isSupervisorUp={isSupervisorUp}
+            onOpen={setOpenItem}
+            onTakeover={takeover}
+          />
 
-            {/* Ringkasan management (§30) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5" data-testid="bank-data-kpi">
-              {[
-                { label: "Pekerjaan masuk", val: allWaiting.length + allTaken.length, cls: "text-foreground" },
-                { label: "Belum diambil", val: allWaiting.length, cls: allWaiting.length ? "text-[#CA3521]" : "text-[#22A06B]" },
-                { label: "Sedang dikerjakan", val: allTaken.filter((i) => !isDone(i)).length, cls: "text-[#0C66E4]" },
-                { label: "Anggota belum dapat", val: workload.filter((w) => w.total === 0).length, cls: workload.some((w) => w.total === 0) ? "text-[#946F00]" : "text-[#22A06B]" },
-              ].map((k) => (
-                <div key={k.label} className="rounded-xl bg-[hsl(var(--muted))] border border-[hsl(var(--hairline))] p-3 text-center">
-                  <p className={`text-2xl font-bold ${k.cls}`}>{k.val}</p>
-                  <p className="text-[11px] text-3 mt-0.5">{k.label}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {workload.map((w) => (
-                <div key={w.user.id} className="rounded-xl border border-[hsl(var(--hairline))] p-4 hover:shadow-sm transition-shadow" data-testid={`workload-${w.user.id}`}>
-                  <div className="flex items-center gap-2.5 mb-2">
-                    <Avatar name={w.user.name} color={w.user.avatar_color} size="h-8 w-8 text-xs" />
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{w.user.name}</p>
-                      <p className="text-[11px] text-3">
-                        {w.total} sedang dikerjakan
-                        {typeof w.available_in_bank === "number" && <> · {w.available_in_bank} menunggu di Bank Data</>}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {Object.entries(w.by_list || {}).map(([lname, count]) => (
-                      <span key={lname} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#E9F2FF] text-[#0C66E4]" title={lname}>
-                        {abbr(lname)}: {count}
-                      </span>
-                    ))}
-                    {Object.keys(w.by_list || {}).length === 0 && <span className="text-[11px] text-3">Tidak ada pekerjaan aktif</span>}
-                  </div>
-                </div>
-              ))}
-              {workload.length === 0 && <p className="text-sm text-3">Belum ada anggota di divisi ini.</p>}
-            </div>
-          </div>
         </>
       )}
 
@@ -471,7 +450,7 @@ export default function BankData() {
                         <input type="checkbox" checked={form.member_ids.includes(w.user.id)}
                           onChange={() => setForm((f) => ({ ...f, member_ids: f.member_ids.includes(w.user.id) ? f.member_ids.filter((x) => x !== w.user.id) : [...f.member_ids, w.user.id] }))}
                           className="w-4 h-4 accent-[#0C66E4]" />
-                        <Avatar name={w.user.name} color={w.user.avatar_color} size="h-6 w-6 text-[10px]" />
+                        <Avatar name={w.user.name} color={w.user.avatar_color} src={w.user.avatar_url} size="h-6 w-6 text-[10px]" />
                         <span className="text-sm text-foreground flex-1">{w.user.name}</span>
                         <span className="text-[10px] text-3">{w.total} pekerjaan</span>
                       </label>
@@ -512,6 +491,57 @@ export default function BankData() {
   );
 }
 
+/** Ringkasan divisi: KPI (§30) + beban kerja tiap anggota. */
+function WorkloadPanel({ division, workload, waitingCount, progressCount, doneCount }) {
+  const kpi = [
+    { label: "Pekerjaan masuk", val: waitingCount + progressCount + doneCount, cls: "text-foreground" },
+    { label: "Belum diambil", val: waitingCount, cls: waitingCount ? "text-[#CA3521]" : "text-[#22A06B]" },
+    { label: "Sedang dikerjakan", val: progressCount, cls: "text-[#0C66E4]" },
+    { label: "Selesai", val: doneCount, cls: "text-[#22A06B]" },
+    { label: "Anggota belum dapat", val: workload.filter((w) => w.total === 0).length, cls: workload.some((w) => w.total === 0) ? "text-[#946F00]" : "text-[#22A06B]" },
+  ];
+  return (
+    <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5 mb-5" data-testid="bank-data-workload">
+      <h2 className="font-heading font-bold text-foreground mb-4">Beban Kerja Anggota {division?.name}</h2>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5" data-testid="bank-data-kpi">
+        {kpi.map((k) => (
+          <div key={k.label} className="rounded-xl bg-[hsl(var(--muted))] border border-[hsl(var(--hairline))] p-3 text-center">
+            <p className={`text-2xl font-bold ${k.cls}`}>{k.val}</p>
+            <p className="text-[11px] text-3 mt-0.5">{k.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {workload.map((w) => (
+          <div key={w.user.id} className="rounded-xl border border-[hsl(var(--hairline))] p-4 hover:shadow-sm transition-shadow" data-testid={`workload-${w.user.id}`}>
+            <div className="flex items-center gap-2.5 mb-2">
+              <Avatar name={w.user.name} color={w.user.avatar_color} src={w.user.avatar_url} size="h-8 w-8 text-xs" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">{w.user.name}</p>
+                <p className="text-[11px] text-3">
+                  {w.total} sedang dikerjakan
+                  {typeof w.available_in_bank === "number" && <> · {w.available_in_bank} menunggu di Bank Data</>}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(w.by_list || {}).map(([lname, count]) => (
+                <span key={lname} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#E9F2FF] text-[#0C66E4]" title={lname}>
+                  {abbr(lname)}: {count}
+                </span>
+              ))}
+              {Object.keys(w.by_list || {}).length === 0 && <span className="text-[11px] text-3">Tidak ada pekerjaan aktif</span>}
+            </div>
+          </div>
+        ))}
+        {workload.length === 0 && <p className="text-sm text-3">Belum ada anggota di divisi ini.</p>}
+      </div>
+    </div>
+  );
+}
+
 const DIST_LABEL = {
   CLAIMED: { t: "Sudah diambil", c: "bg-[#E3FCEF] text-[#216E4E]" },
   DIRECT_ASSIGNED: { t: "Ditugaskan langsung", c: "bg-[#EAE6FF] text-[#5E4DB2]" },
@@ -519,14 +549,76 @@ const DIST_LABEL = {
   AVAILABLE: { t: "Menunggu", c: "bg-[hsl(var(--muted))] text-2" },
 };
 
-function TakenRow({ item, idx, user, isSupervisorUp, onOpen, onTakeover }) {
+/**
+ * Tabel pekerjaan yang sudah punya PIC. Dipisah dua: `progress` (masih jalan —
+ * umur klaim terus berdetak, bisa diambil alih) dan `done` (beku — yang relevan
+ * berapa lama dikerjakan & kapan selesainya).
+ */
+const TAKEN_VARIANT = {
+  progress: {
+    title: "Sedang Dikerjakan",
+    testid: "taken",
+    ageLabel: "Umur klaim",
+    lastLabel: "Aksi",
+    headerCls: "",
+    empty: "Belum ada pekerjaan yang diambil.",
+  },
+  done: {
+    title: "Selesai",
+    testid: "done",
+    ageLabel: "Lama dikerjakan",
+    lastLabel: "Selesai",
+    headerCls: "bg-[#E3FCEF]",
+    empty: "Belum ada pekerjaan yang selesai.",
+  },
+};
+
+function TakenTable({ variant, items, totalCount, activeFilterCount, user, isSupervisorUp, onOpen, onTakeover }) {
+  const v = TAKEN_VARIANT[variant];
+  return (
+    <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm mb-5 overflow-hidden">
+      <div className={`px-5 py-3 border-b border-[hsl(var(--hairline))] ${v.headerCls}`}>
+        <h2 className="font-heading font-bold text-foreground" data-testid={`bank-data-${v.testid}-title`}>
+          {v.title}
+          <span className="ml-2 text-xs font-normal text-3">{items.length}{activeFilterCount ? ` / ${totalCount}` : ""} pekerjaan</span>
+        </h2>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm" data-testid={`bank-data-${v.testid}-table`}>
+          <thead>
+            <tr className="border-b border-[hsl(var(--hairline))] text-left bg-[hsl(var(--muted))]">
+              {["No", "Pekerjaan", "Owner", "Dari", "PIC", "List", v.ageLabel, "Status", v.lastLabel].map((h, i) => (
+                <th key={h} className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-3 ${i === 0 ? "w-12" : ""}`}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, idx) => (
+              <TakenRow key={item.id} item={item} idx={idx} variant={variant} user={user} isSupervisorUp={isSupervisorUp}
+                onOpen={() => onOpen(item.id)} onTakeover={() => onTakeover(item.id)} />
+            ))}
+            {items.length === 0 && (
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-3">
+                {activeFilterCount ? "Tidak ada yang cocok dengan filter." : v.empty}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TakenRow({ item, idx, variant, user, isSupervisorUp, onOpen, onTakeover }) {
   const { data: users } = useQuery({ queryKey: ["users"], queryFn: () => api.get("/users").then((r) => r.data) });
   const usersById = Object.fromEntries((users || []).map((u) => [u.id, u]));
   const isMine = item.current_pic_id === user?.id || (item.member_ids || []).includes(user?.id);
   const pic = usersById[item.current_pic_id] || usersById[(item.member_ids || [])[0]];
   const picName = item.current_pic_name || pic?.name;
-  const isDone = item.status === "done" || item.work_status === "COMPLETED";
-  const claimAge = umurInfo(item.claimed_at);
+  const finished = variant === "done";
+  const finishedAt = finished ? doneAt(item) : null;
+  // Pekerjaan selesai → jam berhenti di waktu selesai, tidak ikut berjalan terus.
+  const claimAge = umurInfo(item.claimed_at, finishedAt);
   const dist = DIST_LABEL[item.distribution_status] || DIST_LABEL.CLAIMED;
   return (
     <tr className="border-b border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] transition-colors" data-testid={`bankdata-taken-row-${item.id}`}>
@@ -542,20 +634,29 @@ function TakenRow({ item, idx, user, isSupervisorUp, onOpen, onTakeover }) {
       <td className="px-4 py-2.5">
         {picName ? (
           <span className="inline-flex items-center gap-1 bg-[hsl(var(--muted))] rounded-full pl-0.5 pr-2 py-0.5">
-            <Avatar name={picName} color={pic?.avatar_color} size="h-5 w-5 text-[9px]" />
+            <Avatar name={picName} color={pic?.avatar_color} src={pic?.avatar_url} size="h-5 w-5 text-[9px]" />
             <span className="text-[11px] font-medium text-foreground">{picName}</span>
           </span>
         ) : <span className="text-[11px] text-3">—</span>}
       </td>
-      <td className="px-4 py-2.5 text-xs font-semibold">{item.claimed_at ? <AgeDot umur={claimAge} /> : "—"}</td>
       <td className="px-4 py-2.5">
-        {isDone ? <StatusBadge status="done" />
+        {item.list_name
+          ? <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[hsl(var(--muted))] text-2">{item.list_name}</span>
+          : <span className="text-[11px] text-3">—</span>}
+      </td>
+      <td className="px-4 py-2.5 text-xs font-semibold" data-testid={`bankdata-claimage-${item.id}`}>
+        {item.claimed_at ? <AgeDot umur={claimAge} /> : "—"}
+      </td>
+      <td className="px-4 py-2.5">
+        {finished ? <StatusBadge status="done" />
           : <span className={`inline-flex px-1.5 py-0.5 rounded text-[11px] font-semibold ${dist.c}`}>{dist.t}</span>}
       </td>
       <td className="px-4 py-2.5">
-        {isMine && !isDone ? (
+        {finished ? (
+          <span className="text-[11px] text-2">{fmtDateTime(finishedAt)}</span>
+        ) : isMine ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#216E4E]"><CheckCircle2 size={12} /> Pekerjaan Anda</span>
-        ) : isSupervisorUp && !isDone ? (
+        ) : isSupervisorUp ? (
           <button data-testid={`bankdata-takeover-${item.id}`} onClick={onTakeover}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FFF8E6] border border-[#F5CD47] text-[#946F00] text-xs font-bold hover:bg-[#F5CD47]/40 transition-colors active:scale-95">
             <Swords size={12} /> Ambil Alih

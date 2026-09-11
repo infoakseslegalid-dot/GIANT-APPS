@@ -146,7 +146,7 @@ export default function SendWorkDialog({ item, onClose, onDone }) {
                   {workload.map((w) => (
                     <label key={w.user.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[hsl(var(--muted))] cursor-pointer" data-testid={`send-user-${w.user.id}`}>
                       <input type="checkbox" checked={memberIds.includes(w.user.id)} onChange={() => toggleMember(w.user.id)} className="w-4 h-4 accent-[#0C66E4]" />
-                      <Avatar name={w.user.name} color={w.user.avatar_color} size="h-6 w-6 text-[10px]" />
+                      <Avatar name={w.user.name} color={w.user.avatar_color} src={w.user.avatar_url} size="h-6 w-6 text-[10px]" />
                       <span className="text-sm text-foreground flex-1">{w.user.name}</span>
                       <span className="text-[10px] text-3">{w.total} pekerjaan</span>
                     </label>

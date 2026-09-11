@@ -94,6 +94,7 @@ model Division {
   workItems        WorkItemDivision[]
   targetWorkItems  WorkItem[]         @relation("TargetDivision")
   masterCardsOwned MasterCard[]       @relation("MasterCardOwnerDivision")
+  permissions      DivisionPermission[]
 }
 
 model User {
@@ -103,7 +104,9 @@ model User {
   passwordHash String
   role         String   @default("viewer")
   divisionId   String?
-  avatarColor  String?
+  avatarColor  String? // dipakai sebagai latar inisial bila tidak ada foto
+  avatarPath   String? // objek storage foto profil
+  avatarType   String? // mime type foto profil
   isActive     Boolean  @default(true)
   theme        String   @default("system") // light | dark | system
   locale       String   @default("id") // id | en
@@ -430,7 +433,8 @@ model AppPermission {
   kind      String   @default("feature") // "feature" | "table"
   createdAt DateTime @default(now())
 
-  roles RolePermission[]
+  roles     RolePermission[]
+  divisions DivisionPermission[]
 }
 
 model RolePermission {
@@ -443,6 +447,27 @@ model RolePermission {
 
   @@unique([role, permKey])
   @@index([role])
+}
+
+/**
+ * Override hak akses per DIVISI, di atas matriks peran.
+ * Peran tidak cukup untuk kasus nyata di sini: hampir semua anggota ber-peran
+ * "staff" tapi tersebar di divisi berbeda, jadi "CS boleh, Admin Pajak tidak"
+ * mustahil diungkapkan lewat RolePermission saja.
+ * TIDAK ada baris = divisi itu ikut perannya, jadi tabel ini tidak mengubah
+ * perilaku apa pun sampai admin benar-benar mengaturnya.
+ */
+model DivisionPermission {
+  id         String  @id @default(uuid())
+  divisionId String
+  permKey    String
+  allowed    Boolean @default(false)
+
+  division   Division      @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  permission AppPermission @relation(fields: [permKey], references: [key], onDelete: Cascade)
+
+  @@unique([divisionId, permKey])
+  @@index([divisionId])
 }
 
 // Template checklist yang dikelola admin di Panel Admin. Dipakai user saat

@@ -1,12 +1,30 @@
+import { useEffect, useState } from "react";
 import { fmtDate, PRIORITIES } from "../lib/api";
 
-export function Avatar({ name, color, size = "h-7 w-7 text-xs" }) {
+export function Avatar({ name, color, src, size = "h-7 w-7 text-xs" }) {
+  // Foto profil bisa hilang (dihapus / storage gagal) — jangan sampai avatar
+  // jadi kotak kosong, jatuhkan kembali ke inisial.
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [src]);
+
   const initials = (name || "?")
     .split(" ")
     .slice(0, 2)
     .map((w) => w[0])
     .join("")
     .toUpperCase();
+
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt={name || ""}
+        title={name}
+        onError={() => setBroken(true)}
+        className={`${size} rounded-full shrink-0 border-2 border-white object-cover bg-[hsl(var(--muted))]`}
+      />
+    );
+  }
   return (
     <div
       className={`${size} rounded-full flex items-center justify-center text-white font-semibold shrink-0 border-2 border-white`}

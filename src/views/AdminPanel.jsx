@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw, Info, Search } from "lucide-react";
+import { UserPlus, Trash2, Pencil, Activity, ListChecks, Plus, ShieldCheck, RefreshCw, Info, Search, Upload } from "lucide-react";
 import { api, errMsg, ROLE_LABELS, fmtDateTime, PRIORITIES } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Avatar } from "../components/common";
+import { ImageCropperModal } from "../components/ImageCropperModal";
+import { getCroppedImg } from "../utils/cropImage";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "../components/ui/tooltip";
@@ -16,6 +18,7 @@ const btnPrimary = "h-9 px-4 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-whi
 const DIV_COLORS = ["#0C66E4", "#E56910", "#22A06B", "#9F8FEF", "#E774BB", "#CA3521", "#F5CD47"];
 const BG_COLORS = ["#0079bf", "#519839", "#D29034", "#B04632", "#89609E", "#CD5A91", "#4BBF6B", "#00AECC"];
 const LIST_COLORS = ["#F1F2F4", "#E9F2FF", "#E3FCEF", "#FFF7D6", "#FFEDEB", "#EAE6FF", "#FCE8F3", "#DFE1E6"];
+const AVATAR_COLORS = ["#0C66E4", "#1D7AFC", "#579DFF", "#6CC3E0", "#E56910", "#F5CD47", "#22A06B", "#4BCE97", "#9F8FEF", "#E774BB", "#CA3521", "#8590A2"];
 
 function UsersTab({ divisions }) {
   const qc = useQueryClient();
@@ -23,8 +26,58 @@ function UsersTab({ divisions }) {
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "staff", division_id: "" });
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const avatarRef = useRef(null);
+  
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState(null);
 
   const divName = (id) => (divisions || []).find((d) => d.id === id)?.name || "—";
+
+  const uploadUserPhoto = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || !editing) return;
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(f.type)) return toast.error("Format harus JPG, PNG, WEBP, atau GIF");
+    if (f.size > 3 * 1024 * 1024) return toast.error("Ukuran maksimal 3 MB");
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result);
+      setCropModalOpen(true);
+    };
+    reader.readAsDataURL(f);
+  };
+
+  const handleCropComplete = async (croppedAreaPixels) => {
+    try {
+      setPhotoBusy(true);
+      setCropModalOpen(false);
+      const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+      const fd = new FormData();
+      fd.append("file", croppedBlob);
+      const r = await api.post(`/users/${editing.id}/avatar`, fd);
+      setEditing(r.data);
+      toast.success("Foto profil diperbarui");
+      qc.invalidateQueries({ queryKey: ["users"] });
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setPhotoBusy(false);
+      setCropImageSrc(null);
+    }
+  };
+
+  const removeUserPhoto = async () => {
+    if (!editing) return;
+    setPhotoBusy(true);
+    try {
+      const r = await api.delete(`/users/${editing.id}/avatar`);
+      setEditing(r.data);
+      toast.success("Foto profil dihapus");
+      qc.invalidateQueries({ queryKey: ["users"] });
+    } catch (err) { toast.error(errMsg(err)); } finally { setPhotoBusy(false); }
+  };
 
   const createUser = async (e) => {
     e.preventDefault();
@@ -41,6 +94,9 @@ function UsersTab({ divisions }) {
   const saveEdit = async () => {
     try {
       const payload = {};
+      if (editForm.name?.trim()) payload.name = editForm.name.trim();
+      if (editForm.email?.trim() && editForm.email.trim() !== editing.email) payload.email = editForm.email.trim();
+      if (editForm.avatar_color) payload.avatar_color = editForm.avatar_color;
       if (editForm.role) payload.role = editForm.role;
       if (editForm.division_id !== undefined) payload.division_id = editForm.division_id || null;
       if (editForm.is_active !== undefined) payload.is_active = editForm.is_active;
@@ -90,7 +146,7 @@ function UsersTab({ divisions }) {
               <tr key={u.id} className="border-b border-[hsl(var(--hairline))]" data-testid={`user-row-${u.id}`}>
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
-                    <Avatar name={u.name} color={u.avatar_color} size="h-7 w-7 text-[10px]" />
+                    <Avatar name={u.name} color={u.avatar_color} src={u.avatar_url} size="h-7 w-7 text-[10px]" />
                     <span className="font-medium text-foreground">{u.name}</span>
                   </div>
                 </td>
@@ -105,7 +161,13 @@ function UsersTab({ divisions }) {
                 <td className="px-4 py-2.5 text-right">
                   <button
                     data-testid={`user-edit-${u.id}`}
-                    onClick={() => { setEditing(u); setEditForm({ role: u.role, division_id: u.division_id || "", is_active: u.is_active, password: "" }); }}
+                    onClick={() => {
+                      setEditing(u);
+                      setEditForm({
+                        name: u.name, email: u.email, avatar_color: u.avatar_color,
+                        role: u.role, division_id: u.division_id || "", is_active: u.is_active, password: "",
+                      });
+                    }}
                     className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2"
                     aria-label="Edit pengguna"
                   >
@@ -124,6 +186,45 @@ function UsersTab({ divisions }) {
             <DialogTitle className="font-heading">Edit Pengguna — {editing?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {/* Foto profil — super admin bisa merapikan foto siapa pun, terlepas
+                dari izin `profile.edit_photo` milik divisi orang itu. */}
+            <div className="flex items-center gap-3">
+              <Avatar name={editForm.name || editing?.name} color={editForm.avatar_color} src={editing?.avatar_url} size="h-16 w-16 text-xl" />
+              <div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" data-testid="edit-user-photo-upload" disabled={photoBusy} onClick={() => avatarRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[hsl(var(--hairline))] text-xs font-semibold text-foreground hover:bg-[hsl(var(--muted))] disabled:opacity-50">
+                    <Upload size={13} /> {editing?.avatar_url ? "Ganti Foto" : "Unggah Foto"}
+                  </button>
+                  {editing?.avatar_url && (
+                    <button type="button" data-testid="edit-user-photo-remove" disabled={photoBusy} onClick={removeUserPhoto}
+                      className="h-8 px-3 rounded-lg text-xs font-semibold text-[#CA3521] hover:bg-[#FFEBE6] disabled:opacity-50">
+                      Hapus foto
+                    </button>
+                  )}
+                </div>
+                <input ref={avatarRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={uploadUserPhoto} />
+                <p className="mt-1 text-[11px] text-3">JPG / PNG / WEBP / GIF, maks 3 MB. Langsung tersimpan.</p>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-2">Nama</label>
+              <input data-testid="edit-user-name-input" value={editForm.name || ""} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-2">Email</label>
+              <input data-testid="edit-user-email-input" type="email" value={editForm.email || ""} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-2">Warna avatar (dipakai bila tidak ada foto)</label>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {AVATAR_COLORS.map((c) => (
+                  <button key={c} type="button" onClick={() => setEditForm({ ...editForm, avatar_color: c })}
+                    className={`h-7 w-7 rounded-full ${editForm.avatar_color === c ? "ring-2 ring-[#0C66E4] ring-offset-1 ring-offset-[hsl(var(--elevated))]" : ""}`}
+                    style={{ backgroundColor: c }} aria-label={`Warna ${c}`} />
+                ))}
+              </div>
+            </div>
             <div>
               <label className="text-xs font-semibold text-2">Peran</label>
               <select data-testid="edit-user-role-select" value={editForm.role || "staff"} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} className={inputCls}>
@@ -155,6 +256,16 @@ function UsersTab({ divisions }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ImageCropperModal
+        isOpen={cropModalOpen}
+        onClose={() => {
+          setCropModalOpen(false);
+          setCropImageSrc(null);
+        }}
+        imageSrc={cropImageSrc}
+        onCropComplete={handleCropComplete}
+      />
     </div>
   );
 }
@@ -414,14 +525,15 @@ function ActivityTab() {
 // ── Alur & Syarat List ──────────────────────────────────────────────
 function ListRow({ list, idx }) {
   const qc = useQueryClient();
+  const [name, setName] = useState(list.name);
   const [reqs, setReqs] = useState(() => (list.entryRequirements || []).filter(Boolean));
   const [color, setColor] = useState(list.color || "#F1F2F4");
   const [dirty, setDirty] = useState(false);
 
   const save = async () => {
     try {
-      await api.patch(`/lists/${list.id}`, { color, entryRequirements: reqs });
-      toast.success(`List "${list.name}" disimpan`);
+      await api.patch(`/lists/${list.id}`, { name: name.trim(), color, entryRequirements: reqs });
+      toast.success(`List disimpan`);
       setDirty(false);
       qc.invalidateQueries({ queryKey: ["board-full"] });
       qc.invalidateQueries({ queryKey: ["board"] });
@@ -435,7 +547,12 @@ function ListRow({ list, idx }) {
       <div className="flex items-center gap-2 mb-3">
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[hsl(var(--muted))] text-xs font-bold text-3">{idx + 1}</span>
         <span className="h-4 w-4 rounded shrink-0 border border-[hsl(var(--hairline))]" style={{ backgroundColor: color }} />
-        <span className="font-semibold text-foreground">{list.name}</span>
+        <input 
+          type="text" 
+          value={name} 
+          onChange={(e) => { setName(e.target.value); setDirty(true); }}
+          className="font-semibold text-foreground bg-transparent border-b border-transparent hover:border-[hsl(var(--hairline))] focus:border-[#0c66e4] focus:outline-none px-1 py-0.5 w-full transition-colors"
+        />
       </div>
 
       <div className="mb-3">
@@ -454,7 +571,7 @@ function ListRow({ list, idx }) {
           Syarat pindah kartu KE list ini
         </p>
         <p className="text-[11px] text-3 mb-1.5">
-          Pilih dari item Template Checklist. Kartu tidak bisa dipindah ke <b>{list.name}</b> sebelum item checklist tersebut tercentang di kartu (supervisor bisa paksa).
+          Pilih dari item Template Checklist. Kartu tidak bisa dipindah ke <b>{name || "list ini"}</b> sebelum item checklist tersebut tercentang di kartu (supervisor bisa paksa).
         </p>
         <RequirementPicker value={reqs} onChange={(next) => { setReqs(next); setDirty(true); }} />
       </div>
@@ -688,6 +805,41 @@ function Toggle({ on, disabled, onChange, testid }) {
     >
       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-[hsl(var(--elevated))] shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`} />
     </button>
+  );
+}
+
+/**
+ * Override per divisi punya TIGA keadaan, bukan dua: "ikut peran" (belum diatur)
+ * beda artinya dengan "tidak boleh" — yang pertama mengikuti matriks peran,
+ * yang kedua mengunci walau perannya mengizinkan.
+ */
+const TRI_OPTS = [
+  { v: null, label: "Ikut peran", on: "bg-[hsl(var(--muted))] text-foreground" },
+  { v: true, label: "Boleh", on: "bg-[#22A06B] text-white" },
+  { v: false, label: "Tidak", on: "bg-[#CA3521] text-white" },
+];
+
+function TriState({ value, disabled, onChange, testid }) {
+  return (
+    <div className={`inline-flex shrink-0 rounded-lg border border-[hsl(var(--hairline))] p-0.5 ${disabled ? "opacity-40" : ""}`} data-testid={testid}>
+      {TRI_OPTS.map((o) => {
+        const active = value === o.v;
+        return (
+          <button
+            key={String(o.v)}
+            type="button"
+            disabled={disabled}
+            data-testid={`${testid}-${o.v === null ? "inherit" : o.v}`}
+            onClick={() => !disabled && onChange(o.v)}
+            className={`rounded-md px-2 py-1 text-[11px] font-bold transition-colors ${
+              active ? o.on : "text-3 hover:bg-[hsl(var(--muted))]"
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -929,18 +1081,24 @@ function AutomationSettingsTab({ divisions }) {
 
 function PermissionsTab() {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["permissions"],
     queryFn: () => api.get("/permissions").then((r) => r.data),
+    retry: false,
   });
   const [syncing, setSyncing] = useState(false);
+  const [scope, setScope] = useState("role"); // "role" | "division"
   const [activeRole, setActiveRole] = useState("staff");
+  const [activeDivId, setActiveDivId] = useState(null);
   const [q, setQ] = useState("");
   const [collapsed, setCollapsed] = useState({});
   const [busyKey, setBusyKey] = useState(null);
 
   const roles = data?.roles || [];
   const perms = data?.permissions || [];
+  const divisions = data?.divisions || [];
+  const byDivision = scope === "division";
+  const activeDiv = divisions.find((d) => d.id === activeDivId) || divisions[0];
 
   const applyMatrix = (m) => qc.setQueryData(["permissions"], m);
 
@@ -963,6 +1121,26 @@ function PermissionsTab() {
     } catch (e) { toast.error(errMsg(e)); }
   };
 
+  // value: true (boleh) | false (tidak) | null (ikut peran / hapus override)
+  const toggleDiv = async (permKey, value) => {
+    if (!activeDiv) return;
+    setBusyKey(permKey);
+    try {
+      const r = await api.patch("/permissions/divisions", { division_id: activeDiv.id, key: permKey, allowed: value });
+      applyMatrix(r.data.matrix);
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusyKey(null); }
+  };
+
+  const bulkDiv = async (permKeys, value) => {
+    if (!activeDiv || !permKeys.length) return;
+    try {
+      const r = await api.patch("/permissions/divisions", {
+        changes: permKeys.map((key) => ({ division_id: activeDiv.id, key, allowed: value })),
+      });
+      applyMatrix(r.data.matrix);
+    } catch (e) { toast.error(errMsg(e)); }
+  };
+
   const sync = async () => {
     setSyncing(true);
     try {
@@ -973,6 +1151,23 @@ function PermissionsTab() {
   };
 
   if (isLoading) return <p className="text-sm text-3 p-4">Memuat matriks...</p>;
+  // Matriks kosong karena gagal dimuat ≠ matriks yang memang kosong — tampilkan
+  // sebabnya, jangan biarkan halaman terlihat "tidak ada datanya".
+  if (error) {
+    return (
+      <div className="rounded-xl border border-[#FFD5D2] bg-[#FFEBE6] p-5" data-testid="admin-permissions-error">
+        <p className="text-sm font-semibold text-[#AE2E24]">Matriks hak akses gagal dimuat.</p>
+        <p className="mt-1 text-[13px] text-[#AE2E24]">{errMsg(error)}</p>
+        <p className="mt-2 text-[12px] text-2">
+          Kalau ini muncul setelah ada perubahan skema database, server perlu dijalankan ulang
+          (<code>prisma generate</code> + restart) supaya tabel baru terbaca.
+        </p>
+        <button onClick={() => refetch()} className="mt-3 rounded-md bg-[hsl(var(--elevated))] px-3 py-1.5 text-[13px] font-semibold text-foreground hover:bg-[hsl(var(--muted))]">
+          Coba lagi
+        </button>
+      </div>
+    );
+  }
 
   const isSuper = activeRole === "super_admin";
   const filtered = q.trim()
@@ -987,40 +1182,93 @@ function PermissionsTab() {
       <div className="bg-[hsl(var(--elevated))] rounded-xl border border-[hsl(var(--hairline))] shadow-sm p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
           <h3 className="font-heading font-bold text-foreground flex items-center gap-2">
-            <ShieldCheck size={16} /> Hak Akses per Peran
+            <ShieldCheck size={16} /> Hak Akses {byDivision ? "per Divisi" : "per Peran"}
           </h3>
           <button onClick={sync} disabled={syncing} className={`${btnPrimary} flex items-center gap-1.5 shrink-0`}>
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> Sinkronkan
           </button>
         </div>
 
-        {/* Pilih peran */}
-        <div className="flex flex-wrap gap-1.5">
-          {roles.map((role) => {
-            const n = perms.filter((p) => role === "super_admin" || p.allow[role]).length;
-            return (
-              <button
-                key={role}
-                data-testid={`perm-role-${role}`}
-                onClick={() => setActiveRole(role)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  activeRole === role ? "bg-[#0C66E4] text-white" : "bg-[hsl(var(--muted))] text-2 hover:bg-[#E4E6EA]"
-                }`}
-              >
-                {ROLE_LABELS[role] || role}
-                <span className={`ml-1.5 text-[11px] ${activeRole === role ? "text-white/80" : "text-3"}`}>{n}</span>
-              </button>
-            );
-          })}
+        {/* Atur per peran, atau per divisi (override di atas peran) */}
+        <div className="mb-3 inline-flex rounded-lg border border-[hsl(var(--hairline))] p-0.5">
+          {[
+            { v: "role", label: "Per Peran" },
+            { v: "division", label: "Per Divisi" },
+          ].map(({ v, label }) => (
+            <button
+              key={v}
+              data-testid={`perm-scope-${v}`}
+              onClick={() => setScope(v)}
+              className={`rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+                scope === v ? "bg-[#0C66E4] text-white" : "text-2 hover:bg-[hsl(var(--muted))]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
-        <p className="mt-2 text-sm text-2">
-          <b>{ROLE_LABELS[activeRole] || activeRole}</b> — {ROLE_DESC[activeRole] || ""}{" "}
-          <span className="text-3">({activeCount} izin aktif)</span>
-        </p>
-        <p className="mt-1 text-[11px] text-3">
-          Cek kepemilikan (PIC / divisi / pembuat / owner) tetap berlaku di atas matriks — izin di sini hanya bisa memperketat.
-        </p>
+        {byDivision ? (
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              {divisions.map((d) => {
+                const n = perms.filter((p) => p.division_allow?.[d.id] !== null && p.division_allow?.[d.id] !== undefined).length;
+                const on = activeDiv?.id === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    data-testid={`perm-division-${d.id}`}
+                    onClick={() => setActiveDivId(d.id)}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${on ? "text-white" : "bg-[hsl(var(--muted))] text-2 hover:bg-[#E4E6EA]"}`}
+                    style={on ? { backgroundColor: d.color || "#0C66E4" } : {}}
+                  >
+                    {d.name}
+                    {n > 0 && <span className={`ml-1.5 text-[11px] ${on ? "text-white/80" : "text-3"}`}>{n} diatur</span>}
+                  </button>
+                );
+              })}
+              {divisions.length === 0 && <p className="text-sm text-3">Belum ada divisi.</p>}
+            </div>
+            <p className="mt-2 text-sm text-2">
+              <b>{activeDiv?.name || "—"}</b> — pengaturan di sini <b>menimpa</b> peran untuk semua anggota divisi ini.
+            </p>
+            <p className="mt-1 text-[11px] text-3">
+              Peran saja tidak cukup: anggota lintas divisi banyak yang ber-peran sama (mis. semua &quot;Anggota&quot;),
+              jadi pakai ini kalau aturannya beda antar divisi. Biarkan <b>Ikut peran</b> kalau tidak perlu dibedakan.
+              Super Admin tetap selalu punya akses penuh.
+            </p>
+          </>
+        ) : (
+          <>
+            {/* Pilih peran */}
+            <div className="flex flex-wrap gap-1.5">
+              {roles.map((role) => {
+                const n = perms.filter((p) => role === "super_admin" || p.allow[role]).length;
+                return (
+                  <button
+                    key={role}
+                    data-testid={`perm-role-${role}`}
+                    onClick={() => setActiveRole(role)}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                      activeRole === role ? "bg-[#0C66E4] text-white" : "bg-[hsl(var(--muted))] text-2 hover:bg-[#E4E6EA]"
+                    }`}
+                  >
+                    {ROLE_LABELS[role] || role}
+                    <span className={`ml-1.5 text-[11px] ${activeRole === role ? "text-white/80" : "text-3"}`}>{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-2 text-sm text-2">
+              <b>{ROLE_LABELS[activeRole] || activeRole}</b> — {ROLE_DESC[activeRole] || ""}{" "}
+              <span className="text-3">({activeCount} izin aktif)</span>
+            </p>
+            <p className="mt-1 text-[11px] text-3">
+              Cek kepemilikan (PIC / divisi / pembuat / owner) tetap berlaku di atas matriks — izin di sini hanya bisa memperketat.
+            </p>
+          </>
+        )}
 
         {/* Alat cepat */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1028,7 +1276,13 @@ function PermissionsTab() {
             <Search size={13} className="text-3 shrink-0" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari izin…" className="h-8 w-44 bg-transparent text-[13px] outline-none" />
           </div>
-          {!isSuper && (
+          {byDivision ? (
+            <>
+              <button onClick={() => bulkDiv(filtered.map((p) => p.key), true)} className="rounded-md bg-[#E3FCEF] px-2.5 py-1.5 text-[12px] font-semibold text-[#216E4E] hover:brightness-95">Boleh semua</button>
+              <button onClick={() => bulkDiv(filtered.map((p) => p.key), false)} className="rounded-md bg-[#FFEBE6] px-2.5 py-1.5 text-[12px] font-semibold text-[#AE2E24] hover:brightness-95">Tidak semua</button>
+              <button onClick={() => bulkDiv(filtered.map((p) => p.key), null)} className="rounded-md bg-[hsl(var(--muted))] px-2.5 py-1.5 text-[12px] font-semibold text-2 hover:brightness-95">Kembalikan ke peran</button>
+            </>
+          ) : !isSuper && (
             <>
               <button onClick={() => bulk(filtered.map((p) => p.key), true)} className="rounded-md bg-[#E3FCEF] px-2.5 py-1.5 text-[12px] font-semibold text-[#216E4E] hover:brightness-95">Aktifkan semua</button>
               <button onClick={() => bulk(filtered.map((p) => p.key), false)} className="rounded-md bg-[hsl(var(--muted))] px-2.5 py-1.5 text-[12px] font-semibold text-2 hover:brightness-95">Kosongkan semua</button>
@@ -1037,7 +1291,7 @@ function PermissionsTab() {
         </div>
       </div>
 
-      {isSuper && (
+      {!byDivision && isSuper && (
         <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] p-4 text-sm text-2">
           Super Admin selalu punya akses penuh dan tidak dapat dibatasi.
         </div>
@@ -1045,7 +1299,9 @@ function PermissionsTab() {
 
       {categories.map((cat) => {
         const rows = filtered.filter((p) => p.category === cat);
-        const onCount = rows.filter((p) => isSuper || p.allow[activeRole]).length;
+        const onCount = byDivision
+          ? rows.filter((p) => p.division_allow?.[activeDiv?.id] === true).length
+          : rows.filter((p) => isSuper || p.allow[activeRole]).length;
         const open = !collapsed[cat];
         return (
           <div key={cat} className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] shadow-sm overflow-hidden">
@@ -1056,7 +1312,25 @@ function PermissionsTab() {
               <span className={`text-3 transition-transform ${open ? "" : "-rotate-90"}`}>▾</span>
               <span className="flex-1 text-[13px] font-bold text-foreground">{cat}</span>
               <span className="rounded-full bg-[hsl(var(--elevated))] px-2 py-0.5 text-[11px] font-bold text-2">{onCount}/{rows.length}</span>
-              {!isSuper && (
+              {byDivision ? (
+                <>
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); bulkDiv(rows.map((p) => p.key), true); }}
+                    className="text-[11px] font-semibold text-[#0C66E4] hover:underline"
+                  >boleh</span>
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); bulkDiv(rows.map((p) => p.key), false); }}
+                    className="text-[11px] font-semibold text-[#AE2E24] hover:underline"
+                  >tidak</span>
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); bulkDiv(rows.map((p) => p.key), null); }}
+                    className="text-[11px] font-semibold text-3 hover:underline"
+                  >ikut peran</span>
+                </>
+              ) : !isSuper && (
                 <>
                   <span
                     role="button"
@@ -1095,12 +1369,21 @@ function PermissionsTab() {
                         </p>
                         <code className="text-[10px] text-3">{perm.key}</code>
                       </div>
-                      <Toggle
-                        on={on}
-                        disabled={isSuper || busyKey === perm.key}
-                        onChange={(v) => toggle(perm.key, v)}
-                        testid={`perm-${perm.key}-${activeRole}`}
-                      />
+                      {byDivision ? (
+                        <TriState
+                          value={perm.division_allow?.[activeDiv?.id] ?? null}
+                          disabled={!activeDiv || busyKey === perm.key}
+                          onChange={(v) => toggleDiv(perm.key, v)}
+                          testid={`permdiv-${perm.key}`}
+                        />
+                      ) : (
+                        <Toggle
+                          on={on}
+                          disabled={isSuper || busyKey === perm.key}
+                          onChange={(v) => toggle(perm.key, v)}
+                          testid={`perm-${perm.key}-${activeRole}`}
+                        />
+                      )}
                     </div>
                   );
                 })}

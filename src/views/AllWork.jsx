@@ -99,7 +99,7 @@ export default function AllWork() {
                 <td className="px-4 py-2.5">
                   {item.current_pic_name ? (
                     <div className="flex items-center gap-1.5">
-                      <Avatar name={item.current_pic_name} color={usersById[item.current_pic_id]?.avatar_color} size="h-6 w-6 text-[10px]" />
+                      <Avatar name={item.current_pic_name} color={usersById[item.current_pic_id]?.avatar_color} src={usersById[item.current_pic_id]?.avatar_url} size="h-6 w-6 text-[10px]" />
                       <span className="text-2 whitespace-nowrap">{item.current_pic_name}</span>
                     </div>
                   ) : (

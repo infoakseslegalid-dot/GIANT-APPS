@@ -74,7 +74,7 @@ export default function Dashboard() {
           <div className="space-y-3">
             {(stats?.by_user || []).map((u) => (
               <div key={u.id} className="flex items-center gap-3">
-                <Avatar name={u.name} color={u.color} size="h-7 w-7 text-[10px]" />
+                <Avatar name={u.name} color={u.color} src={u.avatar_url} size="h-7 w-7 text-[10px]" />
                 <div className="flex-1">
                   <div className="flex justify-between text-sm mb-1">
                     <span className="font-medium text-foreground">{u.name}</span>
@@ -94,23 +94,32 @@ export default function Dashboard() {
       <div>
         <h2 className="font-heading text-base font-bold text-foreground mb-3">{t("dashboard.yourBoards")}</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="dashboard-boards-grid">
-          {(boards || []).map((b, i) => (
-            <Link
-              key={b.id}
-              to={`/board/${b.id}`}
-              data-testid={`dashboard-board-${b.id}`}
-              className="rounded-xl p-4 h-24 flex flex-col justify-between text-white shadow-sm hover:shadow-md hover:scale-[1.02] transition-all stagger-item"
-              style={{ backgroundColor: b.background, animationDelay: `${i * 40}ms` }}
-            >
-              <p className="font-heading font-bold text-sm leading-snug">{b.name}</p>
-              <div className="flex items-center justify-between">
-                {b.division_name && (
-                  <span className="text-[10px] font-bold bg-[hsl(var(--elevated))]/20 rounded-full px-2 py-0.5">{b.division_name}</span>
-                )}
-                <span className="text-[10px] opacity-80">{b.card_count} {t("dashboard.cards")}</span>
-              </div>
-            </Link>
-          ))}
+          {(boards || []).map((b, i) => {
+            const bgImg = b.background_image_url;
+            return (
+              <Link
+                key={b.id}
+                to={`/board/${b.id}`}
+                data-testid={`dashboard-board-${b.id}`}
+                className="relative overflow-hidden rounded-xl p-4 h-24 flex flex-col justify-between text-white shadow-sm hover:shadow-md hover:scale-[1.02] transition-all stagger-item"
+                style={{
+                  ...(bgImg
+                    ? { backgroundImage: `url(${bgImg})`, backgroundSize: "cover", backgroundPosition: "center" }
+                    : { backgroundColor: b.background || "#0079bf" }),
+                  animationDelay: `${i * 40}ms`,
+                }}
+              >
+                {bgImg && <div className="pointer-events-none absolute inset-0 bg-black/35" />}
+                <p className="relative z-10 font-heading font-bold text-sm leading-snug">{b.name}</p>
+                <div className="relative z-10 flex items-center justify-between">
+                  {b.division_name && (
+                    <span className="text-[10px] font-bold bg-[hsl(var(--elevated))]/20 rounded-full px-2 py-0.5">{b.division_name}</span>
+                  )}
+                  <span className="text-[10px] opacity-80">{b.card_count} {t("dashboard.cards")}</span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -342,11 +342,12 @@ export default function AiChat() {
                 )}
                 {!convoLoading && messages.length === 0 && !readOnly && (
                   <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--surface))] p-4 text-[13px] text-2">
-                    <p className="font-semibold text-foreground">Mulai bertanya.</p>
+                    <p className="font-semibold text-foreground">Mulai bertanya kepada Agentic AI.</p>
                     <p className="mt-1">
-                      Ketik <code>@</code> untuk menandai board, kartu, lampiran, atau user — AI akan
-                      membaca isinya (mengikuti hak akses kamu). Contoh:{" "}
-                      <em>"Ringkas @NamaBoard dan sebut kartu yang jatuh tempo minggu ini"</em>.
+                      Ketik <code>@</code> untuk menandai board, kartu, atau user secara spesifik, ATAU 
+                      langsung minta AI untuk mengeksplorasi seluruh database. Contoh:{" "}
+                      <em>"Tolong carikan pengguna yang punya email dengan domain @ali.id"</em> atau{" "}
+                      <em>"Lihat database, apa ada kartu tugas yang berstatus URGENT?"</em>.
                     </p>
                   </div>
                 )}

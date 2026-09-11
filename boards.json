@@ -1,0 +1,1385 @@
+[
+  {
+    "id": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+    "name": "ADMIN DRAF INPUT",
+    "divisionId": "5749c390-4c94-419d-a2b5-1ee98952427f",
+    "background": "#D29034",
+    "backgroundImagePath": "board-bg/1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363/6385097d-f951-4099-a8c0-abc94eb526a9.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.574Z",
+    "updatedAt": "2026-09-04T07:55:10.979Z",
+    "lists": [
+      {
+        "id": "8712c507-4679-4786-b518-446d66241b68",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "LIST",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.581Z"
+      },
+      {
+        "id": "c408aaca-bf75-44f7-a060-b569d55cd518",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "DOING",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.584Z"
+      },
+      {
+        "id": "d17cbe94-ba9e-4198-b786-f244fdcb92d2",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "FINISH TODAY",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.587Z"
+      },
+      {
+        "id": "15c297f1-57e2-477b-9acb-f4658a6e00fb",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "FU NOTARIS (ELIS)",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.592Z"
+      },
+      {
+        "id": "fbf0a2df-ed23-4399-9eb4-e954a90dcc9d",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "SIAP KIRIM NOTARIS (ELIS)",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.595Z"
+      },
+      {
+        "id": "2723aa75-c987-483a-9f59-4a2808cf54ee",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "PRATINJAU (ELIS)",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.598Z"
+      },
+      {
+        "id": "edb40777-99cb-42f0-9ede-224554176b20",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "VIA WA ADMIN/GC ADMIN (ANTI)",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.605Z"
+      },
+      {
+        "id": "ebad142a-f6da-4417-9f80-7ed5641a5e40",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "PESAN NAMA (ANTI)",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.608Z"
+      },
+      {
+        "id": "25d9de85-d45f-46d6-9276-66e9b05d68cb",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "INPUTAN (ANTI)",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": [
+          "AKTA",
+          "SK k"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.613Z"
+      },
+      {
+        "id": "9f4b5230-f5f8-496a-87f8-143c8f25db21",
+        "boardId": "1c0aa5c3-a1d3-4d7d-ad18-2a4c42572363",
+        "name": "ADMIN",
+        "color": "#F1F2F4",
+        "position": 10000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.617Z"
+      }
+    ]
+  },
+  {
+    "id": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+    "name": "CS DEDES ALI",
+    "divisionId": "be50b6cf-7350-44c7-bfc8-f36ed55f63d1",
+    "background": "#4BBF6B",
+    "backgroundImagePath": "board-bg/128957a0-cc7a-4087-9ec1-ca6ab0977f34/89081700-76f7-4dd0-a3e7-06bac9670d9f.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.219Z",
+    "updatedAt": "2026-09-04T07:55:18.815Z",
+    "lists": [
+      {
+        "id": "0eca16d2-9dec-4aff-bf9b-759ee2fc1cf4",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "COWORKING & VO",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": [],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.225Z"
+      },
+      {
+        "id": "67556d23-d1f1-4145-9111-1e229282a897",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 1",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": [],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.229Z"
+      },
+      {
+        "id": "fe052aed-cf5b-49b5-b81e-33125f8ebd6d",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 2",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.231Z"
+      },
+      {
+        "id": "c8b331fc-a0e7-4381-9d14-df2080f6f96c",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 3 BUTUH DRAFT",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": [
+          "KTP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.233Z"
+      },
+      {
+        "id": "96e96a19-6295-4281-a881-6e1a15507ade",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 3 REVISI DRAFT",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.247Z"
+      },
+      {
+        "id": "821ea9bb-b6e0-4103-927e-83b98b131853",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 3 (DRAFT FINAL TTD)",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.249Z"
+      },
+      {
+        "id": "ae236c38-c2a1-40c6-8c7e-1b5ea4403bc0",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 4",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": [
+          "Pembayaran DP/Lunas"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.251Z"
+      },
+      {
+        "id": "c2171121-0969-4d09-b9c0-c2a954c804ec",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 5",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.254Z"
+      },
+      {
+        "id": "babfc5bc-0d85-4736-b7f4-9a592dcce7fb",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 5 (YAYASAN DAN PERKUMPULAN)",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.256Z"
+      },
+      {
+        "id": "5d62cc2b-0bd5-4e08-9c29-7dfdbc353919",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 5 SIAP KIRIM NOTARIS",
+        "color": "#F1F2F4",
+        "position": 10000,
+        "entryRequirements": [
+          "Minuta Akta"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.258Z"
+      },
+      {
+        "id": "ee2d5fc6-ae1a-4989-8158-0270803cab68",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 5 (NPWP)",
+        "color": "#F1F2F4",
+        "position": 11000,
+        "entryRequirements": [
+          "SK Kemenkumham"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.260Z"
+      },
+      {
+        "id": "b8552b5d-04dc-47c7-8a6d-9a776be4123c",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 5 (NIB)",
+        "color": "#F1F2F4",
+        "position": 12000,
+        "entryRequirements": [
+          "NPWP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.263Z"
+      },
+      {
+        "id": "950f1aa4-371c-4630-8aea-fd303626f672",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 5 (BELUM PENYERAHAN)",
+        "color": "#F1F2F4",
+        "position": 13000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.265Z"
+      },
+      {
+        "id": "d6ab8f70-dde1-415a-b36d-f31c2fec8cd2",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 5 UPDATE MEREK 2026",
+        "color": "#F1F2F4",
+        "position": 14000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.266Z"
+      },
+      {
+        "id": "d5bf4a6e-f55f-4298-96c5-ebb8d555d1f9",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 6 FINISH",
+        "color": "#F1F2F4",
+        "position": 15000,
+        "entryRequirements": [
+          "NIB"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.268Z"
+      },
+      {
+        "id": "49f7d598-bc7f-46fe-8e8c-55d9604e8c17",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "KOMPLAIN",
+        "color": "#F1F2F4",
+        "position": 16000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.271Z"
+      },
+      {
+        "id": "a3934cbe-b6c7-431c-949d-27d6ac3ddced",
+        "boardId": "128957a0-cc7a-4087-9ec1-ca6ab0977f34",
+        "name": "SKOR 7 (DATA FU KEMBALI)",
+        "color": "#F1F2F4",
+        "position": 17000,
+        "entryRequirements": [
+          "Penyerahan"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.273Z"
+      }
+    ]
+  },
+  {
+    "id": "227bc34c-05cf-428e-a302-e9abb512c955",
+    "name": "ADMIN PERIZINAN",
+    "divisionId": "e05204d7-05d1-42c9-a989-590cc1cf67e5",
+    "background": "#CD5A91",
+    "backgroundImagePath": "board-bg/227bc34c-05cf-428e-a302-e9abb512c955/a8df7028-fe2c-402c-9b53-e3ceab297fef.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.696Z",
+    "updatedAt": "2026-09-04T07:56:25.060Z",
+    "lists": [
+      {
+        "id": "1c96004d-d1f8-4412-927c-1c0a47475f45",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "PERIZINAN LAINNYA",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.700Z"
+      },
+      {
+        "id": "02649d3f-0867-43df-801a-64ee9640b24b",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "LIST NIB",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.702Z"
+      },
+      {
+        "id": "3dc51fba-57f4-4d15-9c7b-4d4a975c660f",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "DOING (to be confirm)",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.704Z"
+      },
+      {
+        "id": "e1adb484-774c-4499-b68c-e3135d8fced8",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "PRODUK LAINNYA",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.706Z"
+      },
+      {
+        "id": "9574c100-1a8f-46e4-aa44-d0d4a148bfc6",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "MEREK",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.707Z"
+      },
+      {
+        "id": "9492c957-c425-4e8d-931c-2ee041ac0a11",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "MENUNGGU HASIL VERIFIKASI",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.709Z"
+      },
+      {
+        "id": "1fb85e18-7971-4325-b3f7-d8be46fa9893",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "DONE TODAY",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.711Z"
+      },
+      {
+        "id": "adba1258-9b62-4d6d-bc2a-07f416a2e9b8",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "ADMIN",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.713Z"
+      },
+      {
+        "id": "03b7df23-9931-4985-93ff-9601e372ca44",
+        "boardId": "227bc34c-05cf-428e-a302-e9abb512c955",
+        "name": "NOTARIS SOPPENG",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.715Z"
+      }
+    ]
+  },
+  {
+    "id": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+    "name": "CS DEVI ALI",
+    "divisionId": "be50b6cf-7350-44c7-bfc8-f36ed55f63d1",
+    "background": "#519839",
+    "backgroundImagePath": "board-bg/86dd6b98-bc2b-41e6-bff1-57298581b511/3ff77d5f-a131-459a-a37b-b4be180ec4eb.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.316Z",
+    "updatedAt": "2026-09-04T07:56:36.291Z",
+    "lists": [
+      {
+        "id": "9535f972-590a-403a-bdb5-9e8ba41af949",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "COWORKING & VO",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.322Z"
+      },
+      {
+        "id": "2a31b99b-febd-42b8-b2b9-32e522be739d",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 1",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": [],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.324Z"
+      },
+      {
+        "id": "62f678f4-d226-43e8-bd28-c56143913d7a",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 2",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.326Z"
+      },
+      {
+        "id": "01102fa9-59b6-4f51-951c-32d161f34708",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 3 BUTUH DRAFT",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": [
+          "KTP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.328Z"
+      },
+      {
+        "id": "89f2788b-cfdb-4b96-ac1b-8fb7352f5aa2",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 3 REVISI DRAFT",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.330Z"
+      },
+      {
+        "id": "d226ed12-abb8-4476-997b-8c3a70ba65e2",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 3 (DRAFT FINAL TTD)",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.332Z"
+      },
+      {
+        "id": "7bd56b2a-81ae-4a39-9b86-3b7b845b8d6b",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 4",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": [
+          "Pembayaran DP/Lunas"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.333Z"
+      },
+      {
+        "id": "e40d655b-58a0-47aa-a2a7-d103dbddcbeb",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 5",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.335Z"
+      },
+      {
+        "id": "4e8cd413-26c2-43b4-bd09-0e40df17f255",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 5 (YAYASAN DAN PERKUMPULAN)",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.337Z"
+      },
+      {
+        "id": "be5dc8cd-6941-4135-865f-a154187e0323",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 5 SIAP KIRIM NOTARIS",
+        "color": "#F1F2F4",
+        "position": 10000,
+        "entryRequirements": [
+          "Minuta Akta"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.339Z"
+      },
+      {
+        "id": "114dde1a-c820-41f9-a57c-d9a993932081",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 5 (NPWP)",
+        "color": "#F1F2F4",
+        "position": 11000,
+        "entryRequirements": [
+          "SK Kemenkumham"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.341Z"
+      },
+      {
+        "id": "83ef48f3-714d-4b4d-956b-123e9feebcc2",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 5 (NIB)",
+        "color": "#F1F2F4",
+        "position": 12000,
+        "entryRequirements": [
+          "NPWP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.344Z"
+      },
+      {
+        "id": "29d3e3ec-050e-4157-b397-94078fb52800",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 5 (BELUM PENYERAHAN)",
+        "color": "#F1F2F4",
+        "position": 13000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.346Z"
+      },
+      {
+        "id": "b664bd78-e750-41fb-91f5-7ff7df3a7d52",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 5 UPDATE MEREK 2026",
+        "color": "#F1F2F4",
+        "position": 14000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.348Z"
+      },
+      {
+        "id": "efd28d02-e421-4fb1-9b57-9394249d3e41",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 6 FINISH",
+        "color": "#F1F2F4",
+        "position": 15000,
+        "entryRequirements": [
+          "NIB"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.350Z"
+      },
+      {
+        "id": "48b4d446-0635-4266-87ba-d0d1761f65fa",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "KOMPLAIN",
+        "color": "#F1F2F4",
+        "position": 16000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.352Z"
+      },
+      {
+        "id": "1533cbe7-b2f3-4987-a6f6-5d9f1002d956",
+        "boardId": "86dd6b98-bc2b-41e6-bff1-57298581b511",
+        "name": "SKOR 7 (DATA FU KEMBALI)",
+        "color": "#F1F2F4",
+        "position": 17000,
+        "entryRequirements": [
+          "Penyerahan"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.354Z"
+      }
+    ]
+  },
+  {
+    "id": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+    "name": "DESAIN & KONTEN",
+    "divisionId": "2bf8ea7b-5215-4e59-807c-a06b4734c7fe",
+    "background": "#00AECC",
+    "backgroundImagePath": "board-bg/aa85c43e-9ccf-4db5-b82d-ff9d371d7da4/9f6f0bb6-232c-4b8e-ba85-e388f24e59e6.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.745Z",
+    "updatedAt": "2026-09-04T07:56:52.318Z",
+    "lists": [
+      {
+        "id": "935d5a1d-ec43-4a54-b3aa-0987f9651b64",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "Daily Rutin",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.749Z"
+      },
+      {
+        "id": "06158275-63f8-40f7-b3fe-0cb007bffe27",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "LIST LOGO / COMPRO",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.751Z"
+      },
+      {
+        "id": "35c499ea-a040-4afb-9c78-36288c1b5c9f",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "DOING",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.753Z"
+      },
+      {
+        "id": "2081f7e6-5b8f-4947-b8a4-62157d31b7c6",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "FINISH",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.755Z"
+      },
+      {
+        "id": "5ea41670-dfd3-4142-9506-0670423f9887",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "REVISI",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.757Z"
+      },
+      {
+        "id": "2d6050b7-eb9c-41b3-b908-c2b3ca4c33f2",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "LINK",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.759Z"
+      },
+      {
+        "id": "413d9463-19e3-4c85-b0b6-717bb7cc539c",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "REFERENSI/CATATAN",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.761Z"
+      },
+      {
+        "id": "a428c4c5-a67a-40e0-83ea-577656d4e16f",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "HARGA PROMO",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.764Z"
+      },
+      {
+        "id": "c524d95a-cdb5-4d1c-89ad-4a4a4150f1d7",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "HASBY JOBDESK",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.766Z"
+      },
+      {
+        "id": "df661d5a-2455-4e24-ad48-b518047a6c6a",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "AKSES LEGAL INDONESIA (VIDEO/GAMBAR)",
+        "color": "#F1F2F4",
+        "position": 10000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.767Z"
+      },
+      {
+        "id": "c7b0e4c0-efbc-4f04-9858-67d21cd39f14",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "KONTEN LAYANAN AKSES LEGAL INDONESIA (VIDEO/GAMBAR)",
+        "color": "#F1F2F4",
+        "position": 11000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.769Z"
+      },
+      {
+        "id": "cee8e2b4-4fcc-4e7f-8056-63633da34f60",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "KANTOR NOT. SOPPENG",
+        "color": "#F1F2F4",
+        "position": 12000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.770Z"
+      },
+      {
+        "id": "dbee526e-529b-4e78-a42b-faa8a1e37fa0",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "INFLUENCER",
+        "color": "#F1F2F4",
+        "position": 13000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.772Z"
+      },
+      {
+        "id": "ca9e94d3-9822-4caf-b85a-7d1586e4ca74",
+        "boardId": "aa85c43e-9ccf-4db5-b82d-ff9d371d7da4",
+        "name": "RE-DESAIN",
+        "color": "#F1F2F4",
+        "position": 14000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.774Z"
+      }
+    ]
+  },
+  {
+    "id": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+    "name": "ADMIN PAJAK",
+    "divisionId": "5fc5b0c9-9335-4663-8e98-49512bf24b89",
+    "background": "#4BBF6B",
+    "backgroundImagePath": "board-bg/c09b0177-ed62-4dd1-bf0c-419b6e0f53a7/c113e2e3-9dd0-4141-891a-efba4e53af02.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.654Z",
+    "updatedAt": "2026-09-04T07:57:02.455Z",
+    "lists": [
+      {
+        "id": "b176c09d-cb3d-4694-a7ba-d3fe7c89bdbf",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "LIST SPT TAHUNAN",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.659Z"
+      },
+      {
+        "id": "3b2db55d-ab55-49be-927c-984516d23b89",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "LIST PENGURUSAN PAJAK",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.661Z"
+      },
+      {
+        "id": "82251c0b-b53d-4450-9b2d-a1f207098e86",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "LIST NPWP",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.662Z"
+      },
+      {
+        "id": "1fbb4231-e00c-469e-8b9b-32a30489a5b3",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "DOING",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.664Z"
+      },
+      {
+        "id": "413d9dbe-818f-45b4-bb61-f03fb6a5af42",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "FINISH",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": [
+          "NPWP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.665Z"
+      },
+      {
+        "id": "f40289d7-b9c5-4fe0-a69b-ca5e6687b553",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "KONTRAK PAJAK",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.667Z"
+      },
+      {
+        "id": "eeb69778-276d-4583-97f1-b1859187db8c",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "VIA CHAT (AMEL)",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.668Z"
+      },
+      {
+        "id": "ca6616dd-2c75-40a1-b04e-30f86ef1bed6",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "EMAIL NOTARIS",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.670Z"
+      },
+      {
+        "id": "e7198340-09ff-41c6-a063-eda76e03dd31",
+        "boardId": "c09b0177-ed62-4dd1-bf0c-419b6e0f53a7",
+        "name": "ADMIN",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.672Z"
+      }
+    ]
+  },
+  {
+    "id": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+    "name": "CS DEWI ALI",
+    "divisionId": "be50b6cf-7350-44c7-bfc8-f36ed55f63d1",
+    "background": "#B04632",
+    "backgroundImagePath": "board-bg/c25ed925-60cd-4e6c-9033-a847a6f22ee5/e1112e61-6459-4e3d-8a8e-07bcb928429b.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.391Z",
+    "updatedAt": "2026-09-04T07:57:10.794Z",
+    "lists": [
+      {
+        "id": "135c9024-da87-486f-9eb6-fb795bdaad6e",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "COWORKING & VO",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.395Z"
+      },
+      {
+        "id": "205d5e5b-d651-4e83-a55b-bde12b40e516",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 1",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": [],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.397Z"
+      },
+      {
+        "id": "eff23a06-5dfb-41d0-9594-5cda70652b70",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 2",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.400Z"
+      },
+      {
+        "id": "a58d546e-d244-4671-a38e-f289cf438378",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 3 BUTUH DRAFT",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": [
+          "KTP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.402Z"
+      },
+      {
+        "id": "3744f87d-81e2-45de-aa2f-2a51f5d33378",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 3 REVISI DRAFT",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.404Z"
+      },
+      {
+        "id": "8aa06501-db3b-4d29-86ee-7aae4157eb37",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 3 (DRAFT FINAL TTD)",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.407Z"
+      },
+      {
+        "id": "5224e32f-9df0-4217-87bc-34171794415b",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 4",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": [
+          "Pembayaran DP/Lunas"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.410Z"
+      },
+      {
+        "id": "9189ab1d-1bcb-48f7-8e53-fa9198498a1f",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 5",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.412Z"
+      },
+      {
+        "id": "22673ecd-c13b-4bf1-8572-fccfc0018a25",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 5 (YAYASAN DAN PERKUMPULAN)",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.414Z"
+      },
+      {
+        "id": "4e85cd61-9e08-4d81-8643-f66ff7075b4a",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 5 SIAP KIRIM NOTARIS",
+        "color": "#F1F2F4",
+        "position": 10000,
+        "entryRequirements": [
+          "Minuta Akta"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.417Z"
+      },
+      {
+        "id": "40aecab1-66e5-4357-b3dd-21718e040e95",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 5 (NPWP)",
+        "color": "#F1F2F4",
+        "position": 11000,
+        "entryRequirements": [
+          "SK Kemenkumham"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.420Z"
+      },
+      {
+        "id": "50107395-bf4e-4972-b2bb-ddf4ae9bd3a0",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 5 (NIB)",
+        "color": "#F1F2F4",
+        "position": 12000,
+        "entryRequirements": [
+          "NPWP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.423Z"
+      },
+      {
+        "id": "02f71b3c-0951-4f36-8eb0-6f416d6b933d",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 5 (BELUM PENYERAHAN)",
+        "color": "#F1F2F4",
+        "position": 13000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.430Z"
+      },
+      {
+        "id": "c06783b9-26d7-4d96-a3fe-425e0053c50d",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 5 UPDATE MEREK 2026",
+        "color": "#F1F2F4",
+        "position": 14000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.435Z"
+      },
+      {
+        "id": "216a400d-83c4-46c3-a2d9-bf97f7724143",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 6 FINISH",
+        "color": "#F1F2F4",
+        "position": 15000,
+        "entryRequirements": [
+          "NIB"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.437Z"
+      },
+      {
+        "id": "36d7ccbf-8785-4ee2-a0d7-7719bbd79981",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "KOMPLAIN",
+        "color": "#F1F2F4",
+        "position": 16000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.440Z"
+      },
+      {
+        "id": "6954c9ad-bcb1-45a9-83c1-07f226399148",
+        "boardId": "c25ed925-60cd-4e6c-9033-a847a6f22ee5",
+        "name": "SKOR 7 (DATA FU KEMBALI)",
+        "color": "#F1F2F4",
+        "position": 17000,
+        "entryRequirements": [
+          "Penyerahan"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.442Z"
+      }
+    ]
+  },
+  {
+    "id": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+    "name": "CS JULIA ALI",
+    "divisionId": "be50b6cf-7350-44c7-bfc8-f36ed55f63d1",
+    "background": "#89609E",
+    "backgroundImagePath": "board-bg/c7bcde01-3e94-41fb-8925-1a0c73301b05/cb9cc5a2-1545-416a-ba69-02c27e7628f9.jpeg",
+    "backgroundImageType": "image/jpeg",
+    "isArchived": false,
+    "createdById": "2253a72b-43e5-48d4-9d42-ba3db021b20e",
+    "createdAt": "2026-09-03T08:24:03.484Z",
+    "updatedAt": "2026-09-04T07:57:18.738Z",
+    "lists": [
+      {
+        "id": "1a350b19-a3d5-4504-9676-08bbe8cd266a",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "COWORKING & VO",
+        "color": "#F1F2F4",
+        "position": 1000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.490Z"
+      },
+      {
+        "id": "c189960d-42a0-448f-850e-fd28898f3e8d",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 1",
+        "color": "#F1F2F4",
+        "position": 2000,
+        "entryRequirements": [],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.492Z"
+      },
+      {
+        "id": "dfecc611-0257-48cb-8ec3-31b1e7b1c71a",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 2",
+        "color": "#F1F2F4",
+        "position": 3000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.496Z"
+      },
+      {
+        "id": "1d0a7389-cd13-42dd-95a7-87ba484d3666",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 3 BUTUH DRAFT",
+        "color": "#F1F2F4",
+        "position": 4000,
+        "entryRequirements": [
+          "KTP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.500Z"
+      },
+      {
+        "id": "2e571cc3-7bf2-4dfe-a090-89ee5c92b38d",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 3 REVISI DRAFT",
+        "color": "#F1F2F4",
+        "position": 5000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.502Z"
+      },
+      {
+        "id": "6899ecf9-5df7-4895-bce0-1ef50f9efeac",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 3 (DRAFT FINAL TTD)",
+        "color": "#F1F2F4",
+        "position": 6000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.505Z"
+      },
+      {
+        "id": "a9688a55-d4a4-41fe-b36d-d14ac9719ed7",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 4",
+        "color": "#F1F2F4",
+        "position": 7000,
+        "entryRequirements": [
+          "Pembayaran DP/Lunas"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.508Z"
+      },
+      {
+        "id": "5a748c61-e848-4c69-a7b1-96de767616fc",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 5",
+        "color": "#F1F2F4",
+        "position": 8000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.510Z"
+      },
+      {
+        "id": "e403f4c7-6f77-45ef-a9a9-f6a61d9d44c9",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 5 (YAYASAN DAN PERKUMPULAN)",
+        "color": "#F1F2F4",
+        "position": 9000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.514Z"
+      },
+      {
+        "id": "9cc83891-fe7a-4966-9bd7-e6a99ef42f81",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 5 SIAP KIRIM NOTARIS",
+        "color": "#F1F2F4",
+        "position": 10000,
+        "entryRequirements": [
+          "Minuta Akta"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.516Z"
+      },
+      {
+        "id": "a0395554-16ae-4c28-87b1-988c4ac4ba75",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 5 (NPWP)",
+        "color": "#F1F2F4",
+        "position": 11000,
+        "entryRequirements": [
+          "SK Kemenkumham"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.518Z"
+      },
+      {
+        "id": "8a83e961-45a0-4c6c-95b8-75d6746235db",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 5 (NIB)",
+        "color": "#F1F2F4",
+        "position": 12000,
+        "entryRequirements": [
+          "NPWP"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.520Z"
+      },
+      {
+        "id": "00186ff3-c16a-4557-8f79-2fc6e08f2633",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 5 (BELUM PENYERAHAN)",
+        "color": "#F1F2F4",
+        "position": 13000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.522Z"
+      },
+      {
+        "id": "e6028502-464b-4e1f-ad05-c17339ed1714",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 5 UPDATE MEREK 2026",
+        "color": "#F1F2F4",
+        "position": 14000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.525Z"
+      },
+      {
+        "id": "350a8266-be00-4522-bee3-4ac88980533b",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 6 FINISH",
+        "color": "#F1F2F4",
+        "position": 15000,
+        "entryRequirements": [
+          "NIB"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.527Z"
+      },
+      {
+        "id": "2b572ce8-5fa6-450b-94be-9df79fc72295",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "KOMPLAIN",
+        "color": "#F1F2F4",
+        "position": 16000,
+        "entryRequirements": null,
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.528Z"
+      },
+      {
+        "id": "cffe0f77-ba02-43af-ad9f-23568c62b4e3",
+        "boardId": "c7bcde01-3e94-41fb-8925-1a0c73301b05",
+        "name": "SKOR 7 (DATA FU KEMBALI)",
+        "color": "#F1F2F4",
+        "position": 17000,
+        "entryRequirements": [
+          "Penyerahan"
+        ],
+        "archived": false,
+        "archivedAt": null,
+        "createdAt": "2026-09-03T08:24:03.530Z"
+      }
+    ]
+  }
+]

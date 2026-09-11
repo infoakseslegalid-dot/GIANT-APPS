@@ -528,7 +528,7 @@ export default function CardModal({ itemId, onClose }) {
                       const on = (item.member_ids || []).includes(u.id);
                       return (
                         <button key={u.id} onClick={() => toggleMember(u.id)} className="flex w-full items-center gap-2 rounded p-1.5 text-left hover:bg-slate-100">
-                          <Avatar name={u.name} color={u.avatar_color} size="h-7 w-7 text-xs" />
+                          <Avatar name={u.name} color={u.avatar_color} src={u.avatar_url} size="h-7 w-7 text-xs" />
                           <span className="flex-1 truncate text-sm text-slate-700">{u.name}</span>
                           {on && <CheckCircle2 size={16} className="text-blue-600" />}
                         </button>
@@ -736,7 +736,7 @@ export default function CardModal({ itemId, onClose }) {
                 <div className="mb-1 text-xs font-semibold text-slate-500">Anggota</div>
                 <div className="flex flex-wrap gap-2">
                   {members.map((m) => (
-                    <div key={m.id} title={m.name}><Avatar name={m.name} color={m.avatar_color} size="h-8 w-8 text-xs" /></div>
+                    <div key={m.id} title={m.name}><Avatar name={m.name} color={m.avatar_color} src={m.avatar_url} size="h-8 w-8 text-xs" /></div>
                   ))}
                 </div>
               </div>

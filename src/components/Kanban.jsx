@@ -112,7 +112,7 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror, readO
           </div>
           <div className="flex -space-x-1.5">
             {members.slice(0, 4).map((m) => (
-              <Avatar key={m.id} name={m.name} color={m.avatar_color} size="h-6 w-6 text-[10px]" />
+              <Avatar key={m.id} name={m.name} color={m.avatar_color} src={m.avatar_url} size="h-6 w-6 text-[10px]" />
             ))}
           </div>
         </div>

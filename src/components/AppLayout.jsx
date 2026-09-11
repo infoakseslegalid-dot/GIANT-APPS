@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutGrid, LogOut, Search, ChevronDown, Kanban, ChevronsUpDown, X, UserCog, Sun, Moon, Monitor, Sparkles,
+  LayoutGrid, LogOut, Search, ChevronDown, Kanban, ChevronsUpDown, X, UserCog, Sun, Moon, Monitor, Sparkles, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,8 @@ import { setLocale } from "../lib/i18n";
 import { useAuth } from "../context/AuthContext";
 import { useAiAssistant } from "../context/AiAssistantContext";
 import { Avatar } from "./common";
+import { ImageCropperModal } from "./ImageCropperModal";
+import { getCroppedImg } from "../utils/cropImage";
 import NotificationsMenu from "./NotificationsMenu";
 import Sidebar from "./Sidebar";
 import {
@@ -176,16 +178,36 @@ function BoardSwitcher() {
   );
 }
 
+const AVATAR_TYPES = "image/jpeg,image/png,image/webp,image/gif";
+const AVATAR_MAX = 3 * 1024 * 1024;
+
 function EditProfileModal({ user, onClose }) {
   const { setUser } = useAuth();
   const { t } = useTranslation();
   const { setTheme } = useTheme();
+  const fileRef = useRef(null);
   const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
   const [color, setColor] = useState(user?.avatar_color || AVATAR_COLORS[0]);
   const [theme, setThemeLocal] = useState(user?.theme || "system");
   const [locale, setLocaleLocal] = useState(user?.locale || "id");
   const [pw, setPw] = useState({ old_password: "", new_password: "" });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState(null);
+
+  // Hak akses profil bisa diatur per peran MAUPUN per divisi (Admin Panel →
+  // Hak Akses), jadi jangan tebak dari role — tanyakan ke server.
+  const { data: myPerms } = useQuery({
+    queryKey: ["my-permissions"],
+    queryFn: () => api.get("/my-permissions").then((r) => r.data),
+  });
+  const permSet = new Set(myPerms?.permissions || []);
+  const canName = permSet.has("profile.edit_name");
+  const canEmail = permSet.has("profile.edit_email");
+  const canPhoto = permSet.has("profile.edit_photo");
+  const canAnything = canName || canEmail || canPhoto;
 
   const patchPref = async (payload) => {
     try {
@@ -196,10 +218,56 @@ function EditProfileModal({ user, onClose }) {
   const pickTheme = (v) => { setThemeLocal(v); setTheme(v); patchPref({ theme: v }); };
   const pickLocale = (v) => { setLocaleLocal(v); setLocale(v); patchPref({ locale: v }); };
 
+  const uploadPhoto = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!AVATAR_TYPES.split(",").includes(f.type)) return toast.error(t("profile.photoFormat"));
+    if (f.size > AVATAR_MAX) return toast.error(t("profile.photoTooBig"));
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result);
+      setCropModalOpen(true);
+    };
+    reader.readAsDataURL(f);
+  };
+
+  const handleCropComplete = async (croppedAreaPixels) => {
+    try {
+      setUploading(true);
+      setCropModalOpen(false);
+      const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+      const fd = new FormData();
+      fd.append("file", croppedBlob);
+      const r = await api.post("/auth/me/avatar", fd);
+      setUser(r.data);
+      toast.success(t("profile.photoUpdated"));
+    } catch (e) {
+      toast.error(errMsg(e));
+    } finally {
+      setUploading(false);
+      setCropImageSrc(null);
+    }
+  };
+
+  const removePhoto = async () => {
+    setUploading(true);
+    try {
+      const r = await api.delete("/auth/me/avatar");
+      setUser(r.data);
+      toast.success(t("profile.photoRemoved"));
+    } catch (e) { toast.error(errMsg(e)); } finally { setUploading(false); }
+  };
+
   const saveProfile = async () => {
     setSaving(true);
     try {
-      const r = await api.patch("/auth/me", { name: name.trim(), avatar_color: color });
+      const payload = {};
+      if (canName) payload.name = name.trim();
+      if (canEmail) payload.email = email.trim();
+      if (canPhoto) payload.avatar_color = color;
+      const r = await api.patch("/auth/me", payload);
       setUser(r.data);
       toast.success(t("profile.updated"));
       onClose();
@@ -229,22 +297,68 @@ function EditProfileModal({ user, onClose }) {
           <button onClick={onClose} className="p-1.5 rounded hover:bg-[hsl(var(--muted))] text-2"><X size={18} /></button>
         </div>
         <div className="flex items-center gap-3 mb-4">
-          <Avatar name={name} color={color} size="h-12 w-12 text-base" />
-          <div className="text-xs text-3">{user?.email}</div>
+          <Avatar name={name} color={color} src={user?.avatar_url} size="h-16 w-16 text-xl" />
+          <div className="min-w-0">
+            {canPhoto ? (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    data-testid="profile-photo-upload"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[hsl(var(--hairline))] text-xs font-semibold text-foreground hover:bg-[hsl(var(--muted))] disabled:opacity-50"
+                  >
+                    <Upload size={13} /> {user?.avatar_url ? t("profile.photoChange") : t("profile.photoUpload")}
+                  </button>
+                  {user?.avatar_url && (
+                    <button
+                      data-testid="profile-photo-remove"
+                      onClick={removePhoto}
+                      disabled={uploading}
+                      className="h-8 px-3 rounded-lg text-xs font-semibold text-[#CA3521] hover:bg-[#FFEBE6] disabled:opacity-50"
+                    >
+                      {t("profile.photoRemove")}
+                    </button>
+                  )}
+                </div>
+                <input ref={fileRef} type="file" accept={AVATAR_TYPES} className="hidden" onChange={uploadPhoto} />
+                <p className="mt-1 text-[11px] text-3">{t("profile.photoHint")}</p>
+              </>
+            ) : (
+              <p className="text-[11px] text-3">{t("profile.photoLocked")}</p>
+            )}
+          </div>
         </div>
+
         <label className="text-xs font-semibold text-2">{t("profile.name")}</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} className={`mb-3 ${inp}`} />
+        <input value={name} onChange={(e) => setName(e.target.value)} disabled={!canName}
+          data-testid="profile-name-input"
+          className={`mb-3 ${inp} disabled:opacity-60 disabled:cursor-not-allowed`} />
+
+        <label className="text-xs font-semibold text-2">{t("profile.email")}</label>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEmail} type="email"
+          data-testid="profile-email-input"
+          className={`mb-1 ${inp} disabled:opacity-60 disabled:cursor-not-allowed`} />
+        {!canEmail && <p className="mb-3 text-[11px] text-3">{t("profile.emailLocked")}</p>}
+
         <label className="text-xs font-semibold text-2">{t("profile.avatarColor")}</label>
         <div className="mt-1 mb-4 flex flex-wrap gap-1.5">
           {AVATAR_COLORS.map((c) => (
-            <button key={c} onClick={() => setColor(c)}
-              className={`h-7 w-7 rounded-full ${color === c ? "ring-2 ring-[#0C66E4] ring-offset-1 ring-offset-[hsl(var(--elevated))]" : ""}`}
+            <button key={c} onClick={() => canPhoto && setColor(c)} disabled={!canPhoto}
+              className={`h-7 w-7 rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${color === c ? "ring-2 ring-[#0C66E4] ring-offset-1 ring-offset-[hsl(var(--elevated))]" : ""}`}
               style={{ backgroundColor: c }} />
           ))}
         </div>
-        <button onClick={saveProfile} disabled={saving} className="w-full h-9 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold disabled:opacity-50">
-          {t("profile.save")}
-        </button>
+        {canAnything ? (
+          <button onClick={saveProfile} disabled={saving} data-testid="profile-save"
+            className="w-full h-9 rounded-lg bg-[#0c66e4] hover:bg-[#0052cc] text-white text-sm font-semibold disabled:opacity-50">
+            {t("profile.save")}
+          </button>
+        ) : (
+          <p className="rounded-lg bg-[hsl(var(--muted))] px-3 py-2 text-center text-xs text-2" data-testid="profile-all-locked">
+            {t("profile.allLocked")}
+          </p>
+        )}
 
         {/* Tampilan / Appearance */}
         <div className="mt-5 pt-4 border-t border-[hsl(var(--hairline))]">
@@ -302,6 +416,16 @@ function EditProfileModal({ user, onClose }) {
           </button>
         </div>
       </div>
+
+      <ImageCropperModal
+        isOpen={cropModalOpen}
+        onClose={() => {
+          setCropModalOpen(false);
+          setCropImageSrc(null);
+        }}
+        imageSrc={cropImageSrc}
+        onCropComplete={handleCropComplete}
+      />
     </div>
   );
 }
@@ -354,10 +478,9 @@ export default function AppLayout() {
           {canUseAi && (
             <button
               data-testid="ai-assistant-button"
-              onClick={() => curBoardId && openForBoard(curBoardId, curBoardName)}
-              disabled={!curBoardId}
-              title={curBoardId ? "Tanya AI tentang board ini" : "Buka sebuah board dulu"}
-              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors hover:bg-[hsl(var(--elevated))]/20 disabled:opacity-40"
+              onClick={() => curBoardId ? openForBoard(curBoardId, curBoardName) : navigate("/ai")}
+              title={curBoardId ? "Tanya AI tentang board ini" : "Buka AI Assistant (Global)"}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors hover:bg-[hsl(var(--elevated))]/20"
             >
               <Sparkles size={16} />
               <span className="hidden md:inline">Tanya AI</span>
@@ -367,7 +490,7 @@ export default function AppLayout() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button data-testid="user-menu-button" className="flex items-center gap-1.5 hover:bg-[hsl(var(--elevated))]/20 rounded-full pl-1 pr-2 py-1 transition-colors active:scale-95">
-                <Avatar name={user?.name} color={user?.avatar_color} size="h-7 w-7 text-[11px]" />
+                <Avatar name={user?.name} color={user?.avatar_color} src={user?.avatar_url} size="h-7 w-7 text-[11px]" />
                 <ChevronDown size={14} />
               </button>
             </DropdownMenuTrigger>
