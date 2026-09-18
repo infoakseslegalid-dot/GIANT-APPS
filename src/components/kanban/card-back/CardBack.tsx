@@ -17,6 +17,7 @@ import CardChecklist from './CardChecklist';
 import CardAttachments from './CardAttachments';
 import CardActivityPanel from './CardActivityPanel';
 import CardFinancePanel from './CardFinancePanel';
+import CardClientPanel from './CardClientPanel';
 import { resolveColor } from './helpers';
 
 const DIST_LABEL: Record<string, { t: string; c: string }> = {
@@ -251,6 +252,9 @@ export default function CardBack(props: CardBackProps) {
 
             {/* Harga job & pembayaran (rekap Finance) */}
             <CardFinancePanel cardId={card.id} />
+
+            {/* Data klien & perusahaan (Arsip / Catatan Klien / dashboard klien) */}
+            <CardClientPanel cardId={card.id} />
 
             {/* Panel status pengerjaan per divisi (di Master Card) */}
             {isMasterCard && assignments.length > 0 && (

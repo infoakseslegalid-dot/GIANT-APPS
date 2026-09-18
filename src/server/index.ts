@@ -15,6 +15,7 @@ import { realtimeBus } from './deps';
 import { syncPermissions, allowedKeysFor } from './permissions';
 import { prefetchDivisions } from './deps';
 import { advance_hari_job, notify_kelengkapan_pending } from './cron';
+import { sweepArchive } from './archive_sync';
 
 // Katalog permission disinkronkan sekali saat modul dimuat: aksi kurasi +
 // table.<Model> untuk setiap model Prisma. Model baru → otomatis muncul di matriks.
@@ -36,6 +37,10 @@ if (!_gCron.__CRON_STARTED__) {
     };
     runCronJobs();
     setInterval(runCronJobs, CRON_INTERVAL_MS);
+    // Arsip → Google Drive: kirim file baru & pindahkan pekerjaan yang baru finish.
+    const runArchive = () => sweepArchive().catch((e) => console.error('[cron] sweepArchive gagal:', e));
+    setTimeout(runArchive, 30_000);
+    setInterval(runArchive, 5 * 60 * 1000);
 }
 
 const app = new Hono().basePath('/api');
@@ -49,7 +54,8 @@ app.use('*', cors({
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
 app.use('*', async (c, next) => {
-    if (c.req.path.startsWith('/api/auth') || c.req.path === '/api/health') {
+    // /api/public/* = API untuk dashboard klien, diamankan API key di route-nya.
+    if (c.req.path.startsWith('/api/auth') || c.req.path === '/api/health' || c.req.path.startsWith('/api/public/')) {
         return next();
     }
     const user = await getCurrentUser(c);

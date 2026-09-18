@@ -45,8 +45,17 @@ model MasterCard {
   price        Int?
   priceNote    String?
 
-  // No. telepon/WA klien — data pekerjaan untuk Arsip & Backup.
-  clientPhone  String?
+  // Data klien & perusahaan — dipakai Arsip (Catatan Klien di Drive) dan
+  // dikirim ke dashboard klien (akseslegal.id/dashboard).
+  clientPhone     String?
+  clientEmail     String?
+  clientAddress   String?
+  clientNotes     String?  @db.Text
+  companyName     String?
+  serviceType     String?
+  aktaNumber      String?
+  nibNumber       String?
+  establishedDate String? // YYYY-MM-DD
   priceSetById String?
   priceSetAt   DateTime?
 
@@ -406,6 +415,13 @@ model Attachment {
   // Jenis dokumen (KTP, Akta, NIB, ...) — dipakai Arsip untuk mengelompokkan
   // file & menghitung kelengkapan. null = belum ditandai.
   documentTypeId   String?
+  // Salinan di Google Drive (Arsip). driveSide: RAW (folder data mentah) | OUT (dokumen hasil).
+  driveFileId      String?
+  driveUrl         String?
+  driveName        String?
+  driveSide        String?
+  driveSyncedAt    DateTime?
+  driveError       String?
 
   workItem     WorkItem      @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   uploadedBy   User          @relation(fields: [uploadedById], references: [id])
@@ -422,11 +438,35 @@ model DocumentType {
   name      String   @unique
   group     String   @default("LAIN")
   required  Boolean  @default(false)
+  // Kategori di dashboard klien: Legalitas | Perpajakan | Perizinan | Sertifikat (untuk grup HASIL).
+  dashboardCategory String?
+  // Subfolder di folder data mentah, mis. "Foto TTD".
+  subfolder String?
   position  Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
   attachments Attachment[]
+}
+
+// Status sinkron Google Drive per pekerjaan (key = "mc_<id>" | "wi_<id>", sama dgn Arsip).
+// month null = masih di "_SEDANG BERJALAN"; diisi "YYYY-MM" saat pekerjaan finish.
+model ArchiveJobSync {
+  jobKey      String    @id
+  rawFolderId String?
+  outFolderId String?
+  folderName  String?
+  month       String?
+  notesFileId String?
+  notesHash   String?
+  dirty       Boolean   @default(true)
+  syncedAt    DateTime?
+  error       String?
+  // Kiriman terakhir ke dashboard klien (webhook) — hash isi supaya tidak kirim dobel.
+  pushedHash  String?
+  pushedAt    DateTime?
+  pushError   String?
+  updatedAt   DateTime  @updatedAt
 }
 
 // Jejak siapa mengunduh arsip pekerjaan apa (data pribadi klien → wajib tercatat).

@@ -81,6 +81,13 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AI_MAX_ATTACH_MB: ${AI_MAX_ATTACH_MB:-}
 
+      # Arsip → Google Drive (lihat docs/ARSIP-GOOGLE-DRIVE.md). Kosong = fitur
+      # "Hubungkan Google Drive" nonaktif, sisa aplikasi tetap jalan normal.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Alamat publik aplikasi, dipakai sebagai redirect OAuth Google.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+
       # Node
       NODE_ENV: production
       PORT: "3000"

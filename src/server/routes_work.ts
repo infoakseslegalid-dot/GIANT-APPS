@@ -5,6 +5,8 @@ import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { putObject, getObject } from './storage';
 import { requirePerm } from './permissions';
+import { markDirty } from './archive_sync';
+import { clientDataOf, clientDataPatch, ensureMasterCardFor } from './archive_core';
 
 const prisma = new PrismaClient();
 const router = new Hono();
@@ -2355,6 +2357,7 @@ router.post('/work-items/:item_id/attachments', async (c) => {
   });
   
   await logActivity(itemId, item.boardId, user, `mengunggah lampiran "${originalFilename}"`);
+  await markDirty(item); // salin ke Google Drive (Arsip)
   await runAutomation(item.boardId, 'attachment_uploaded', item, user, item.listId);
   await broadcastItem(await getWorkItem(itemId));
   return c.json({ id: att.id, work_item_id: att.workItemId, original_filename: att.originalFilename, content_type: att.contentType, size: att.size, uploaded_by_name: att.uploadedByName, uploaded_by_id: att.uploadedById, created_at: att.createdAt, external_url: att.storagePath, document_type_id: att.documentTypeId });
@@ -2377,10 +2380,35 @@ router.patch('/attachments/:id/document-type', async (c) => {
     if (!type) return c.json({ error: "Jenis dokumen tidak dikenal" }, 400);
   }
   await prisma.attachment.update({ where: { id }, data: { documentTypeId: type?.id || null } });
+  await markDirty(item); // pindah folder / buka-tutup link di Drive sesuai jenis baru
   await logActivity(att.workItemId, item.boardId, user,
     type ? `menandai lampiran "${att.originalFilename}" sebagai ${type.name}` : `menghapus jenis dokumen lampiran "${att.originalFilename}"`);
   await broadcastItem(await getWorkItem(att.workItemId));
   return c.json({ ok: true, document_type_id: type?.id || null });
+});
+
+// Data klien & perusahaan pekerjaan (disimpan di Master Card) — diisi CS di kartu.
+// Dipakai Catatan Klien di Google Drive & dikirim ke dashboard klien.
+router.get('/work-items/:item_id/client-data', async (c) => {
+  const user = c.get('user');
+  const item = await getItemChecked(c.req.param('item_id'), user);
+  if (!item) return c.json({ error: 'Kartu tidak ditemukan' }, 404);
+  const mc = item.masterCardId ? await prisma.masterCard.findUnique({ where: { id: item.masterCardId } }) : null;
+  return c.json({ ...clientDataOf(mc), client: mc?.client || item.clientName || null, can_edit: await canCommentItem(user, item) });
+});
+
+router.put('/work-items/:item_id/client-data', async (c) => {
+  await requirePerm(c, 'card.edit');
+  const user = c.get('user');
+  const item = await getItemChecked(c.req.param('item_id'), user);
+  if (!item) return c.json({ error: 'Kartu tidak ditemukan' }, 404);
+  { const _d = await commentDenied(c, user, item); if (_d) return _d; }
+  const data = clientDataPatch(await c.req.json());
+  const mc = await ensureMasterCardFor(item);
+  await prisma.masterCard.update({ where: { id: mc.id }, data });
+  await logActivity(item.id, item.boardId, user, 'memperbarui data klien');
+  await markDirty(`mc_${mc.id}`);
+  return c.json({ ok: true });
 });
 
 router.post('/work-items/:item_id/attachments/link', async (c) => {
@@ -2436,6 +2464,7 @@ router.delete('/attachments/:id', async (c) => {
   await prisma.attachment.update({ where: { id }, data: { isDeleted: true } });
   
   const item = await getWorkItem(att.workItemId);
+  await markDirty(item); // dokumen hasil yang dihapus: link Drive-nya ditutup
   await logActivity(att.workItemId, item.boardId, user, `menghapus lampiran "${att.originalFilename}"`);
   await broadcastItem(item);
   return c.json({ ok: true });

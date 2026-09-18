@@ -1,14 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip } from "recharts";
 import {
   Archive as ArchiveIcon, HardDrive, Files, FolderCheck, AlertTriangle, Download, X, Search,
   ExternalLink, Phone, CheckCircle2, Circle, Plus, History, Tags, ChevronRight,
+  Cloud, CloudOff, RefreshCw, Copy, Link2, Lock, FileText, Eye, Plug, KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, errMsg, fmtDateTime, API } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import CardModal from "../components/kanban/CardModalWrapper";
+import ClientDataForm from "../components/ClientDataForm";
 
 // ── util ────────────────────────────────────────────────────────────────
 export function fmtBytes(n) {
@@ -28,6 +31,7 @@ const GROUPS = [
   { key: "HASIL", label: "Dokumen Hasil", hint: "produk jadi: Akta, SK, NIB…" },
   { key: "LAIN", label: "Lainnya", hint: "" },
 ];
+const DASH_CATEGORIES = ["Legalitas", "Perpajakan", "Perizinan", "Sertifikat", "Lainnya"];
 const BAR = "#0C66E4"; // satu hue: semua grafik di sini mengukur besaran, bukan identitas
 
 const downloadUrl = (key) => `${API}/archive/jobs/${encodeURIComponent(key)}/download`;
@@ -144,6 +148,11 @@ function SummaryTab({ onOpenJob, onFilter }) {
           sub="pekerjaan SELESAI tapi dokumen belum lengkap" />
       </div>
 
+      {data.drive_errors > 0 && (
+        <div className="rounded-xl border border-[#F87168] bg-[#FFECEB] p-3 text-sm text-[#5D1F1A] flex items-center gap-2">
+          <CloudOff size={14} /> <b>{data.drive_errors}</b> file gagal dikirim ke Google Drive. Buka tab Integrasi → &quot;Sinkron semua sekarang&quot; untuk mencoba lagi.
+        </div>
+      )}
       {(data.jobs_done_incomplete > 0 || data.untyped_files > 0) && (
         <div className="rounded-xl border border-[#F5CD47] bg-[#FFF7D6] p-3 text-sm text-[#533F04] flex flex-col gap-1.5">
           {data.jobs_done_incomplete > 0 && (
@@ -208,7 +217,7 @@ function JobsTab({ filters, setFilters, onOpenJob, canDownload }) {
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-3" />
           <input
             value={q} onChange={(e) => setQ(e.target.value)} onBlur={() => set("q", q.trim())}
-            placeholder="Cari pekerjaan, klien, no. telepon…" data-testid="archive-search"
+            placeholder="Cari PT, klien, no. WA, kode AL-…" data-testid="archive-search"
             className={`${sel} w-full pl-8`}
           />
         </form>
@@ -235,7 +244,7 @@ function JobsTab({ filters, setFilters, onOpenJob, canDownload }) {
       </div>
 
       <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-x-auto">
-        <table className="w-full border-collapse text-sm min-w-[820px]">
+        <table className="w-full border-collapse text-sm min-w-[880px]">
           <thead className="bg-[hsl(var(--muted))] text-[12px] uppercase tracking-wide text-3">
             <tr>
               <th className="px-3 py-2 text-left">Pekerjaan</th>
@@ -243,13 +252,14 @@ function JobsTab({ filters, setFilters, onOpenJob, canDownload }) {
               <th className="px-3 py-2 text-left">Dokumen wajib</th>
               <th className="px-3 py-2 text-right">File</th>
               <th className="px-3 py-2 text-right">Ukuran</th>
+              <th className="px-3 py-2 text-center" title="Status Google Drive">Drive</th>
               <th className="px-3 py-2 text-left">Status</th>
               <th className="px-3 py-2 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={7} className="p-4 text-2">Memuat…</td></tr>}
-            {!isLoading && !jobs?.length && <tr><td colSpan={7} className="p-6 text-center text-2">Tidak ada pekerjaan yang cocok.</td></tr>}
+            {isLoading && <tr><td colSpan={8} className="p-4 text-2">Memuat…</td></tr>}
+            {!isLoading && !jobs?.length && <tr><td colSpan={8} className="p-6 text-center text-2">Tidak ada pekerjaan yang cocok.</td></tr>}
             {(jobs || []).map((j) => (
               <tr key={j.key} className="border-t border-[hsl(var(--hairline))] hover:bg-[hsl(var(--muted))] cursor-pointer" onClick={() => onOpenJob(j.key)} data-testid="archive-job-row">
                 <td className="px-3 py-2">
@@ -263,6 +273,12 @@ function JobsTab({ filters, setFilters, onOpenJob, canDownload }) {
                 <td className="px-3 py-2"><DocBadge done={j.required_done} total={j.required_total} missing={j.missing} /></td>
                 <td className="px-3 py-2 text-right tabular-nums">{j.file_count}{j.untyped_count > 0 && <span className="ml-1 text-[11px] text-[#B65C02]" title="belum ditandai jenisnya">({j.untyped_count}?)</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmtBytes(j.total_bytes)}</td>
+                <td className="px-3 py-2 text-center">
+                  {j.drive_errors > 0 ? <span title={`${j.drive_errors} file gagal dikirim`} className="inline-flex text-[#C9372C]"><CloudOff size={15} /></span>
+                    : j.file_count === 0 ? <span className="text-3">—</span>
+                    : j.drive_pending > 0 ? <span title={`${j.drive_pending} file menunggu dikirim`} className="inline-flex text-3"><Cloud size={15} /></span>
+                    : <span title={`Semua file di Google Drive${j.drive?.month ? ` (folder ${monthLabel(j.drive.month)})` : ""}`} className="inline-flex text-[#1F845A]"><Cloud size={15} /></span>}
+                </td>
                 <td className="px-3 py-2"><StatusBadge done={j.done} /></td>
                 <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                   {canDownload && j.file_count > 0 && (
@@ -288,38 +304,85 @@ function JobsTab({ filters, setFilters, onOpenJob, canDownload }) {
 // ═══════════════════════════════════════════════════════════════════════
 //  DETAIL PEKERJAAN (panel samping)
 // ═══════════════════════════════════════════════════════════════════════
+async function copyText(text, msg = "Disalin") {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(msg);
+  } catch {
+    toast.error("Gagal menyalin — salin manual dari layar");
+  }
+}
+
+function waText(job) {
+  const d = job.dashboard;
+  const lines = [
+    `Halo${job.client ? ` Bapak/Ibu ${job.client}` : ""}, berikut dokumen ${d.company_name}:`,
+    "",
+    ...d.documents.map((x) => `• ${x.type}: ${x.url}`),
+    "",
+    "Terima kasih — Akses Legal Indonesia",
+  ];
+  return lines.join("\n");
+}
+
+function DriveBadge({ f, connected }) {
+  if (!connected) return null;
+  if (f.drive_error) return <span title={f.drive_error} className="text-[#C9372C]"><CloudOff size={14} /></span>;
+  if (f.drive_file_id) return <span title={`Tersimpan di Google Drive${f.drive_side === "OUT" ? " (link dibagikan ke klien)" : " (internal)"}`} className="text-[#1F845A]"><Cloud size={14} /></span>;
+  return <span title="Menunggu dikirim ke Google Drive" className="text-3"><Cloud size={14} /></span>;
+}
+
 function JobDrawer({ jobKey, onClose, canDownload, canManage, onKeyChange }) {
   const qc = useQueryClient();
   const [openCard, setOpenCard] = useState(null);
-  const [phone, setPhone] = useState(null); // null = tidak sedang diedit
-  const { data: job, isLoading } = useQuery({
+  const [editClient, setEditClient] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const { data: job, isLoading, refetch } = useQuery({
     queryKey: ["archive-job", jobKey],
     queryFn: () => api.get(`/archive/jobs/${encodeURIComponent(jobKey)}`).then((r) => r.data),
   });
 
-  const savePhone = async () => {
+  const saveClient = async (body) => {
     try {
-      const r = await api.patch(`/archive/jobs/${encodeURIComponent(jobKey)}`, { client_phone: phone });
-      toast.success("No. telepon klien disimpan");
-      setPhone(null);
+      const r = await api.patch(`/archive/jobs/${encodeURIComponent(jobKey)}`, body);
+      toast.success("Data klien disimpan");
+      setEditClient(false);
       qc.invalidateQueries({ queryKey: ["archive-jobs"] });
       if (r.data.key && r.data.key !== jobKey) onKeyChange(r.data.key);
-      else qc.invalidateQueries({ queryKey: ["archive-job", jobKey] });
+      else refetch();
     } catch (e) { toast.error(errMsg(e)); }
+  };
+
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      const r = await api.post(`/archive/jobs/${encodeURIComponent(jobKey)}/sync`);
+      if (r.data.ok) toast.success(`Tersinkron ke Google Drive (${r.data.files} file)`);
+      else toast.warning(r.data.reason || `${r.data.errors} file gagal dikirim`);
+      refetch();
+      qc.invalidateQueries({ queryKey: ["archive-jobs"] });
+    } catch (e) { toast.error(errMsg(e)); } finally { setSyncing(false); }
   };
 
   const grouped = useMemo(() => {
     const files = job?.files || [];
     return [
       ...GROUPS.map((g) => ({ ...g, files: files.filter((f) => f.document_group === g.key) })),
-      { key: "NONE", label: "Belum ditandai jenisnya", hint: "masuk folder \"File Lainnya\" saat di-download", files: files.filter((f) => !f.document_group) },
+      { key: "NONE", label: "Belum ditandai jenisnya", hint: "masuk folder \"Belum Dipilah\" (internal) sampai ditandai", files: files.filter((f) => !f.document_group) },
     ].filter((g) => g.files.length);
   }, [job]);
+
+  const clientRows = job ? [
+    ["Perusahaan", job.company_name], ["Jenis layanan", job.service_type], ["Klien", job.client],
+    ["No. telepon / WA", job.client_phone], ["Email", job.client_email], ["No. akta", job.akta_number],
+    ["NIB", job.nib_number], ["Tanggal pendirian", job.established_date], ["Owner (CS)", job.owner_name],
+  ] : [];
+  const dash = job?.dashboard;
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onClick={onClose}>
       <aside
-        className="h-full w-full max-w-[720px] overflow-y-auto bg-[hsl(var(--surface))] shadow-2xl"
+        className="h-full w-full max-w-[760px] overflow-y-auto bg-[hsl(var(--surface))] shadow-2xl"
         onClick={(e) => e.stopPropagation()} data-testid="archive-job-drawer"
       >
         {isLoading || !job ? (
@@ -328,11 +391,12 @@ function JobDrawer({ jobKey, onClose, canDownload, canManage, onKeyChange }) {
           <div className="p-5 space-y-5">
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
-                <h2 className="font-heading text-xl font-bold text-foreground break-words">{job.title}</h2>
+                <div className="text-xs font-semibold text-3">{job.code}</div>
+                <h2 className="font-heading text-xl font-bold text-foreground break-words">{job.company_name || job.title}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-2">
                   <StatusBadge done={job.done} />
-                  <span>{job.file_count} file · {fmtBytes(job.total_bytes)}</span>
-                  {job.divisions?.length > 0 && <span>· {job.divisions.map((d) => d.name).join(", ")}</span>}
+                  {job.company_name && <span className="truncate">{job.title}</span>}
+                  <span>· {job.file_count} file · {fmtBytes(job.total_bytes)}</span>
                 </div>
               </div>
               <button onClick={onClose} className="rounded-md p-1.5 text-2 hover:bg-[hsl(var(--muted))]" aria-label="Tutup"><X size={18} /></button>
@@ -340,7 +404,7 @@ function JobDrawer({ jobKey, onClose, canDownload, canManage, onKeyChange }) {
 
             <div className="flex flex-wrap gap-2">
               {canDownload && job.file_count > 0 && (
-                <a href={downloadUrl(job.key)} onClick={() => setTimeout(() => qc.invalidateQueries({ queryKey: ["archive-job", jobKey] }), 3000)}
+                <a href={downloadUrl(job.key)} onClick={() => setTimeout(() => refetch(), 3000)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#0C66E4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0055CC]" data-testid="archive-download-zip">
                   <Download size={15} /> Download semua (ZIP)
                 </a>
@@ -353,26 +417,98 @@ function JobDrawer({ jobKey, onClose, canDownload, canManage, onKeyChange }) {
               )}
             </div>
 
-            {/* Data klien */}
-            <div className="grid sm:grid-cols-3 gap-3 rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-4 text-sm">
-              <div><div className="text-xs text-3">Klien</div><div className="font-semibold text-foreground">{job.client || "—"}</div></div>
-              <div>
-                <div className="text-xs text-3 flex items-center gap-1"><Phone size={11} /> No. telepon / WA</div>
-                {phone === null ? (
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">{job.client_phone || "—"}</span>
-                    {canManage && <button className="text-xs text-[#0C66E4] underline" onClick={() => setPhone(job.client_phone || "")}>ubah</button>}
-                  </div>
-                ) : (
-                  <form className="flex items-center gap-1 mt-0.5" onSubmit={(e) => { e.preventDefault(); savePhone(); }}>
-                    <input autoFocus value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="08xx…"
-                      className="h-8 w-full min-w-0 rounded-md border border-[hsl(var(--hairline))] bg-[hsl(var(--surface))] px-2 text-sm" />
-                    <button className="h-8 rounded-md bg-[#0C66E4] px-2 text-xs font-semibold text-white">Simpan</button>
-                    <button type="button" className="h-8 px-1 text-xs text-2" onClick={() => setPhone(null)}>Batal</button>
-                  </form>
+            {/* Dashboard klien */}
+            <div className="rounded-xl border-2 border-[#85B8FF] bg-[hsl(var(--elevated))] p-4 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-bold text-foreground flex items-center gap-1.5"><Link2 size={15} /> Link untuk Dashboard Klien</h3>
+                <span className="text-xs text-2">{dash.documents_ready}/{dash.documents_total} dokumen hasil sudah ada link-nya</span>
+                {dash.documents.length > 0 && (
+                  <button onClick={() => copyText(waText(job), "Pesan WhatsApp disalin")}
+                    className="ml-auto inline-flex items-center gap-1 rounded-md bg-[#1F845A] px-2.5 py-1 text-xs font-semibold text-white">
+                    <Copy size={12} /> Salin untuk WhatsApp
+                  </button>
                 )}
               </div>
-              <div><div className="text-xs text-3">Owner (CS)</div><div className="font-semibold text-foreground">{job.owner_name || "—"}</div></div>
+              {dash.documents.length === 0 ? (
+                <p className="mt-2 text-xs text-2">
+                  {!job.drive_connected
+                    ? "Google Drive belum dihubungkan — link muncul otomatis setelah terhubung (tab Integrasi)."
+                    : dash.documents_total === 0
+                      ? "Belum ada file yang ditandai sebagai dokumen hasil (Akta, SK, NPWP Perusahaan, NIB, …)."
+                      : "Dokumen hasil sedang dikirim ke Google Drive…"}
+                </p>
+              ) : (
+                <div className="mt-2 divide-y divide-[hsl(var(--hairline))] rounded-lg border border-[hsl(var(--hairline))] bg-[hsl(var(--surface))]">
+                  {dash.documents.map((d) => (
+                    <div key={d.id} className="flex items-center gap-2 px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-semibold text-foreground">{d.name}</div>
+                        <div className="text-[11px] text-3">{d.category}{d.number ? ` · No. ${d.number}` : ""}</div>
+                      </div>
+                      <a href={d.url} target="_blank" rel="noreferrer" className="rounded p-1.5 text-2 hover:bg-[hsl(var(--muted))]" title="Buka di Google Drive"><Eye size={15} /></a>
+                      <button onClick={() => copyText(d.url, `Link ${d.type} disalin`)} className="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--hairline))] px-2 py-1 text-xs font-semibold text-foreground hover:bg-[hsl(var(--muted))]">
+                        <Copy size={12} /> Salin
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {job.drive?.pushed_at && <p className="mt-2 text-[11px] text-2">Terkirim otomatis ke dashboard {fmtDateTime(job.drive.pushed_at)}</p>}
+              {job.drive?.push_error && <p className="mt-2 text-[11px] text-[#C9372C]">Kirim ke dashboard gagal: {job.drive.push_error}</p>}
+            </div>
+
+            {/* Data klien */}
+            <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-4 text-sm">
+              <div className="mb-2 flex items-center gap-2">
+                <h3 className="font-bold text-foreground flex items-center gap-1.5"><Phone size={14} /> Data klien &amp; perusahaan</h3>
+                {canManage && !editClient && <button className="ml-auto text-xs text-[#0C66E4] underline" onClick={() => setEditClient(true)}>ubah</button>}
+              </div>
+              {editClient ? (
+                <ClientDataForm value={job} canEdit onSave={saveClient} onCancel={() => setEditClient(false)} compact />
+              ) : (
+                <>
+                  <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2">
+                    {clientRows.map(([l, v]) => (
+                      <div key={l} className="min-w-0"><dt className="text-xs text-3">{l}</dt><dd className="font-semibold text-foreground break-words">{v || "—"}</dd></div>
+                    ))}
+                  </dl>
+                  {(job.client_address || job.client_notes) && (
+                    <div className="mt-2 space-y-1 text-[13px] text-2">
+                      {job.client_address && <p><b className="text-foreground">Alamat:</b> {job.client_address}</p>}
+                      {job.client_notes && <p className="whitespace-pre-line"><b className="text-foreground">Catatan:</b> {job.client_notes}</p>}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Google Drive */}
+            <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-4 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-bold text-foreground flex items-center gap-1.5"><Cloud size={15} /> Google Drive</h3>
+                {job.drive_connected ? (
+                  <span className="text-xs text-2">
+                    {job.drive?.synced_at ? `Sinkron terakhir ${fmtDateTime(job.drive.synced_at)}` : "Belum pernah disinkron"}
+                    {job.drive?.month ? ` · folder ${monthLabel(job.drive.month)}` : job.drive?.synced_at ? " · folder _SEDANG BERJALAN" : ""}
+                  </span>
+                ) : (
+                  <span className="text-xs text-3">Belum terhubung</span>
+                )}
+                {job.drive_connected && canManage && (
+                  <button onClick={syncNow} disabled={syncing}
+                    className="ml-auto inline-flex items-center gap-1 rounded-md border border-[hsl(var(--hairline))] px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-[hsl(var(--muted))] disabled:opacity-50">
+                    <RefreshCw size={12} className={syncing ? "animate-spin" : ""} /> {syncing ? "Menyinkron…" : "Sinkron sekarang"}
+                  </button>
+                )}
+              </div>
+              {job.drive?.error && <p className="mt-1 text-xs text-[#C9372C]">{job.drive.error}</p>}
+              {(job.raw_folder_url || job.out_folder_url) && (
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  {job.raw_folder_url && <a href={job.raw_folder_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--muted))] px-2 py-1 font-semibold text-foreground hover:underline"><Lock size={11} /> Folder data mentah</a>}
+                  {job.out_folder_url && <a href={job.out_folder_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--muted))] px-2 py-1 font-semibold text-foreground hover:underline"><FolderCheck size={11} /> Folder dokumen hasil</a>}
+                  {job.notes_url && <a href={job.notes_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--muted))] px-2 py-1 font-semibold text-foreground hover:underline"><FileText size={11} /> Catatan Klien</a>}
+                </div>
+              )}
             </div>
 
             {/* Kelengkapan */}
@@ -402,6 +538,7 @@ function JobDrawer({ jobKey, onClose, canDownload, canManage, onKeyChange }) {
                 <div className="rounded-lg border border-[hsl(var(--hairline))] divide-y divide-[hsl(var(--hairline))]">
                   {g.files.map((f) => (
                     <div key={f.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                      <DriveBadge f={f} connected={job.drive_connected} />
                       <div className="min-w-0 flex-1">
                         <a href={`${API}/attachments/${f.id}/download`} target="_blank" rel="noreferrer" className="block truncate font-semibold text-foreground hover:underline" title={f.original_filename}>
                           {f.original_filename}
@@ -410,7 +547,9 @@ function JobDrawer({ jobKey, onClose, canDownload, canManage, onKeyChange }) {
                           {f.document_type_name && <span className="mr-1 rounded bg-[#E9F2FF] px-1.5 py-px font-semibold text-[#0055CC]">{f.document_type_name}</span>}
                           {f.uploaded_by_name || "—"} · {f.division_name || f.card_title} · {fmtDateTime(f.created_at)}
                         </div>
+                        {f.drive_error && <div className="text-[11px] text-[#C9372C] truncate" title={f.drive_error}>Drive: {f.drive_error}</div>}
                       </div>
+                      {f.drive_url && <a href={f.drive_url} target="_blank" rel="noreferrer" title="Buka di Google Drive" className="shrink-0 text-2 hover:text-foreground"><ExternalLink size={14} /></a>}
                       <span className="shrink-0 text-xs text-2 tabular-nums">{fmtBytes(f.size)}</span>
                     </div>
                   ))}
@@ -521,7 +660,9 @@ function TypesTab() {
     <div className="space-y-4 max-w-[760px]">
       <p className="text-sm text-2">
         Jenis dokumen dipilih staff di setiap lampiran kartu. Jenis yang <b>wajib</b> dihitung di kolom
-        &quot;Dokumen wajib&quot;. Grup menentukan folder saat di-download: <i>1. Dokumen Klien</i>, <i>2. Dokumen Hasil</i>, atau <i>3. File Lainnya</i>.
+        &quot;Dokumen wajib&quot;. Grup menentukan tempatnya: <b>Dokumen dari Klien</b> &amp; <b>Lainnya</b> masuk folder
+        data mentah (internal, tidak dibagikan); <b>Dokumen Hasil</b> masuk folder dokumen hasil, link-nya bisa dibuka klien
+        dan dikirim ke dashboard sesuai kategorinya.
       </p>
       <form onSubmit={add} className="flex flex-wrap items-center gap-2 rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-3">
         <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nama jenis baru, mis. Surat Kuasa" className={`${inp} flex-1 min-w-[180px]`} />
@@ -535,9 +676,9 @@ function TypesTab() {
       </form>
 
       <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-x-auto">
-        <table className="w-full border-collapse text-sm min-w-[520px]">
+        <table className="w-full border-collapse text-sm min-w-[680px]">
           <thead className="bg-[hsl(var(--muted))] text-[12px] uppercase tracking-wide text-3">
-            <tr><th className="px-3 py-2 text-left">Nama</th><th className="px-3 py-2 text-left">Grup</th><th className="px-3 py-2 text-center">Wajib</th><th className="px-3 py-2 text-center">Aktif</th></tr>
+            <tr><th className="px-3 py-2 text-left">Nama</th><th className="px-3 py-2 text-left">Grup</th><th className="px-3 py-2 text-left">Kategori dashboard / subfolder</th><th className="px-3 py-2 text-center">Wajib</th><th className="px-3 py-2 text-center">Aktif</th></tr>
           </thead>
           <tbody>
             {(types || []).map((t) => (
@@ -550,6 +691,17 @@ function TypesTab() {
                   <select value={t.group} onChange={(e) => patch(t.id, { group: e.target.value })} className={inp}>
                     {GROUPS.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
                   </select>
+                </td>
+                <td className="px-3 py-1.5">
+                  {t.group === "HASIL" ? (
+                    <select value={t.dashboard_category || ""} onChange={(e) => patch(t.id, { dashboard_category: e.target.value || null })} className={inp} title="Tab di dashboard klien">
+                      <option value="">—</option>
+                      {DASH_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  ) : t.group === "KLIEN" ? (
+                    <input defaultValue={t.subfolder || ""} placeholder="(tanpa subfolder)" title="Subfolder di folder data mentah, mis. Foto TTD"
+                      onBlur={(e) => e.target.value.trim() !== (t.subfolder || "") && patch(t.id, { subfolder: e.target.value.trim() || null })} className={`${inp} w-full`} />
+                  ) : <span className="text-3">—</span>}
                 </td>
                 <td className="px-3 py-1.5 text-center"><input type="checkbox" checked={t.required} onChange={(e) => patch(t.id, { required: e.target.checked })} className="h-4 w-4 accent-[#0C66E4]" /></td>
                 <td className="px-3 py-1.5 text-center"><input type="checkbox" checked={t.is_active} onChange={(e) => patch(t.id, { is_active: e.target.checked })} className="h-4 w-4 accent-[#0C66E4]" /></td>
@@ -564,11 +716,177 @@ function TypesTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  TAB: INTEGRASI (Google Drive + dashboard klien)
+// ═══════════════════════════════════════════════════════════════════════
+function Step({ n, children }) {
+  return (
+    <li className="flex gap-2">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0C66E4] text-[11px] font-bold text-white">{n}</span>
+      <span className="min-w-0">{children}</span>
+    </li>
+  );
+}
+
+function IntegrationsTab({ isSuper }) {
+  const qc = useQueryClient();
+  const { data, refetch, isLoading } = useQuery({
+    queryKey: ["archive-integrations"],
+    queryFn: () => api.get("/archive/integrations").then((r) => r.data),
+    refetchInterval: 20000,
+  });
+  const [webhook, setWebhook] = useState(null);
+  const [newKey, setNewKey] = useState(null);
+  const [busy, setBusy] = useState(false);
+  if (isLoading || !data) return <p className="text-2 text-sm">Memuat…</p>;
+  const d = data.drive;
+  const dash = data.dashboard;
+
+  const act = async (fn, ok) => {
+    setBusy(true);
+    try { await fn(); if (ok) toast.success(ok); refetch(); qc.invalidateQueries({ queryKey: ["archive-jobs"] }); }
+    catch (e) { toast.error(errMsg(e)); }
+    finally { setBusy(false); }
+  };
+  const card = "rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-4 space-y-3 text-sm";
+  const btn = "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50";
+  const pct = d.quota?.limit ? Math.min(100, Math.round((d.quota.usage / d.quota.limit) * 100)) : null;
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-4 items-start">
+      {/* ── Google Drive ── */}
+      <section className={card} data-testid="integration-drive">
+        <h2 className="font-heading font-bold text-foreground flex items-center gap-2"><Cloud size={18} /> Google Drive</h2>
+        {!d.configured ? (
+          <div className="rounded-lg bg-[#FFF7D6] p-3 text-[#533F04]">
+            <b>Belum disiapkan di server.</b> Isi <code>GOOGLE_CLIENT_ID</code> dan <code>GOOGLE_CLIENT_SECRET</code> di file <code>.env</code> server,
+            lalu restart aplikasi. Panduan langkah demi langkah: <code>docs/ARSIP-GOOGLE-DRIVE.md</code>.
+            <div className="mt-2 text-xs">Redirect URI yang didaftarkan di Google: <code className="break-all">{d.redirect_uri}</code></div>
+          </div>
+        ) : d.connected ? (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#DCFFF1] px-2 py-0.5 text-xs font-bold text-[#216E4E]"><CheckCircle2 size={12} /> Terhubung</span>
+              <span className="font-semibold text-foreground">{d.email}</span>
+            </div>
+            {d.error && <p className="rounded-lg bg-[#FFECEB] p-2 text-[#AE2E24]">{d.error}</p>}
+            {pct != null && (
+              <div>
+                <div className="flex justify-between text-xs text-2"><span>Kuota Google Drive</span><span>{fmtBytes(d.quota.usage)} / {fmtBytes(d.quota.limit)} ({pct}%)</span></div>
+                <div className="mt-1 h-2 rounded-full bg-[hsl(var(--muted))]"><div className={`h-2 rounded-full ${pct > 90 ? "bg-[#C9372C]" : pct > 75 ? "bg-[#E56910]" : "bg-[#0C66E4]"}`} style={{ width: `${pct}%` }} /></div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-[hsl(var(--muted))] p-2"><div className="text-3">Menunggu dikirim</div><div className="text-lg font-bold text-foreground">{d.pending_files}</div></div>
+              <div className="rounded-lg bg-[hsl(var(--muted))] p-2"><div className="text-3">Gagal</div><div className={`text-lg font-bold ${d.error_files ? "text-[#C9372C]" : "text-foreground"}`}>{d.error_files}</div></div>
+            </div>
+            <p className="text-xs text-3">Sinkron otomatis tiap 5 menit, dan ±5 detik setelah ada file baru. {d.last_sweep_at && `Terakhir: ${fmtDateTime(d.last_sweep_at)}.`}</p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {d.root_url && <a href={d.root_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--muted))] px-2 py-1 font-semibold text-foreground hover:underline"><FolderCheck size={11} /> Folder arsip</a>}
+              {d.raw_url && <a href={d.raw_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--muted))] px-2 py-1 font-semibold text-foreground hover:underline"><Lock size={11} /> A. Data mentah</a>}
+              {d.out_url && <a href={d.out_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--muted))] px-2 py-1 font-semibold text-foreground hover:underline"><Link2 size={11} /> B. Dokumen hasil</a>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={busy} onClick={() => act(() => api.post("/archive/drive/sync-all"), "Sinkron dimulai — cek lagi beberapa menit lagi")}
+                className={`${btn} bg-[#0C66E4] text-white`}><RefreshCw size={14} /> Sinkron semua sekarang</button>
+              {isSuper && (
+                <button disabled={busy} onClick={() => window.confirm("Putuskan Google Drive? File yang sudah ada di Drive tetap aman, tapi file baru tidak dikirim lagi.") && act(() => api.post("/archive/drive/disconnect"), "Google Drive diputus")}
+                  className={`${btn} border border-[hsl(var(--hairline))] text-foreground`}>Putuskan</button>
+              )}
+              {isSuper && <a href={`${API}/integrations/google/connect`} className={`${btn} border border-[hsl(var(--hairline))] text-foreground`}>Hubungkan ulang</a>}
+            </div>
+          </>
+        ) : (
+          <>
+            {d.error && <p className="rounded-lg bg-[#FFECEB] p-2 text-[#AE2E24]">{d.error}</p>}
+            <ol className="space-y-2 text-2">
+              <Step n={1}>Klik tombol di bawah, lalu login dengan <b>info.akseslegal.id@gmail.com</b>.</Step>
+              <Step n={2}>Izinkan akses. Aplikasi hanya bisa melihat file yang ia buat sendiri; folder lain di Drive Anda tidak tersentuh.</Step>
+              <Step n={3}>Folder <b>AKSES LEGAL - ARSIP</b> otomatis dibuat, dan semua file lama mulai dikirim.</Step>
+            </ol>
+            {isSuper ? (
+              <a href={`${API}/integrations/google/connect`} className={`${btn} bg-[#0C66E4] text-white w-fit`} data-testid="drive-connect"><Plug size={14} /> Hubungkan Google Drive</a>
+            ) : (
+              <p className="text-xs text-3">Hanya super admin yang bisa menghubungkan akun Google.</p>
+            )}
+          </>
+        )}
+        <details className="text-xs text-2">
+          <summary className="cursor-pointer font-semibold">Susunan folder di Google Drive</summary>
+          <pre className="mt-2 overflow-x-auto rounded-lg bg-[hsl(var(--muted))] p-2 text-[11px] leading-relaxed">{`AKSES LEGAL - ARSIP/
+├─ A. DATA MENTAH (INTERNAL)/   🔒 tidak dibagikan
+│   ├─ _SEDANG BERJALAN/<Perusahaan - Layanan [AL-XXXXXX]>/
+│   └─ 2026/02 - Februari/<...>/   ← dipindah saat FINISH
+│        Catatan Klien, KTP - ..., NPWP - ..., Foto TTD/
+└─ B. DOKUMEN HASIL (DASHBOARD KLIEN)/
+    └─ 2026/02 - Februari/<...>/
+         Akta Pendirian - PT X.pdf, SK ..., NPWP ..., NIB ...`}</pre>
+        </details>
+      </section>
+
+      {/* ── Dashboard klien ── */}
+      <section className={card} data-testid="integration-dashboard">
+        <h2 className="font-heading font-bold text-foreground flex items-center gap-2"><Plug size={18} /> Dashboard Klien (akseslegal.id)</h2>
+        <p className="text-2">
+          Dashboard bisa <b>mengambil</b> daftar dokumen + link Drive lewat API, atau <b>menerima kiriman otomatis</b> (webhook)
+          setiap pekerjaan selesai dan semua dokumen hasilnya sudah di Drive. Spesifikasi lengkap untuk developer dashboard: <code>docs/INTEGRASI-DASHBOARD.md</code>.
+        </p>
+
+        <div className="space-y-1">
+          <div className="text-xs font-semibold text-3">API key</div>
+          {newKey ? (
+            <div className="rounded-lg border border-[#F5CD47] bg-[#FFF7D6] p-2 text-[#533F04]">
+              <div className="text-xs font-semibold">Simpan sekarang — key ini hanya ditampilkan sekali:</div>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="min-w-0 flex-1 break-all text-xs">{newKey}</code>
+                <button onClick={() => copyText(newKey, "API key disalin")} className="shrink-0 rounded-md bg-[#533F04] px-2 py-1 text-xs font-semibold text-white"><Copy size={12} /></button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-foreground">{dash.has_key ? <code>{dash.key_preview}</code> : <span className="text-3">Belum dibuat</span>}</div>
+          )}
+          {isSuper && (
+            <button disabled={busy}
+              onClick={() => (!dash.has_key || window.confirm("Buat API key baru? Key lama langsung tidak berlaku — dashboard harus memakai key baru.")) &&
+                act(async () => { const r = await api.post("/archive/dashboard/key"); setNewKey(r.data.api_key); }, "API key dibuat")}
+              className={`${btn} border border-[hsl(var(--hairline))] text-foreground`}><KeyRound size={14} /> {dash.has_key ? "Buat key baru" : "Buat API key"}</button>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-xs font-semibold text-3">Alamat API (untuk dashboard mengambil data)</div>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 break-all rounded-md bg-[hsl(var(--muted))] px-2 py-1 text-xs">{dash.api_base}/companies</code>
+            <button onClick={() => copyText(`${dash.api_base}/companies`, "Alamat API disalin")} className="shrink-0 rounded-md border border-[hsl(var(--hairline))] px-2 py-1 text-xs"><Copy size={12} /></button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-xs font-semibold text-3">Webhook dashboard (opsional — kiriman otomatis)</div>
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); act(() => api.put("/archive/dashboard/webhook", { url: webhook ?? dash.webhook_url ?? "" }), "Webhook disimpan"); }}>
+            <input value={webhook ?? dash.webhook_url ?? ""} onChange={(e) => setWebhook(e.target.value)} disabled={!isSuper}
+              placeholder="https://akseslegal.id/api/giant-webhook"
+              className="h-9 min-w-0 flex-1 rounded-md border border-[hsl(var(--hairline))] bg-[hsl(var(--surface))] px-2 text-sm" />
+            {isSuper && <button disabled={busy} className={`${btn} bg-[#0C66E4] text-white`}>Simpan</button>}
+          </form>
+          {isSuper && dash.webhook_url && (
+            <button disabled={busy} onClick={() => act(() => api.post("/archive/dashboard/test"), "Dashboard menjawab — webhook berfungsi")}
+              className="text-xs text-[#0C66E4] underline">Kirim tes</button>
+          )}
+          {dash.last_push_at && <p className="text-xs text-2">Kiriman terakhir: {fmtDateTime(dash.last_push_at)}</p>}
+          {dash.last_push_error && <p className="text-xs text-[#C9372C]">Error terakhir: {dash.last_push_error}</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  HALAMAN
 // ═══════════════════════════════════════════════════════════════════════
 export default function Archive() {
   const { user } = useAuth();
-  const [tab, setTab] = useState("ringkasan");
+  const [params, setParams] = useSearchParams();
+  const [tab, setTab] = useState(() => params.get("tab") || "ringkasan");
   const [filters, setFilters] = useState({});
   const [openJob, setOpenJob] = useState(null);
 
@@ -581,6 +899,15 @@ export default function Archive() {
   const canView = isSuper || perms.has("archive.view");
   const canDownload = isSuper || perms.has("archive.download");
   const canManage = isSuper || perms.has("archive.manage");
+
+  // Kembali dari halaman izin Google (?drive=ok|error) → beri tahu hasilnya sekali.
+  useEffect(() => {
+    const d = params.get("drive");
+    if (!d) return;
+    if (d === "ok") toast.success("Google Drive terhubung — file mulai dikirim ke Drive");
+    else toast.error(`Gagal menghubungkan Google Drive${params.get("msg") ? `: ${params.get("msg")}` : ""}`);
+    setParams({ tab: params.get("tab") || "integrasi" }, { replace: true });
+  }, [params, setParams]);
 
   if (isLoading) return <p className="p-10 text-2">Memuat…</p>;
   if (!canView) {
@@ -595,7 +922,7 @@ export default function Archive() {
     { id: "ringkasan", label: "Ringkasan" },
     { id: "pekerjaan", label: "Daftar Pekerjaan" },
     { id: "riwayat", label: "Riwayat Download" },
-    ...(canManage ? [{ id: "jenis", label: "Jenis Dokumen" }] : []),
+    ...(canManage ? [{ id: "jenis", label: "Jenis Dokumen" }, { id: "integrasi", label: "Integrasi Drive & Dashboard" }] : []),
   ];
 
   return (
@@ -622,6 +949,7 @@ export default function Archive() {
       {tab === "pekerjaan" && <JobsTab filters={filters} setFilters={setFilters} onOpenJob={setOpenJob} canDownload={canDownload} />}
       {tab === "riwayat" && <DownloadsTab onOpenJob={setOpenJob} />}
       {tab === "jenis" && canManage && <TypesTab />}
+      {tab === "integrasi" && canManage && <IntegrationsTab isSuper={isSuper} />}
 
       {openJob && (
         <JobDrawer key={openJob} jobKey={openJob} onClose={() => setOpenJob(null)} onKeyChange={setOpenJob}
