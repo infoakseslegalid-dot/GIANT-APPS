@@ -42,6 +42,11 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
   });
 
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: () => api.get('/users').then((r) => r.data) });
+  const { data: documentTypes } = useQuery({
+    queryKey: ['document-types'],
+    queryFn: () => api.get('/archive/document-types').then((r) => r.data),
+    staleTime: 300000,
+  });
   const { data: checklistTemplates } = useQuery({
     queryKey: ['checklist-templates'],
     queryFn: () => api.get('/checklist-templates').then((r) => r.data),
@@ -129,6 +134,7 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       createdAt: a.created_at,
       size: a.size || 0,
       thumbUrl: isImg ? `${API}/attachments/${a.id}/download` : null,
+      documentTypeId: a.document_type_id || null,
     };
   });
 
@@ -377,6 +383,10 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
         for (const id of ids) await run(() => api.delete(`/attachments/${id}`));
       }}
       onRenameAttachment={async () => { toast.info('Ganti nama lampiran belum tersedia'); }}
+      documentTypes={documentTypes || []}
+      onSetAttachmentType={async (id, documentTypeId) => {
+        await run(() => api.patch(`/attachments/${id}/document-type`, { document_type_id: documentTypeId }));
+      }}
 
       checklistTemplates={(checklistTemplates || []).map((t: any) => ({
         id: t.id, name: t.name, items: Array.isArray(t.items) ? t.items : [], cs_self_check: !!t.cs_self_check,

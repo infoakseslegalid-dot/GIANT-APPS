@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   Home, Briefcase, CalendarDays, ListChecks, LayoutGrid, Database,
   BarChart3, CalendarClock, Settings, ChevronDown, Star, Search,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, TrendingUp, Sparkles,
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, TrendingUp, Sparkles, Archive,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -160,6 +160,7 @@ export default function Sidebar() {
   const canSkor = user?.role === "super_admin" || permSet.has("skor.view");
   const canReport = user?.role === "super_admin" || permSet.has("report.view");
   const canAi = user?.role === "super_admin" || permSet.has("ai.use");
+  const canArchive = user?.role === "super_admin" || permSet.has("archive.view");
 
   const allBoards = boards || [];
   const starredBoards = allBoards.filter((b) => starred.includes(b.id));
@@ -292,7 +293,7 @@ export default function Sidebar() {
           })}
 
         {/* ── PANTAUAN GLOBAL ── */}
-        {(canHari || canSkor || canReport) && !collapsed && (
+        {(canHari || canSkor || canReport || canArchive) && !collapsed && (
           <SectionHeader
             label={t("nav.globalMonitor")} icon={<BarChart3 size={12} className="text-3" />}
             open={sections.global} onToggle={() => toggleSection("global")}
@@ -300,6 +301,9 @@ export default function Sidebar() {
         )}
         {(collapsed || sections.global) && canReport && (
           <RailItem to="/reports" icon={<TrendingUp size={16} />} label={t("nav.reports")} testid="nav-reports" collapsed={collapsed} active={path.startsWith("/reports")} />
+        )}
+        {(collapsed || sections.global) && canArchive && (
+          <RailItem to="/arsip" icon={<Archive size={16} />} label={t("nav.archive")} testid="nav-archive" collapsed={collapsed} active={path.startsWith("/arsip")} />
         )}
         {(collapsed || sections.global) && canHari && (
           <RailItem to="/global/hari" icon={<CalendarClock size={16} />} label={t("nav.dailyBoard")} testid="nav-global-hari" collapsed={collapsed} active={path === "/global/hari"} />

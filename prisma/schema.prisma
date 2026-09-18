@@ -44,6 +44,9 @@ model MasterCard {
   // Harga yang diberikan ke klien untuk keseluruhan job (Rupiah).
   price        Int?
   priceNote    String?
+
+  // No. telepon/WA klien — data pekerjaan untuk Arsip & Backup.
+  clientPhone  String?
   priceSetById String?
   priceSetAt   DateTime?
 
@@ -400,9 +403,44 @@ model Attachment {
   uploadedByName   String?
   isDeleted        Boolean  @default(false)
   createdAt        DateTime @default(now())
+  // Jenis dokumen (KTP, Akta, NIB, ...) — dipakai Arsip untuk mengelompokkan
+  // file & menghitung kelengkapan. null = belum ditandai.
+  documentTypeId   String?
 
-  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
-  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+  workItem     WorkItem      @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id])
+  documentType DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+
+  @@index([workItemId])
+}
+
+// Arsip & Backup: daftar jenis dokumen yang bisa ditempel ke lampiran.
+// group: KLIEN (bahan dari klien) | HASIL (produk jadi) | LAIN.
+// required = dihitung di kelengkapan pekerjaan.
+model DocumentType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  group     String   @default("LAIN")
+  required  Boolean  @default(false)
+  position  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  attachments Attachment[]
+}
+
+// Jejak siapa mengunduh arsip pekerjaan apa (data pribadi klien → wajib tercatat).
+model ArchiveDownloadLog {
+  id         String   @id @default(uuid())
+  jobKey     String
+  jobTitle   String
+  userId     String
+  userName   String?
+  fileCount  Int      @default(0)
+  totalBytes BigInt   @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model LoginAttempt {

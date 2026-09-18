@@ -455,7 +455,7 @@ router.get('/work-items/:item_id', async (c) => {
   const comments = (await prisma.comment.findMany({ where: { workItemId: { in: ids } }, orderBy: { createdAt: 'desc' } }))
     .map((c) => ({ id: c.id, work_item_id: c.workItemId, created_by_id: c.createdById, created_by_name: c.createdByName, text: c.text, attachment_id: c.attachmentId, created_at: c.createdAt, updated_at: c.updatedAt, origin: tag(c.workItemId) }));
   const attachments = (await prisma.attachment.findMany({ where: { workItemId: { in: ids }, isDeleted: false } }))
-    .map((a) => ({ id: a.id, work_item_id: a.workItemId, original_filename: a.originalFilename, content_type: a.contentType, size: a.size, uploaded_by_name: a.uploadedByName, uploaded_by_id: a.uploadedById, created_at: a.createdAt, external_url: a.storagePath, origin: tag(a.workItemId) }));
+    .map((a) => ({ id: a.id, work_item_id: a.workItemId, original_filename: a.originalFilename, content_type: a.contentType, size: a.size, uploaded_by_name: a.uploadedByName, uploaded_by_id: a.uploadedById, created_at: a.createdAt, external_url: a.storagePath, document_type_id: a.documentTypeId, origin: tag(a.workItemId) }));
   const activities = (await prisma.activity.findMany({ where: { workItemId: { in: ids } }, orderBy: { createdAt: 'desc' }, take: 120 }))
     .map((a: any) => ({ ...a, origin: tag(a.workItemId) }));
 
@@ -2335,6 +2335,11 @@ router.post('/work-items/:item_id/attachments', async (c) => {
   
   const storagePath = `${itemId}/${uuidv4()}_${originalFilename}`;
   await putObject(storagePath, buffer, contentType);
+
+  // Jenis dokumen opsional (Arsip): abaikan id yang tidak dikenal.
+  const docTypeId = typeof body['document_type_id'] === 'string' && body['document_type_id']
+    ? (await prisma.documentType.findUnique({ where: { id: body['document_type_id'] as string } }))?.id || null
+    : null;
   
   const att = await prisma.attachment.create({
     data: {
@@ -2345,13 +2350,37 @@ router.post('/work-items/:item_id/attachments', async (c) => {
       storagePath,
       uploadedById: user.id,
       uploadedByName: user.name,
+      documentTypeId: docTypeId,
     }
   });
   
   await logActivity(itemId, item.boardId, user, `mengunggah lampiran "${originalFilename}"`);
   await runAutomation(item.boardId, 'attachment_uploaded', item, user, item.listId);
   await broadcastItem(await getWorkItem(itemId));
-  return c.json({ id: att.id, work_item_id: att.workItemId, original_filename: att.originalFilename, content_type: att.contentType, size: att.size, uploaded_by_name: att.uploadedByName, uploaded_by_id: att.uploadedById, created_at: att.createdAt, external_url: att.storagePath });
+  return c.json({ id: att.id, work_item_id: att.workItemId, original_filename: att.originalFilename, content_type: att.contentType, size: att.size, uploaded_by_name: att.uploadedByName, uploaded_by_id: att.uploadedById, created_at: att.createdAt, external_url: att.storagePath, document_type_id: att.documentTypeId });
+});
+
+// Tandai jenis dokumen sebuah lampiran (KTP, Akta, NIB, ...) — dipakai Arsip.
+router.patch('/attachments/:id/document-type', async (c) => {
+  await requirePerm(c, 'card.edit');
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const att = await prisma.attachment.findUnique({ where: { id } });
+  if (!att || att.isDeleted) return c.json({ error: "Lampiran tidak ditemukan" }, 404);
+  const item = await getItemChecked(att.workItemId, user);
+  { const _d = await commentDenied(c, user, item); if (_d) return _d; }
+
+  const body = await c.req.json();
+  let type = null;
+  if (body.document_type_id) {
+    type = await prisma.documentType.findUnique({ where: { id: body.document_type_id } });
+    if (!type) return c.json({ error: "Jenis dokumen tidak dikenal" }, 400);
+  }
+  await prisma.attachment.update({ where: { id }, data: { documentTypeId: type?.id || null } });
+  await logActivity(att.workItemId, item.boardId, user,
+    type ? `menandai lampiran "${att.originalFilename}" sebagai ${type.name}` : `menghapus jenis dokumen lampiran "${att.originalFilename}"`);
+  await broadcastItem(await getWorkItem(att.workItemId));
+  return c.json({ ok: true, document_type_id: type?.id || null });
 });
 
 router.post('/work-items/:item_id/attachments/link', async (c) => {

@@ -27,6 +27,17 @@ export interface CardAttachment {
   thumbUrl?: string | null;
   /** Ukuran file dalam byte (opsional, untuk ditampilkan). */
   size?: number | null;
+  /** Jenis dokumen (KTP, Akta, NIB, ...) untuk Arsip. null = belum ditandai. */
+  documentTypeId?: string | null;
+}
+
+/** Katalog jenis dokumen (Arsip & Backup). */
+export interface DocumentTypeOption {
+  id: string;
+  name: string;
+  group: 'KLIEN' | 'HASIL' | 'LAIN' | string;
+  required: boolean;
+  is_active: boolean;
 }
 
 export type ActivityKind = 'comment' | 'system';
@@ -170,6 +181,9 @@ export interface CardBackProps {
   onAddAttachments: (files: File[]) => Promise<void>;
   onDeleteAttachments: (ids: string[]) => Promise<void>;
   onRenameAttachment: (id: string, fileName: string) => Promise<void>;
+  /** Jenis dokumen yang bisa dipilih per lampiran (Arsip). Kosong = dropdown disembunyikan. */
+  documentTypes?: DocumentTypeOption[];
+  onSetAttachmentType?: (id: string, documentTypeId: string | null) => Promise<void>;
 
   /** Members / assignment. */
   allUsers?: CardMember[];

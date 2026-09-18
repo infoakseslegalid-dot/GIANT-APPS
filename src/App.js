@@ -21,6 +21,7 @@ import GlobalSkor from "@/views/GlobalSkor";
 import Calendar from "@/views/Calendar";
 import Reports from "@/views/Reports";
 import AiChat from "@/views/AiChat";
+import Archive from "@/views/Archive";
 
 /** Terapkan preferensi tema & bahasa milik user yang login. */
 function PrefsSync() {
@@ -89,6 +90,7 @@ function App() {
             <Route path="/global/hari" element={<GlobalHari />} />
             <Route path="/global/skor" element={<GlobalSkor />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/arsip" element={<Archive />} />
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/ai" element={<AiChat />} />
             <Route path="/admin" element={<AdminPanel />} />

@@ -95,6 +95,13 @@ export const FEATURE_PERMISSIONS = [
     description: 'Mengisi/mengubah harga job dan mencatat pembayaran masuk (DP/pelunasan) — tetap dibatasi hanya PIC/pembuat/owner job itu, kecuali supervisor/super admin.' },
   { key: 'finance.delete_payment', label: 'Hapus catatan pembayaran (koreksi)', category: 'Keuangan',
     description: 'Menghapus catatan pembayaran yang salah input (koreksi) — tetap dibatasi hanya PIC/pembuat/owner job itu, kecuali supervisor/super admin.' },
+  // Arsip & Backup — berisi data pribadi klien (KTP, NPWP), default hanya super admin.
+  { key: 'archive.view', label: 'Buka halaman Arsip & Backup', category: 'Arsip & Backup',
+    description: 'Melihat halaman Arsip: grafik penyimpanan, daftar pekerjaan beserta file & kelengkapan dokumennya, dan riwayat download.' },
+  { key: 'archive.download', label: 'Download arsip pekerjaan (ZIP)', category: 'Arsip & Backup',
+    description: 'Mengunduh seluruh file satu pekerjaan sekaligus (ZIP) — termasuk KTP/NPWP klien. Setiap unduhan tercatat.' },
+  { key: 'archive.manage', label: 'Kelola jenis dokumen & data klien di Arsip', category: 'Arsip & Backup',
+    description: 'Menambah/mengubah jenis dokumen (KTP, Akta, NIB, ...) beserta status wajibnya, dan mengisi no. telepon klien di halaman Arsip.' },
 ].map((p) => ({ ...p, kind: 'feature' }));
 
 /** table.<Model> untuk tiap model Prisma. */
@@ -118,6 +125,9 @@ function defaultAllowed(role: string, def: { key: string; kind: string }): boole
   if (role === 'super_admin') return true;
   if (def.kind === 'table') return false; // Hanya super_admin (yg di atas) yg bisa akses tabel secara default
   const key = def.key;
+
+  // Arsip memuat KTP/NPWP klien → tertutup untuk semua peran; super admin membuka lewat Hak Akses.
+  if (key.startsWith('archive.')) return false;
 
   // Profil sendiri: semua peran sudah bisa ubah nama & avatar sejak awal —
   // pertahankan supaya menambah key ini tidak mendadak mengunci siapa pun.
