@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { putObject, getObject } from './storage';
 import { requirePerm } from './permissions';
 import { markDirty } from './archive_sync';
-import { clientDataOf, clientDataPatch, ensureMasterCardFor } from './archive_core';
+import { clientDataOf, clientDataPatch, ensureMasterCardFor, jobDocStatus, fmtParty, PARTY_ROLES, partyLabel } from './archive_core';
 
 const prisma = new PrismaClient();
 const router = new Hono();
@@ -457,7 +457,7 @@ router.get('/work-items/:item_id', async (c) => {
   const comments = (await prisma.comment.findMany({ where: { workItemId: { in: ids } }, orderBy: { createdAt: 'desc' } }))
     .map((c) => ({ id: c.id, work_item_id: c.workItemId, created_by_id: c.createdById, created_by_name: c.createdByName, text: c.text, attachment_id: c.attachmentId, created_at: c.createdAt, updated_at: c.updatedAt, origin: tag(c.workItemId) }));
   const attachments = (await prisma.attachment.findMany({ where: { workItemId: { in: ids }, isDeleted: false } }))
-    .map((a) => ({ id: a.id, work_item_id: a.workItemId, original_filename: a.originalFilename, content_type: a.contentType, size: a.size, uploaded_by_name: a.uploadedByName, uploaded_by_id: a.uploadedById, created_at: a.createdAt, external_url: a.storagePath, document_type_id: a.documentTypeId, origin: tag(a.workItemId) }));
+    .map((a) => ({ id: a.id, work_item_id: a.workItemId, original_filename: a.originalFilename, content_type: a.contentType, size: a.size, uploaded_by_name: a.uploadedByName, uploaded_by_id: a.uploadedById, created_at: a.createdAt, external_url: a.storagePath, document_type_id: a.documentTypeId, party_id: a.partyId, origin: tag(a.workItemId) }));
   const activities = (await prisma.activity.findMany({ where: { workItemId: { in: ids } }, orderBy: { createdAt: 'desc' }, take: 120 }))
     .map((a: any) => ({ ...a, origin: tag(a.workItemId) }));
 
@@ -526,6 +526,7 @@ router.get('/work-items/:item_id', async (c) => {
     mentionable_users: await mentionableUsers(item),
     can_edit: await canEditItem(user, item),
     can_comment: await canCommentItem(user, item),
+    doc_status: await jobDocStatus(item),
   });
 });
 
@@ -2342,6 +2343,11 @@ router.post('/work-items/:item_id/attachments', async (c) => {
   const docTypeId = typeof body['document_type_id'] === 'string' && body['document_type_id']
     ? (await prisma.documentType.findUnique({ where: { id: body['document_type_id'] as string } }))?.id || null
     : null;
+  // Pemilik dokumen (KTP/NPWP pribadi milik siapa). Hanya diterima kalau pihak
+  // itu memang terdaftar di pekerjaan ini.
+  const partyId = typeof body['party_id'] === 'string' && body['party_id'] && item.masterCardId
+    ? (await prisma.cardParty.findFirst({ where: { id: body['party_id'] as string, masterCardId: item.masterCardId } }))?.id || null
+    : null;
   
   const att = await prisma.attachment.create({
     data: {
@@ -2353,6 +2359,7 @@ router.post('/work-items/:item_id/attachments', async (c) => {
       uploadedById: user.id,
       uploadedByName: user.name,
       documentTypeId: docTypeId,
+      partyId,
     }
   });
   
@@ -2360,7 +2367,7 @@ router.post('/work-items/:item_id/attachments', async (c) => {
   await markDirty(item); // salin ke Google Drive (Arsip)
   await runAutomation(item.boardId, 'attachment_uploaded', item, user, item.listId);
   await broadcastItem(await getWorkItem(itemId));
-  return c.json({ id: att.id, work_item_id: att.workItemId, original_filename: att.originalFilename, content_type: att.contentType, size: att.size, uploaded_by_name: att.uploadedByName, uploaded_by_id: att.uploadedById, created_at: att.createdAt, external_url: att.storagePath, document_type_id: att.documentTypeId });
+  return c.json({ id: att.id, work_item_id: att.workItemId, original_filename: att.originalFilename, content_type: att.contentType, size: att.size, uploaded_by_name: att.uploadedByName, uploaded_by_id: att.uploadedById, created_at: att.createdAt, external_url: att.storagePath, document_type_id: att.documentTypeId, party_id: att.partyId });
 });
 
 // Tandai jenis dokumen sebuah lampiran (KTP, Akta, NIB, ...) — dipakai Arsip.
@@ -2379,12 +2386,98 @@ router.patch('/attachments/:id/document-type', async (c) => {
     type = await prisma.documentType.findUnique({ where: { id: body.document_type_id } });
     if (!type) return c.json({ error: "Jenis dokumen tidak dikenal" }, 400);
   }
-  await prisma.attachment.update({ where: { id }, data: { documentTypeId: type?.id || null } });
+  const data: any = { documentTypeId: type?.id || null };
+
+  // Pemilik dokumen. Dikirim terpisah supaya dropdown jenis & dropdown pihak
+  // bisa diubah sendiri-sendiri; jenis yang bukan "per pihak" selalu dikosongkan.
+  let party = null;
+  if (body.party_id !== undefined) {
+    if (body.party_id && item.masterCardId) {
+      party = await prisma.cardParty.findFirst({ where: { id: body.party_id, masterCardId: item.masterCardId } });
+      if (!party) return c.json({ error: "Pihak tidak dikenal di pekerjaan ini" }, 400);
+    }
+    data.partyId = party?.id || null;
+  }
+  if (type && !type.perParty) data.partyId = null;
+  else if (!type) data.partyId = null;
+
+  await prisma.attachment.update({ where: { id }, data });
   await markDirty(item); // pindah folder / buka-tutup link di Drive sesuai jenis baru
+  const who = data.partyId ? ` (${partyLabel(party)})` : '';
   await logActivity(att.workItemId, item.boardId, user,
-    type ? `menandai lampiran "${att.originalFilename}" sebagai ${type.name}` : `menghapus jenis dokumen lampiran "${att.originalFilename}"`);
+    type ? `menandai lampiran "${att.originalFilename}" sebagai ${type.name}${who}` : `menghapus jenis dokumen lampiran "${att.originalFilename}"`);
   await broadcastItem(await getWorkItem(att.workItemId));
-  return c.json({ ok: true, document_type_id: type?.id || null });
+  return c.json({ ok: true, document_type_id: type?.id || null, party_id: data.partyId ?? att.partyId ?? null });
+});
+
+// ── Pihak / pengurus pekerjaan (Direktur, Komisaris, ...) ────────────────
+// Disimpan di Master Card supaya satu daftar dipakai semua kartu segrup.
+// Lampiran KTP/NPWP pribadi menunjuk ke salah satu pihak ini.
+const partyBody = (body: any) => {
+  const data: any = {};
+  if (body.name !== undefined) data.name = String(body.name || '').trim().slice(0, 120);
+  if (body.role !== undefined) {
+    const role = String(body.role || '').trim().slice(0, 60);
+    data.role = PARTY_ROLES.includes(role) ? role : role || 'Lainnya';
+  }
+  if (body.position !== undefined) data.position = Number(body.position) || 0;
+  return data;
+};
+
+router.get('/work-items/:item_id/parties', async (c) => {
+  const user = c.get('user');
+  const item = await getItemChecked(c.req.param('item_id'), user);
+  if (!item) return c.json({ error: 'Kartu tidak ditemukan' }, 404);
+  return c.json({ ...(await jobDocStatus(item)), roles: PARTY_ROLES, can_edit: await canCommentItem(user, item) });
+});
+
+router.post('/work-items/:item_id/parties', async (c) => {
+  await requirePerm(c, 'card.edit');
+  const user = c.get('user');
+  const item = await getItemChecked(c.req.param('item_id'), user);
+  { const _d = await commentDenied(c, user, item); if (_d) return _d; }
+  const data = partyBody(await c.req.json());
+  if (!data.name) return c.json({ detail: 'Nama pihak wajib diisi' }, 400);
+  const mc = await ensureMasterCardFor(item);
+  const max = await prisma.cardParty.aggregate({ where: { masterCardId: mc.id }, _max: { position: true } });
+  const row = await prisma.cardParty.create({
+    data: { masterCardId: mc.id, role: 'Direktur', ...data, position: (max._max.position ?? -1) + 1 },
+  });
+  await logActivity(item.id, item.boardId, user, `menambah pihak ${partyLabel(row)}`);
+  await markDirty(item);
+  await broadcastItem(await getWorkItem(item.id));
+  return c.json(fmtParty(row));
+});
+
+router.patch('/work-items/:item_id/parties/:party_id', async (c) => {
+  await requirePerm(c, 'card.edit');
+  const user = c.get('user');
+  const item = await getItemChecked(c.req.param('item_id'), user);
+  { const _d = await commentDenied(c, user, item); if (_d) return _d; }
+  const cur = await prisma.cardParty.findFirst({ where: { id: c.req.param('party_id'), masterCardId: item.masterCardId || '__none__' } });
+  if (!cur) return c.json({ error: 'Pihak tidak ditemukan' }, 404);
+  const data = partyBody(await c.req.json());
+  if (data.name !== undefined && !data.name) return c.json({ detail: 'Nama pihak tidak boleh kosong' }, 400);
+  const row = await prisma.cardParty.update({ where: { id: cur.id }, data });
+  await logActivity(item.id, item.boardId, user, `mengubah pihak ${partyLabel(row)}`);
+  await markDirty(item); // nama file KTP/NPWP di Drive ikut namanya
+  await broadcastItem(await getWorkItem(item.id));
+  return c.json(fmtParty(row));
+});
+
+router.delete('/work-items/:item_id/parties/:party_id', async (c) => {
+  await requirePerm(c, 'card.edit');
+  const user = c.get('user');
+  const item = await getItemChecked(c.req.param('item_id'), user);
+  { const _d = await commentDenied(c, user, item); if (_d) return _d; }
+  const cur = await prisma.cardParty.findFirst({ where: { id: c.req.param('party_id'), masterCardId: item.masterCardId || '__none__' } });
+  if (!cur) return c.json({ error: 'Pihak tidak ditemukan' }, 404);
+  // Lampirannya tidak ikut terhapus — cuma kehilangan pemilik (onDelete: SetNull).
+  await prisma.cardParty.delete({ where: { id: cur.id } });
+  await logActivity(item.id, item.boardId, user, `menghapus pihak ${partyLabel(cur)}`);
+  await markDirty(item);
+  await broadcastItem(await getWorkItem(item.id));
+  return c.json({ ok: true });
 });
 
 // Data klien & perusahaan pekerjaan (disimpan di Master Card) — diisi CS di kartu.

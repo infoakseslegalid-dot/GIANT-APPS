@@ -29,6 +29,8 @@ export interface CardAttachment {
   size?: number | null;
   /** Jenis dokumen (KTP, Akta, NIB, ...) untuk Arsip. null = belum ditandai. */
   documentTypeId?: string | null;
+  /** Pihak pemilik dokumen (KTP/NPWP pribadi milik siapa). null = dokumen perusahaan. */
+  partyId?: string | null;
 }
 
 /** Katalog jenis dokumen (Arsip & Backup). */
@@ -38,6 +40,38 @@ export interface DocumentTypeOption {
   group: 'KLIEN' | 'HASIL' | 'LAIN' | string;
   required: boolean;
   is_active: boolean;
+  /** true = dokumen milik ORANG (KTP, NPWP Pribadi) → perlu dipilih pihaknya. */
+  per_party?: boolean;
+}
+
+/** Pihak/pengurus pekerjaan — pemilik dokumen pribadi. */
+export interface CardParty {
+  id: string;
+  name: string;
+  role: string;
+  position?: number;
+}
+
+/** Satu baris "dokumen wajib" di panel kelengkapan. */
+export interface DocSlot {
+  key: string;
+  type_id: string;
+  type_name: string;
+  group: string;
+  party_id: string | null;
+  party_name: string | null;
+  party_role: string | null;
+  done: boolean;
+}
+
+export interface DocStatus {
+  parties: CardParty[];
+  slots: DocSlot[];
+  required_total: number;
+  required_done: number;
+  missing: string[];
+  untyped_count: number;
+  unassigned_party_count: number;
 }
 
 export type ActivityKind = 'comment' | 'system';
@@ -183,7 +217,15 @@ export interface CardBackProps {
   onRenameAttachment: (id: string, fileName: string) => Promise<void>;
   /** Jenis dokumen yang bisa dipilih per lampiran (Arsip). Kosong = dropdown disembunyikan. */
   documentTypes?: DocumentTypeOption[];
-  onSetAttachmentType?: (id: string, documentTypeId: string | null) => Promise<void>;
+  onSetAttachmentType?: (id: string, documentTypeId: string | null, partyId?: string | null) => Promise<void>;
+
+  /** Kelengkapan dokumen + daftar pihak (Arsip). */
+  docStatus?: DocStatus | null;
+  onAddParty?: (name: string, role: string) => Promise<void>;
+  onUpdateParty?: (id: string, patch: { name?: string; role?: string }) => Promise<void>;
+  onDeleteParty?: (id: string) => Promise<void>;
+  /** Upload untuk satu slot wajib: jenis & pihaknya sudah ditentukan. */
+  onUploadForSlot?: (files: File[], documentTypeId: string, partyId: string | null) => Promise<void>;
 
   /** Members / assignment. */
   allUsers?: CardMember[];

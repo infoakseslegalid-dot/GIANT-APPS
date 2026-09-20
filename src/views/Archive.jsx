@@ -522,7 +522,9 @@ function JobDrawer({ jobKey, onClose, canDownload, canManage, onKeyChange }) {
                   <span key={t.id} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
                     t.count ? "border-[#94C748] bg-[#EFFFD6] text-[#37471F]" : "border-[hsl(var(--hairline))] text-3"
                   }`}>
-                    {t.count ? <CheckCircle2 size={12} /> : <Circle size={12} />} {t.name}{t.count > 1 ? ` ×${t.count}` : ""}
+                    {t.count ? <CheckCircle2 size={12} /> : <Circle size={12} />} {t.name}
+                    {t.party_name && <span className="font-normal opacity-80">— {t.party_name} ({t.party_role})</span>}
+                    {t.count > 1 ? ` ×${t.count}` : ""}
                     {!t.required && <span className="font-normal opacity-70">(opsional)</span>}
                   </span>
                 ))}
@@ -635,7 +637,7 @@ function TypesTab() {
     queryKey: ["document-types"],
     queryFn: () => api.get("/archive/document-types").then((r) => r.data),
   });
-  const [form, setForm] = useState({ name: "", group: "KLIEN", required: false });
+  const [form, setForm] = useState({ name: "", group: "KLIEN", required: false, per_party: false });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["document-types"] });
     qc.invalidateQueries({ queryKey: ["archive-summary"] });
@@ -650,7 +652,7 @@ function TypesTab() {
     try {
       await api.post("/archive/document-types", form);
       toast.success(`Jenis "${form.name}" ditambahkan`);
-      setForm({ name: "", group: form.group, required: false });
+      setForm({ name: "", group: form.group, required: false, per_party: false });
       refresh();
     } catch (err) { toast.error(errMsg(err)); }
   };
@@ -663,6 +665,10 @@ function TypesTab() {
         &quot;Dokumen wajib&quot;. Grup menentukan tempatnya: <b>Dokumen dari Klien</b> &amp; <b>Lainnya</b> masuk folder
         data mentah (internal, tidak dibagikan); <b>Dokumen Hasil</b> masuk folder dokumen hasil, link-nya bisa dibuka klien
         dan dikirim ke dashboard sesuai kategorinya.
+        <br />
+        <b>Per pihak</b> = dokumen milik orang, bukan perusahaan (KTP, NPWP Pribadi). Kalau wajib, dihitung sekali untuk
+        SETIAP pengurus yang didaftarkan di kartu — pendirian PT dengan direktur &amp; komisaris berarti 2 slot KTP dan
+        2 slot NPWP Pribadi terpisah. Pihaknya didaftarkan staff di panel &quot;Kelengkapan Dokumen&quot; pada kartu.
       </p>
       <form onSubmit={add} className="flex flex-wrap items-center gap-2 rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-3">
         <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nama jenis baru, mis. Surat Kuasa" className={`${inp} flex-1 min-w-[180px]`} />
@@ -672,13 +678,16 @@ function TypesTab() {
         <label className="flex items-center gap-1.5 text-sm text-2">
           <input type="checkbox" checked={form.required} onChange={(e) => setForm({ ...form, required: e.target.checked })} className="accent-[#0C66E4]" /> Wajib
         </label>
+        <label className="flex items-center gap-1.5 text-sm text-2" title="Dokumen milik orang (KTP, NPWP Pribadi) — dihitung per pengurus">
+          <input type="checkbox" checked={form.per_party} onChange={(e) => setForm({ ...form, per_party: e.target.checked })} className="accent-[#0C66E4]" /> Per pihak
+        </label>
         <button className="inline-flex h-[34px] items-center gap-1 rounded-md bg-[#0C66E4] px-3 text-sm font-semibold text-white"><Plus size={14} /> Tambah</button>
       </form>
 
       <div className="rounded-xl border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] overflow-x-auto">
-        <table className="w-full border-collapse text-sm min-w-[680px]">
+        <table className="w-full border-collapse text-sm min-w-[760px]">
           <thead className="bg-[hsl(var(--muted))] text-[12px] uppercase tracking-wide text-3">
-            <tr><th className="px-3 py-2 text-left">Nama</th><th className="px-3 py-2 text-left">Grup</th><th className="px-3 py-2 text-left">Kategori dashboard / subfolder</th><th className="px-3 py-2 text-center">Wajib</th><th className="px-3 py-2 text-center">Aktif</th></tr>
+            <tr><th className="px-3 py-2 text-left">Nama</th><th className="px-3 py-2 text-left">Grup</th><th className="px-3 py-2 text-left">Kategori dashboard / subfolder</th><th className="px-3 py-2 text-center">Wajib</th><th className="px-3 py-2 text-center" title="Dokumen milik orang — dihitung sekali per pengurus">Per pihak</th><th className="px-3 py-2 text-center">Aktif</th></tr>
           </thead>
           <tbody>
             {(types || []).map((t) => (
@@ -704,6 +713,9 @@ function TypesTab() {
                   ) : <span className="text-3">—</span>}
                 </td>
                 <td className="px-3 py-1.5 text-center"><input type="checkbox" checked={t.required} onChange={(e) => patch(t.id, { required: e.target.checked })} className="h-4 w-4 accent-[#0C66E4]" /></td>
+                <td className="px-3 py-1.5 text-center" title="Dokumen milik orang (KTP, NPWP Pribadi) — dihitung sekali per pengurus">
+                  <input type="checkbox" checked={!!t.per_party} onChange={(e) => patch(t.id, { per_party: e.target.checked })} className="h-4 w-4 accent-[#0C66E4]" />
+                </td>
                 <td className="px-3 py-1.5 text-center"><input type="checkbox" checked={t.is_active} onChange={(e) => patch(t.id, { is_active: e.target.checked })} className="h-4 w-4 accent-[#0C66E4]" /></td>
               </tr>
             ))}

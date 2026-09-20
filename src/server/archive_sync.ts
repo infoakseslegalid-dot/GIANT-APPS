@@ -159,9 +159,19 @@ async function syncJobUnlocked(key: string) {
     const subName = out ? null : f.subfolder || (f.document_type_id ? null : UNSORTED);
     const side = out ? 'OUT' : subName ? `RAW/${subName}` : 'RAW';
     const { base, ext } = splitExt(f.original_filename || 'file');
+    // Dokumen milik orang (KTP, NPWP Pribadi) dinamai dengan pemiliknya supaya
+    // "KTP direktur" dan "KTP komisaris" tidak tertukar di folder yang sama.
+    const owner = f.party_label || null;
     const stem = out
       ? safeName(`${f.document_type_name} - ${company}`, 150)
-      : safeName(f.document_type_name ? `${f.document_type_name} - ${base}` : base, 150);
+      : safeName(
+          f.document_type_name
+            ? owner
+              ? `${f.document_type_name} - ${owner}`
+              : `${f.document_type_name} - ${base}`
+            : base,
+          150,
+        );
     let fname = `${stem}${ext}`;
     for (let n = 2; used.has(`${side}|${fname.toLowerCase()}`); n++) fname = `${stem} (${n})${ext}`;
     used.add(`${side}|${fname.toLowerCase()}`);

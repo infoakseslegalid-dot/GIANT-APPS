@@ -19,21 +19,23 @@ export const MONTHS_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'
 
 // Katalog awal. Ditanam per "versi": nama yang belum ada ditambahkan sekali,
 // setelah itu sepenuhnya diatur admin (rename/nonaktif tidak ditimpa lagi).
-// [nama, grup, wajib, kategori dashboard, subfolder data mentah]
-const DOC_TYPES_SEED_VERSION = 2;
-const DEFAULT_DOC_TYPES: [string, string, boolean, string | null, string | null][] = [
-  ['KTP', 'KLIEN', true, null, null],
-  ['NPWP Pribadi', 'KLIEN', true, null, null],
-  ['KK', 'KLIEN', false, null, null],
-  ['Foto Dokumentasi TTD', 'KLIEN', false, null, 'Foto TTD'],
-  ['Akta Pendirian', 'HASIL', true, 'Legalitas', null],
-  ['SK Kemenkumham', 'HASIL', true, 'Legalitas', null],
-  ['NPWP Perusahaan', 'HASIL', true, 'Perpajakan', null],
-  ['Suket Pajak', 'HASIL', false, 'Perpajakan', null],
-  ['Akun Coretax', 'HASIL', false, 'Perpajakan', null],
-  ['NIB', 'HASIL', true, 'Perizinan', null],
-  ['Sertifikat Standar', 'HASIL', false, 'Sertifikat', null],
-  ['Lainnya', 'LAIN', false, null, null],
+// [nama, grup, wajib, kategori dashboard, subfolder data mentah, per pihak]
+// per pihak = dokumen milik ORANG (KTP, NPWP Pribadi, KK) → kalau wajib,
+// dihitung sekali untuk setiap pihak/pengurus yang didaftarkan di kartu.
+const DOC_TYPES_SEED_VERSION = 3;
+const DEFAULT_DOC_TYPES: [string, string, boolean, string | null, string | null, boolean][] = [
+  ['KTP', 'KLIEN', true, null, null, true],
+  ['NPWP Pribadi', 'KLIEN', true, null, null, true],
+  ['KK', 'KLIEN', false, null, null, true],
+  ['Foto Dokumentasi TTD', 'KLIEN', false, null, 'Foto TTD', false],
+  ['Akta Pendirian', 'HASIL', true, 'Legalitas', null, false],
+  ['SK Kemenkumham', 'HASIL', true, 'Legalitas', null, false],
+  ['NPWP Perusahaan', 'HASIL', true, 'Perpajakan', null, false],
+  ['Suket Pajak', 'HASIL', false, 'Perpajakan', null, false],
+  ['Akun Coretax', 'HASIL', false, 'Perpajakan', null, false],
+  ['NIB', 'HASIL', true, 'Perizinan', null, false],
+  ['Sertifikat Standar', 'HASIL', false, 'Sertifikat', null, false],
+  ['Lainnya', 'LAIN', false, null, null, false],
 ];
 const SEED_KEY = 'archive_doc_types_seed';
 
@@ -45,16 +47,18 @@ export async function ensureDocTypes() {
     const existing = await prisma.documentType.findMany();
     const byName = Object.fromEntries(existing.map((t) => [t.name.toLowerCase(), t]));
     let pos = existing.reduce((m, t) => Math.max(m, t.position), -1);
-    for (const [name, group, required, category, subfolder] of DEFAULT_DOC_TYPES) {
+    for (const [name, group, required, category, subfolder, perParty] of DEFAULT_DOC_TYPES) {
       const cur = byName[name.toLowerCase()];
       if (!cur) {
-        await prisma.documentType.create({ data: { name, group, required, dashboardCategory: category, subfolder, position: ++pos } });
-      } else if ((!cur.dashboardCategory && category) || (!cur.subfolder && subfolder)) {
-        await prisma.documentType.update({
-          where: { id: cur.id },
-          data: { dashboardCategory: cur.dashboardCategory || category, subfolder: cur.subfolder || subfolder },
-        });
+        await prisma.documentType.create({ data: { name, group, required, dashboardCategory: category, subfolder, perParty, position: ++pos } });
+        continue;
       }
+      const patch: any = {};
+      if (!cur.dashboardCategory && category) patch.dashboardCategory = category;
+      if (!cur.subfolder && subfolder) patch.subfolder = subfolder;
+      // v3: jenis bawaan yang memang milik orang ditandai sekali (admin boleh ubah lagi).
+      if (done < 3 && perParty && !cur.perParty) patch.perParty = true;
+      if (Object.keys(patch).length) await prisma.documentType.update({ where: { id: cur.id }, data: patch });
     }
     await setSetting(SEED_KEY, { version: DOC_TYPES_SEED_VERSION });
   }
@@ -64,7 +68,41 @@ export async function ensureDocTypes() {
 export const fmtType = (t: any) => ({
   id: t.id, name: t.name, group: t.group, required: t.required, position: t.position, is_active: t.isActive,
   dashboard_category: t.dashboardCategory || null, subfolder: t.subfolder || null,
+  per_party: !!t.perParty,
 });
+
+export const fmtParty = (p: any) => ({ id: p.id, name: p.name, role: p.role, position: p.position });
+/** "Budi (Direktur)" — dipakai di label UI, nama file Drive & Catatan Klien. */
+export const partyLabel = (p: any) => (p ? `${p.name}${p.role ? ` (${p.role})` : ''}` : null);
+
+export const PARTY_ROLES = ['Direktur', 'Komisaris', 'Pemegang Saham', 'Pengurus', 'Pemohon', 'Lainnya'];
+
+/**
+ * Daftar slot dokumen wajib sebuah pekerjaan.
+ *  - jenis wajib biasa  → 1 slot (party null)
+ *  - jenis wajib "per pihak" → 1 slot untuk SETIAP pihak yang terdaftar
+ * Kalau belum ada pihak sama sekali, jenis per-pihak tetap dihitung 1 slot
+ * tanpa pemilik supaya kelengkapan tidak diam-diam jadi 100%.
+ */
+export function requiredSlots(requiredTypes: any[], parties: any[]) {
+  const slots: any[] = [];
+  for (const t of requiredTypes) {
+    if (!t.perParty) {
+      slots.push({ key: t.id, type_id: t.id, type_name: t.name, group: t.group, party_id: null, party_name: null, party_role: null });
+      continue;
+    }
+    if (!parties.length) {
+      slots.push({ key: `${t.id}|?`, type_id: t.id, type_name: t.name, group: t.group, party_id: null, party_name: null, party_role: null });
+      continue;
+    }
+    for (const p of parties) {
+      slots.push({ key: `${t.id}|${p.id}`, type_id: t.id, type_name: t.name, group: t.group, party_id: p.id, party_name: p.name, party_role: p.role });
+    }
+  }
+  return slots;
+}
+/** Label slot untuk pesan "kurang: ..." — "KTP — Budi (Direktur)". */
+export const slotLabel = (s: any) => (s.party_name ? `${s.type_name} — ${partyLabel(s)}` : s.type_name);
 
 // ── util ────────────────────────────────────────────────────────────────
 export const monthKey = (d: any) => {
@@ -173,12 +211,16 @@ export async function loadJobs(onlyKey?: string) {
   const [masterCards, attachments, syncRows] = await Promise.all([
     prisma.masterCard.findMany({
       where: mcWhere,
-      include: { owner: { select: { name: true } }, assignments: { select: itemSelect } },
+      include: {
+        owner: { select: { name: true } },
+        assignments: { select: itemSelect },
+        parties: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
+      },
     }),
     prisma.attachment.findMany({
       where: { isDeleted: false, workItem: itemWhere },
       orderBy: { createdAt: 'asc' },
-      include: { workItem: { select: itemSelect } },
+      include: { workItem: { select: itemSelect }, party: true },
     }),
     onlyKey
       ? prisma.archiveJobSync.findMany({ where: { jobKey: onlyKey } })
@@ -211,6 +253,7 @@ export async function loadJobs(onlyKey?: string) {
       completed_at: done ? rep?.completedAt || rep?.updatedAt || null : null,
       rep_item_id: rep?.id || null,
       item_ids: mc.assignments.map((a: any) => a.id),
+      parties: mc.parties.map(fmtParty),
       divisions: [...new Map(mc.assignments.map((a: any) => division(a)).filter(Boolean).map((d: any) => [d.id, d])).values()],
     });
   }
@@ -232,6 +275,7 @@ export async function loadJobs(onlyKey?: string) {
         completed_at: done ? w.completedAt || w.updatedAt : null,
         rep_item_id: w.id,
         item_ids: [w.id],
+        parties: [],
         divisions: division(w) ? [division(w)] : [],
       });
     }
@@ -249,6 +293,11 @@ export async function loadJobs(onlyKey?: string) {
       document_type_id: t?.id || null,
       document_type_name: t?.name || null,
       document_group: t?.group || null,
+      per_party: !!t?.perParty,
+      party_id: a.partyId || null,
+      party_name: a.party?.name || null,
+      party_role: a.party?.role || null,
+      party_label: partyLabel(a.party),
       dashboard_category: t?.dashboardCategory || null,
       subfolder: t?.subfolder || null,
       storage_path: a.storagePath,
@@ -268,14 +317,127 @@ export async function loadJobs(onlyKey?: string) {
     j.total_bytes = j.files.reduce((s: number, f: any) => s + (f.size || 0), 0);
     j.last_upload_at = j.files.length ? j.files[j.files.length - 1].created_at : null;
     j.untyped_count = j.files.filter((f: any) => !f.document_type_id).length;
-    const have = new Set(j.files.map((f: any) => f.document_type_id).filter(Boolean));
-    j.required_total = requiredTypes.length;
-    j.required_done = requiredTypes.filter((t) => have.has(t.id)).length;
-    j.missing = requiredTypes.filter((t) => !have.has(t.id)).map((t) => t.name);
+    // File "per pihak" yang jenisnya sudah ditandai tapi pemiliknya belum.
+    j.unassigned_party_count = j.files.filter((f: any) => f.document_type_id && f.per_party && !f.party_id).length;
+
+    // Kelengkapan: satu slot per jenis wajib, dikali jumlah pihak untuk jenis
+    // "per pihak" (2 pengurus → slot KTP Budi & KTP Sari terpisah).
+    const have = new Set(
+      j.files
+        .filter((f: any) => f.document_type_id)
+        .map((f: any) => (f.per_party && f.party_id ? `${f.document_type_id}|${f.party_id}` : f.document_type_id)),
+    );
+    const slots = requiredSlots(requiredTypes, j.parties || []);
+    for (const sl of slots) sl.done = have.has(sl.party_id ? `${sl.type_id}|${sl.party_id}` : sl.type_id);
+    j.required_slots = slots;
+    j.required_total = slots.length;
+    j.required_done = slots.filter((sl: any) => sl.done).length;
+    j.missing = slots.filter((sl: any) => !sl.done).map(slotLabel);
     j.drive_pending = j.files.filter((f: any) => !f.drive_file_id).length;
     j.drive_errors = j.files.filter((f: any) => f.drive_error).length;
   }
   return { jobs: Object.values(jobs) as any[], types };
+}
+
+/**
+ * Kelengkapan dokumen satu pekerjaan, versi ringan untuk kartu (tanpa memuat
+ * seluruh Arsip). Cakupannya sama dengan /arsip: semua lampiran satu grup
+ * Master Card, bukan cuma kartu yang sedang dibuka.
+ */
+export async function jobDocStatus(item: any) {
+  await ensureDocTypes();
+  const workItem = item.masterCardId ? { masterCardId: item.masterCardId } : { id: item.id };
+  const [types, partyRows, atts] = await Promise.all([
+    prisma.documentType.findMany({ where: { isActive: true }, orderBy: [{ position: 'asc' }, { name: 'asc' }] }),
+    item.masterCardId
+      ? prisma.cardParty.findMany({ where: { masterCardId: item.masterCardId }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] })
+      : Promise.resolve([]),
+    prisma.attachment.findMany({
+      where: { isDeleted: false, NOT: { contentType: 'link' }, workItem },
+      select: { documentTypeId: true, partyId: true },
+    }),
+  ]);
+  const typeById = Object.fromEntries(types.map((t: any) => [t.id, t]));
+  const have = new Set(
+    atts
+      .filter((a: any) => a.documentTypeId)
+      .map((a: any) =>
+        typeById[a.documentTypeId]?.perParty && a.partyId ? `${a.documentTypeId}|${a.partyId}` : a.documentTypeId,
+      ),
+  );
+  const slots = requiredSlots(types.filter((t: any) => t.required), partyRows);
+  for (const sl of slots) sl.done = have.has(sl.party_id ? `${sl.type_id}|${sl.party_id}` : sl.type_id);
+  return {
+    parties: partyRows.map(fmtParty),
+    slots,
+    required_total: slots.length,
+    required_done: slots.filter((sl: any) => sl.done).length,
+    missing: slots.filter((sl: any) => !sl.done).map(slotLabel),
+    untyped_count: atts.filter((a: any) => !a.documentTypeId).length,
+    unassigned_party_count: atts.filter((a: any) => a.documentTypeId && typeById[a.documentTypeId]?.perParty && !a.partyId).length,
+  };
+}
+
+/**
+ * Versi massal jobDocStatus untuk satu board: cukup 3 query, hasilnya dipetakan
+ * per work item (kartu segrup Master Card berbagi angka yang sama).
+ */
+export async function docBadgesFor(items: any[]) {
+  if (!items.length) return {};
+  await ensureDocTypes();
+  const mcIds = [...new Set(items.map((i: any) => i.masterCardId).filter(Boolean))] as string[];
+  const wiIds = items.filter((i: any) => !i.masterCardId).map((i: any) => i.id) as string[];
+
+  const [types, partyRows, atts] = await Promise.all([
+    prisma.documentType.findMany({ where: { isActive: true }, orderBy: [{ position: 'asc' }, { name: 'asc' }] }),
+    mcIds.length
+      ? prisma.cardParty.findMany({ where: { masterCardId: { in: mcIds } }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] })
+      : Promise.resolve([]),
+    prisma.attachment.findMany({
+      where: {
+        isDeleted: false,
+        NOT: { contentType: 'link' },
+        OR: [
+          ...(mcIds.length ? [{ workItem: { masterCardId: { in: mcIds } } }] : []),
+          ...(wiIds.length ? [{ workItemId: { in: wiIds } }] : []),
+        ],
+      },
+      select: { documentTypeId: true, partyId: true, workItem: { select: { id: true, masterCardId: true } } },
+    }),
+  ]);
+  if (!types.some((t: any) => t.required)) return {};
+
+  const typeById = Object.fromEntries(types.map((t: any) => [t.id, t]));
+  const requiredTypes = types.filter((t: any) => t.required);
+  const partiesByMc: Record<string, any[]> = {};
+  for (const p of partyRows) (partiesByMc[p.masterCardId] ||= []).push(p);
+
+  const attsByKey: Record<string, any[]> = {};
+  for (const a of atts) (attsByKey[jobKeyForItem(a.workItem)] ||= []).push(a);
+
+  const byKey: Record<string, any> = {};
+  const out: Record<string, any> = {};
+  for (const item of items) {
+    const key = jobKeyForItem(item);
+    if (!byKey[key]) {
+      const mine = attsByKey[key] || [];
+      const have = new Set(
+        mine
+          .filter((a: any) => a.documentTypeId)
+          .map((a: any) => (typeById[a.documentTypeId]?.perParty && a.partyId ? `${a.documentTypeId}|${a.partyId}` : a.documentTypeId)),
+      );
+      const slots = requiredSlots(requiredTypes, item.masterCardId ? partiesByMc[item.masterCardId] || [] : []);
+      const done = slots.filter((sl: any) => have.has(sl.party_id ? `${sl.type_id}|${sl.party_id}` : sl.type_id)).length;
+      byKey[key] = {
+        total: slots.length,
+        done,
+        untyped: mine.filter((a: any) => !a.documentTypeId).length,
+        unassigned: mine.filter((a: any) => a.documentTypeId && typeById[a.documentTypeId]?.perParty && !a.partyId).length,
+      };
+    }
+    out[item.id] = byKey[key];
+  }
+  return out;
 }
 
 export const publicJob = (j: any) => {
@@ -295,7 +457,11 @@ export const publicJob = (j: any) => {
 // ═══════════════════════════════════════════════════════════════════════
 export function clientNotesHtml(job: any) {
   const row = (label: string, v: any) => `<tr><th style="text-align:left;padding:4px 12px 4px 0;vertical-align:top">${escHtml(label)}</th><td style="padding:4px 0">${escHtml(v || '—').replace(/\n/g, '<br>')}</td></tr>`;
-  const files = job.files.map((f: any) => `<li>${escHtml(f.document_type_name || 'Belum ditandai')} — ${escHtml(f.original_filename)}</li>`).join('');
+  const files = job.files.map((f: any) => {
+    const who = f.party_label ? ` <i>(${escHtml(f.party_label)})</i>` : '';
+    return `<li>${escHtml(f.document_type_name || 'Belum ditandai')}${who} — ${escHtml(f.original_filename)}</li>`;
+  }).join('');
+  const parties = (job.parties || []).map((p: any) => `<li>${escHtml(p.name)} — ${escHtml(p.role)}</li>`).join('');
   return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Catatan Klien</title></head><body style="font-family:Arial,sans-serif">
 <h1>Catatan Klien — ${escHtml(companyOf(job))}</h1>
 <table>
@@ -314,6 +480,8 @@ ${row('Owner (CS)', job.owner_name)}
 ${row('Divisi terlibat', job.divisions.map((d: any) => d.name).join(', '))}
 ${row('Status', job.done ? 'Selesai' : 'Masih berjalan')}
 </table>
+<h2>Pengurus / Pihak (${(job.parties || []).length})</h2>
+<ul>${parties || '<li>—</li>'}</ul>
 <h2>Catatan</h2>
 <p>${escHtml(job.client_notes || '—').replace(/\n/g, '<br>')}</p>
 <h2>Daftar dokumen (${job.files.length})</h2>

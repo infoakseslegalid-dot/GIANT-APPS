@@ -57,6 +57,7 @@ function typeData(body: any) {
     data.dashboardCategory = DASHBOARD_CATEGORIES.includes(body.dashboard_category) ? body.dashboard_category : null;
   }
   if (body.subfolder !== undefined) data.subfolder = body.subfolder ? safeName(body.subfolder, 60) : null;
+  if (body.per_party !== undefined) data.perParty = !!body.per_party;
   return data;
 }
 
@@ -88,7 +89,7 @@ router.patch('/archive/document-types/:id', async (c) => {
   }
   const row = await prisma.documentType.update({ where: { id }, data });
   // Nama/grup/subfolder memengaruhi nama & letak file di Drive → sinkron ulang pekerjaan terkait.
-  if (data.name || data.group || data.subfolder !== undefined) {
+  if (data.name || data.group || data.subfolder !== undefined || data.perParty !== undefined) {
     const items = await prisma.attachment.findMany({
       where: { documentTypeId: id, isDeleted: false },
       select: { workItem: { select: { id: true, masterCardId: true } } },
@@ -212,10 +213,23 @@ router.get('/archive/jobs/:key', async (c) => {
     notes_url: job.sync?.notesFileId ? `https://docs.google.com/document/d/${job.sync.notesFileId}/edit` : null,
     files: job.files.map(({ storage_path, ...f }: any) => f),
     links: job.links.map(({ storage_path, ...f }: any) => ({ ...f, url: storage_path })),
-    checklist: types.filter((t) => t.isActive && (t.required || have.has(t.id))).map((t) => ({
-      id: t.id, name: t.name, group: t.group, required: t.required,
-      count: job.files.filter((f: any) => f.document_type_id === t.id).length,
-    })),
+    // Slot wajib (sudah termasuk pecahan per pihak) + jenis opsional yang
+    // kebetulan sudah ada filenya, supaya daftar ini mencerminkan kenyataan.
+    checklist: [
+      ...job.required_slots.map((sl: any) => ({
+        id: sl.key, name: sl.type_name, party_name: sl.party_name, party_role: sl.party_role,
+        group: sl.group, required: true,
+        count: job.files.filter((f: any) =>
+          f.document_type_id === sl.type_id && (!sl.party_id || f.party_id === sl.party_id),
+        ).length,
+      })),
+      ...types
+        .filter((t) => t.isActive && !t.required && have.has(t.id))
+        .map((t) => ({
+          id: t.id, name: t.name, party_name: null, party_role: null, group: t.group, required: false,
+          count: job.files.filter((f: any) => f.document_type_id === t.id).length,
+        })),
+    ],
     dashboard: companyPayload(job),
     downloads: logs.map((l) => ({ id: l.id, user_name: l.userName, file_count: l.fileCount, total_bytes: Number(l.totalBytes), created_at: l.createdAt })),
   });

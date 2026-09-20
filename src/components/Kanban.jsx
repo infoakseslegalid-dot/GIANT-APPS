@@ -4,7 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities";
 import {
   MessageSquare, Paperclip, CheckSquare, AlignLeft, Link2, MoreHorizontal, Pencil, Trash2, Plus, X,
-  ShieldCheck, ChevronDown, ChevronRight, Copy, FolderInput, Archive, ArchiveX,
+  ShieldCheck, ChevronDown, ChevronRight, Copy, FolderInput, Archive, ArchiveX, FileCheck2,
 } from "lucide-react";
 import { Avatar, LabelChip, DueBadge, PriorityFlag, StatusBadge } from "./common";
 import { API } from "../lib/api";
@@ -32,6 +32,16 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror, readO
   const clTotal = (card.checklists || []).reduce((a, c) => a + c.items.length, 0);
   const clDone = (card.checklists || []).reduce((a, c) => a + c.items.filter((i) => i.done).length, 0);
   const noPic = members.length === 0;
+  // Badge kelengkapan dokumen wajib — angkanya milik satu pekerjaan (grup
+  // Master Card), jadi kartu assignment menunjukkan angka yang sama.
+  const docBadge = card.doc_badge && card.doc_badge.total > 0 ? card.doc_badge : null;
+  const docTitle = docBadge
+    ? [
+        `Dokumen wajib: ${docBadge.done}/${docBadge.total}`,
+        docBadge.untyped > 0 ? `${docBadge.untyped} file belum ditandai jenisnya` : null,
+        docBadge.unassigned > 0 ? `${docBadge.unassigned} file belum jelas milik siapa` : null,
+      ].filter(Boolean).join("\n")
+    : "";
 
   return (
     <div
@@ -107,6 +117,22 @@ export function CardTile({ card, labelsById, usersById, onClick, isMirror, readO
             {(card.attachment_count || 0) > 0 && (
               <span className="flex items-center gap-1 text-[11px]">
                 <Paperclip size={13} /> {card.attachment_count}
+              </span>
+            )}
+            {/* Kelengkapan dokumen wajib (Arsip). Titik oranye = ada file yang
+                belum ditandai jenis / belum jelas milik siapa. */}
+            {docBadge && (
+              <span
+                title={docTitle}
+                className={`flex items-center gap-1 text-[11px] font-semibold ${
+                  docBadge.done >= docBadge.total ? "text-[#22A06B]" : "text-[#B38600]"
+                }`}
+                data-testid={`card-doc-badge-${card.id}`}
+              >
+                <FileCheck2 size={13} /> {docBadge.done}/{docBadge.total}
+                {(docBadge.untyped > 0 || docBadge.unassigned > 0) && (
+                  <span className="h-[5px] w-[5px] rounded-full bg-[#E56910]" />
+                )}
               </span>
             )}
           </div>

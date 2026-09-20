@@ -18,6 +18,7 @@ import CardAttachments from './CardAttachments';
 import CardActivityPanel from './CardActivityPanel';
 import CardFinancePanel from './CardFinancePanel';
 import CardClientPanel from './CardClientPanel';
+import CardDocuments from './CardDocuments';
 import { resolveColor } from './helpers';
 
 const DIST_LABEL: Record<string, { t: string; c: string }> = {
@@ -250,12 +251,6 @@ export default function CardBack(props: CardBackProps) {
               </div>
             )}
 
-            {/* Harga job & pembayaran (rekap Finance) */}
-            <CardFinancePanel cardId={card.id} />
-
-            {/* Data klien & perusahaan (Arsip / Catatan Klien / dashboard klien) */}
-            <CardClientPanel cardId={card.id} />
-
             {/* Panel status pengerjaan per divisi (di Master Card) */}
             {isMasterCard && assignments.length > 0 && (
               <div className="mb-5 rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] p-4">
@@ -308,9 +303,38 @@ export default function CardBack(props: CardBackProps) {
               </div>
             )}
 
+            {/* ── Isi pekerjaan ────────────────────────────────────────
+                Bagian yang dibaca & diubah tiap hari. Sebelumnya terdorong
+                jauh ke bawah oleh panel data yang jarang dibuka, sehingga
+                deskripsi kartu nyaris tidak pernah kelihatan tanpa scroll. */}
             <CardDescription {...props} />
+
+            {/* ── Data pendukung ───────────────────────────────────────────
+                Harga & data klien: identitas pekerjaan, jadi menyambung dari
+                deskripsi. Tetap collapsible supaya tidak memakan tempat. */}
+            <div className="mb-3 mt-6 flex items-center gap-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-3">Data pendukung</span>
+              <span className="h-px flex-1 bg-[hsl(var(--hairline))]" />
+            </div>
+
+            {/* Harga job & pembayaran (rekap Finance) */}
+            <CardFinancePanel cardId={card.id} />
+
+            {/* Data klien & perusahaan (Arsip / Catatan Klien / dashboard klien) */}
+            <CardClientPanel cardId={card.id} />
+
+            {/* ── Proses pengerjaan ────────────────────────────────────── */}
+            <div className="mb-3 mt-6 flex items-center gap-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-3">Proses pengerjaan</span>
+              <span className="h-px flex-1 bg-[hsl(var(--hairline))]" />
+            </div>
+
             <CardEntryRequirements {...props} />
             <CardChecklist {...props} />
+
+            {/* Kelengkapan dokumen menempel tepat di atas Lampiran — satu topik:
+                slot yang kurang di sini diisi lewat file di bawahnya. */}
+            <CardDocuments {...props} />
             <CardAttachments {...props} />
           </div>
         </div>

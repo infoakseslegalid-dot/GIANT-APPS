@@ -14,6 +14,7 @@ import { fullMatrix, syncPermissions, invalidatePermCache, requirePerm } from '.
 import { can } from './permissions'
 import { putObject, getObject } from './storage'
 import { v4 as uuidv4 } from 'uuid'
+import { docBadgesFor } from './archive_core'
 
 export const adminRouter = new Hono()
 
@@ -663,8 +664,13 @@ adminRouter.get('/boards/:board_id/full', async (c) => {
     : []
   const mByMc = new Map(masters.map((m: any) => [m.masterCardId, m]))
 
+  // Badge kelengkapan dokumen di muka kartu (Arsip): "4/8" + penanda kalau ada
+  // file yang belum ditandai jenis/pemiliknya.
+  const docBadges = await docBadgesFor(cards)
+
   const cardsOut = cards.map((c: any) => {
     const f = formatWorkItem(c)
+    f.doc_badge = docBadges[c.id] || null
     if (c.masterCardId && c.targetDivisionId) {
       const m = mByMc.get(c.masterCardId)
       f.is_assignment = true

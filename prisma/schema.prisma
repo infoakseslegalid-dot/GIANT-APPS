@@ -66,8 +66,26 @@ model MasterCard {
   ownerDivision Division?  @relation("MasterCardOwnerDivision", fields: [ownerDivisionId], references: [id])
   assignments   WorkItem[]
   payments      Payment[]
+  parties       CardParty[]
 
   @@index([ownerUserId])
+}
+
+// Pihak/pengurus sebuah pekerjaan (Direktur, Komisaris, Pemegang Saham, ...).
+// Dipakai supaya dokumen pribadi tidak perlu jenis terpisah per jabatan:
+// lampiran = jenis dokumen (KTP) x pihak (Budi - Direktur).
+model CardParty {
+  id           String   @id @default(uuid())
+  masterCardId String
+  name         String
+  role         String   @default("Direktur")
+  position     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  masterCard  MasterCard   @relation(fields: [masterCardId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+
+  @@index([masterCardId])
 }
 
 // Satu baris = satu pembayaran masuk untuk sebuah job (MasterCard).
@@ -415,6 +433,9 @@ model Attachment {
   // Jenis dokumen (KTP, Akta, NIB, ...) — dipakai Arsip untuk mengelompokkan
   // file & menghitung kelengkapan. null = belum ditandai.
   documentTypeId   String?
+  // Pihak/pengurus pemilik dokumen (KTP/NPWP Pribadi milik siapa). null untuk
+  // dokumen perusahaan (Akta, NIB, ...) atau kalau belum ditandai.
+  partyId          String?
   // Salinan di Google Drive (Arsip). driveSide: RAW (folder data mentah) | OUT (dokumen hasil).
   driveFileId      String?
   driveUrl         String?
@@ -426,6 +447,7 @@ model Attachment {
   workItem     WorkItem      @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   uploadedBy   User          @relation(fields: [uploadedById], references: [id])
   documentType DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  party        CardParty?    @relation(fields: [partyId], references: [id], onDelete: SetNull)
 
   @@index([workItemId])
 }
@@ -442,6 +464,9 @@ model DocumentType {
   dashboardCategory String?
   // Subfolder di folder data mentah, mis. "Foto TTD".
   subfolder String?
+  // true = dokumen milik ORANG, bukan perusahaan (KTP, NPWP Pribadi). Kalau
+  // wajib, dihitung sekali per pihak: 2 pengurus → 2 slot KTP.
+  perParty  Boolean  @default(false)
   position  Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())

@@ -48,11 +48,16 @@ export default function CardAttachments({
   onUpdateCard,
   documentTypes = [],
   onSetAttachmentType,
-}: Pick<CardBackProps, 'card' | 'canEdit' | 'onAddAttachments' | 'onDeleteAttachments' | 'onUpdateCard' | 'documentTypes' | 'onSetAttachmentType'>) {
+  docStatus,
+  onUploadForSlot,
+}: Pick<CardBackProps, 'card' | 'canEdit' | 'onAddAttachments' | 'onDeleteAttachments' | 'onUpdateCard' | 'documentTypes' | 'onSetAttachmentType' | 'docStatus' | 'onUploadForSlot'>) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showAll, setShowAll] = useState(false);
   const [preview, setPreview] = useState<CardAttachment | null>(null);
+  // File yang baru dipilih lewat tombol "Add", menunggu ditandai jenis & pemilik.
+  const [staged, setStaged] = useState<{ file: File; typeId: string; partyId: string }[] | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const list = card.attachments;
   const visible = showAll ? list : list.slice(0, COLLAPSE_LIMIT);
@@ -92,8 +97,17 @@ export default function CardAttachments({
     for (const t of documentTypes) if (t.is_active) (m[t.group] ||= []).push(t);
     return Object.keys(GROUP_LABELS).filter((g) => m[g]?.length).map((g) => ({ group: g, types: m[g] }));
   }, [documentTypes]);
-  const typeName = (id?: string | null) => documentTypes.find((t) => t.id === id)?.name || null;
+  const typeById = useMemo(() => Object.fromEntries(documentTypes.map((t) => [t.id, t])), [documentTypes]);
+  const typeName = (id?: string | null) => typeById[id || '']?.name || null;
   const showTypes = documentTypes.length > 0 && !!onSetAttachmentType;
+
+  // Pihak/pengurus pekerjaan — hanya relevan untuk jenis dokumen "per pihak"
+  // (KTP, NPWP Pribadi), supaya KTP direktur & komisaris tidak tertukar.
+  const parties = docStatus?.parties || [];
+  const partyLabel = (id?: string | null) => {
+    const p = parties.find((x: any) => x.id === id);
+    return p ? `${p.name} (${p.role})` : null;
+  };
 
   return (
     <div className="mt-[18px]">
@@ -114,8 +128,15 @@ export default function CardAttachments({
           className="hidden"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
-            if (files.length) onAddAttachments(files);
             e.target.value = '';
+            if (!files.length) return;
+            // Tanya jenis dokumen dulu — jauh lebih rapi daripada berharap staff
+            // ingat menandainya setelah file masuk.
+            if (showTypes && onUploadForSlot) {
+              setStaged(files.map((file) => ({ file, typeId: '', partyId: '' })));
+            } else {
+              onAddAttachments(files);
+            }
           }}
         />
       </div>
@@ -230,8 +251,35 @@ export default function CardAttachments({
                       ) : typeName(att.documentTypeId) ? (
                         <span className="mt-1 inline-block rounded-[4px] bg-[#e9f2ff] px-1.5 py-0.5 text-[10.5px] font-semibold text-[#0055cc]">
                           {typeName(att.documentTypeId)}
+                          {partyLabel(att.partyId) ? ` · ${partyLabel(att.partyId)}` : ''}
                         </span>
                       ) : null
+                    )}
+
+                    {/* Pemilik dokumen — hanya untuk jenis "per pihak" */}
+                    {showTypes && att.mimeType !== 'link' && typeById[att.documentTypeId || '']?.per_party && canEdit && (
+                      parties.length === 0 ? (
+                        <div className="mt-1 text-[10.5px] text-[#7f5f01]">
+                          Tambahkan pengurus di panel “Kelengkapan Dokumen” untuk menandai pemilik.
+                        </div>
+                      ) : (
+                        <select
+                          value={att.partyId || ''}
+                          onChange={(e) => onSetAttachmentType!(att.id, att.documentTypeId || null, e.target.value || null)}
+                          title="Milik siapa dokumen ini"
+                          data-testid="attachment-party"
+                          className={`mt-1 h-[22px] max-w-full rounded-[4px] border px-1 text-[10.5px] font-semibold ${
+                            att.partyId
+                              ? 'border-[#85b8ff] bg-[#e9f2ff] text-[#0055cc]'
+                              : 'border-[#f5cd47] bg-[#fff7d6] text-[#7f5f01]'
+                          }`}
+                        >
+                          <option value="">⚠ Milik siapa?…</option>
+                          {parties.map((p: any) => (
+                            <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                          ))}
+                        </select>
+                      )
                     )}
                   </div>
 
@@ -297,6 +345,97 @@ export default function CardAttachments({
             </button>
           )}
         </>
+      )}
+
+      {staged && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => !uploading && setStaged(null)}>
+          <div className="w-full max-w-lg rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-[14px] font-bold text-foreground">
+              {staged.length} file akan diunggah
+            </div>
+            <p className="mt-1 mb-3 text-[11.5px] text-3">
+              Tandai jenis dokumennya sekarang supaya file langsung masuk folder yang benar di Arsip.
+            </p>
+
+            <div className="flex max-h-[45vh] flex-col gap-2 overflow-y-auto">
+              {staged.map((row, i) => {
+                const perParty = !!typeById[row.typeId]?.per_party;
+                return (
+                  <div key={i} className="rounded-[6px] border border-[hsl(var(--hairline))] bg-[hsl(var(--muted))] p-2">
+                    <div className="truncate text-[12px] font-semibold text-foreground" title={row.file.name}>
+                      {row.file.name}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <select
+                        value={row.typeId}
+                        onChange={(e) => setStaged((prev) => prev!.map((r, j) => (j === i ? { ...r, typeId: e.target.value, partyId: '' } : r)))}
+                        className="h-[26px] min-w-0 flex-1 rounded-[4px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-1 text-[11.5px]"
+                      >
+                        <option value="">— Jenis dokumen —</option>
+                        {typeGroups.map((g) => (
+                          <optgroup key={g.group} label={GROUP_LABELS[g.group]}>
+                            {g.types.map((t) => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      {perParty && (
+                        parties.length === 0 ? (
+                          <span className="text-[11px] text-[#7f5f01]">Belum ada pengurus terdaftar</span>
+                        ) : (
+                          <select
+                            value={row.partyId}
+                            onChange={(e) => setStaged((prev) => prev!.map((r, j) => (j === i ? { ...r, partyId: e.target.value } : r)))}
+                            className="h-[26px] min-w-0 flex-1 rounded-[4px] border border-[hsl(var(--hairline))] bg-[hsl(var(--elevated))] px-1 text-[11.5px]"
+                          >
+                            <option value="">— Milik siapa? —</option>
+                            {parties.map((p: any) => (
+                              <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                            ))}
+                          </select>
+                        )
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={async () => {
+                  setUploading(true);
+                  try {
+                    for (const r of staged) {
+                      if (r.typeId) await onUploadForSlot!([r.file], r.typeId, r.partyId || null);
+                      else await onAddAttachments([r.file]);
+                    }
+                    setStaged(null);
+                  } finally {
+                    setUploading(false);
+                  }
+                }}
+                className="h-[30px] rounded-[5px] bg-[#0c66e4] px-3 text-[12.5px] font-semibold text-white disabled:opacity-50"
+              >
+                {uploading ? 'Mengunggah…' : 'Unggah'}
+              </button>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => setStaged(null)}
+                className="h-[30px] rounded-[5px] border border-[hsl(var(--hairline))] px-3 text-[12.5px] text-foreground disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <span className="ml-auto text-[11px] text-3">
+                Tanpa jenis pun boleh, tapi harus ditandai belakangan.
+              </span>
+            </div>
+          </div>
+        </div>
       )}
 
       {preview && (

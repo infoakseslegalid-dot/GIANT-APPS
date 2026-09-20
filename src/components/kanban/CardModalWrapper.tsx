@@ -135,6 +135,7 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       size: a.size || 0,
       thumbUrl: isImg ? `${API}/attachments/${a.id}/download` : null,
       documentTypeId: a.document_type_id || null,
+      partyId: a.party_id || null,
     };
   });
 
@@ -228,9 +229,11 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
   };
 
   /** Upload satu file → endpoint attachments (field `file`, satu per request). Return id-nya. */
-  const uploadFile = async (f: File): Promise<string | null> => {
+  const uploadFile = async (f: File, documentTypeId?: string | null, partyId?: string | null): Promise<string | null> => {
     const fd = new FormData();
     fd.append('file', f);
+    if (documentTypeId) fd.append('document_type_id', documentTypeId);
+    if (partyId) fd.append('party_id', partyId);
     try {
       const r = await api.post(`/work-items/${curId}/attachments`, fd);
       return r?.data?.id || null;
@@ -384,8 +387,26 @@ export default function CardModalWrapper({ itemId, onClose, readOnly = false }: 
       }}
       onRenameAttachment={async () => { toast.info('Ganti nama lampiran belum tersedia'); }}
       documentTypes={documentTypes || []}
-      onSetAttachmentType={async (id, documentTypeId) => {
-        await run(() => api.patch(`/attachments/${id}/document-type`, { document_type_id: documentTypeId }));
+      onSetAttachmentType={async (id, documentTypeId, partyId) => {
+        const body: any = { document_type_id: documentTypeId };
+        // undefined = dropdown jenis yang diubah → biarkan pemilik apa adanya.
+        if (partyId !== undefined) body.party_id = partyId;
+        await run(() => api.patch(`/attachments/${id}/document-type`, body));
+      }}
+
+      docStatus={data?.doc_status || null}
+      onAddParty={async (name, role) => {
+        await run(() => api.post(`/work-items/${curId}/parties`, { name, role }), 'Pihak ditambahkan');
+      }}
+      onUpdateParty={async (id, patch) => {
+        await run(() => api.patch(`/work-items/${curId}/parties/${id}`, patch));
+      }}
+      onDeleteParty={async (id) => {
+        await run(() => api.delete(`/work-items/${curId}/parties/${id}`), 'Pihak dihapus');
+      }}
+      onUploadForSlot={async (files, documentTypeId, partyId) => {
+        for (const f of files) await uploadFile(f, documentTypeId, partyId);
+        invalidate();
       }}
 
       checklistTemplates={(checklistTemplates || []).map((t: any) => ({
